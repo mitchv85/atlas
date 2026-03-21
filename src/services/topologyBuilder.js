@@ -104,6 +104,14 @@ function buildGraph(nodesMap, adjacencies) {
     cyEdges.push(edgeData);
   }
 
+  // Post-processing: ensure every edge has explicit sourceMetric and targetMetric.
+  // sourceMetric = metric configured on the source node's end of the link
+  // targetMetric = metric configured on the target node's end of the link
+  for (const edge of cyEdges) {
+    edge.data.sourceMetric = edge.data.metric;
+    edge.data.targetMetric = edge.data.reverseMetric ?? edge.data.metric;
+  }
+
   return {
     nodes: cyNodes,
     edges: cyEdges,
