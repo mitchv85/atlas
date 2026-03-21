@@ -126,7 +126,86 @@ class TopologyRenderer {
   }
 
   _clearHighlight() {
-    this.cy.elements().removeClass('highlighted highlighted-edge neighbor dimmed');
+    this.cy.elements().removeClass('highlighted highlighted-edge neighbor dimmed path-node path-edge path-source path-dest path-failed path-dimmed');
+  }
+
+  /**
+   * Highlight a computed path on the topology.
+   *
+   * @param {Object}   pathData    - Path result from the API
+   * @param {string[]} failedNodes - Nodes to mark as failed
+   */
+  highlightPath(pathData, failedNodes = []) {
+    this._clearHighlight();
+
+    if (!pathData || !pathData.hops || pathData.hops.length === 0) return;
+
+    // Collect all nodes and edges on the path
+    const pathNodeIds = new Set();
+    const pathEdgeIds = new Set();
+
+    pathNodeIds.add(pathData.source);
+    pathNodeIds.add(pathData.destination);
+
+    for (const hop of pathData.hops) {
+      pathNodeIds.add(hop.from);
+      pathNodeIds.add(hop.to);
+      if (hop.edgeId) pathEdgeIds.add(hop.edgeId);
+    }
+
+    // Dim everything first
+    this.cy.elements().addClass('path-dimmed');
+
+    // Highlight path nodes
+    for (const nodeId of pathNodeIds) {
+      const node = this.cy.getElementById(nodeId);
+      if (node.length) {
+        node.removeClass('path-dimmed');
+        node.addClass('path-node');
+      }
+    }
+
+    // Highlight path edges
+    for (const edgeId of pathEdgeIds) {
+      const edge = this.cy.getElementById(edgeId);
+      if (edge.length) {
+        edge.removeClass('path-dimmed');
+        edge.addClass('path-edge');
+      }
+    }
+
+    // Mark source and dest
+    const srcNode = this.cy.getElementById(pathData.source);
+    const dstNode = this.cy.getElementById(pathData.destination);
+    if (srcNode.length) srcNode.addClass('path-source');
+    if (dstNode.length) dstNode.addClass('path-dest');
+
+    // Mark failed nodes
+    for (const failedId of failedNodes) {
+      const fNode = this.cy.getElementById(failedId);
+      if (fNode.length) {
+        fNode.removeClass('path-dimmed');
+        fNode.addClass('path-failed');
+      }
+    }
+  }
+
+  /**
+   * Clear path highlighting.
+   */
+  clearPath() {
+    this.cy.elements().removeClass('path-node path-edge path-source path-dest path-failed path-dimmed');
+  }
+
+  /**
+   * Get all node IDs and labels (for populating dropdowns).
+   */
+  getNodeList() {
+    if (!this.cy) return [];
+    return this.cy.nodes().map((n) => ({
+      id: n.data('id'),
+      label: n.data('label') || n.data('id'),
+    })).sort((a, b) => a.label.localeCompare(b.label));
   }
 
   /**
@@ -222,6 +301,80 @@ class TopologyRenderer {
         style: {
           'overlay-color': '#22d3ee',
           'overlay-opacity': 0.1,
+        },
+      },
+      // ── Path: Dimmed (everything not on the path) ──
+      {
+        selector: '.path-dimmed',
+        style: {
+          opacity: 0.15,
+        },
+      },
+      // ── Path: Node on path ──
+      {
+        selector: 'node.path-node',
+        style: {
+          'background-color': '#0e7490',
+          'border-color': '#22d3ee',
+          'border-width': 3,
+          'border-opacity': 1,
+          color: '#e8edf5',
+          'font-weight': 600,
+          opacity: 1,
+          'z-index': 20,
+        },
+      },
+      // ── Path: Source node ──
+      {
+        selector: 'node.path-source',
+        style: {
+          'background-color': '#0e7490',
+          'border-color': '#22d3ee',
+          'border-width': 4,
+          width: 50,
+          height: 50,
+          'z-index': 25,
+        },
+      },
+      // ── Path: Destination node ──
+      {
+        selector: 'node.path-dest',
+        style: {
+          'background-color': '#065f46',
+          'border-color': '#34d399',
+          'border-width': 4,
+          width: 50,
+          height: 50,
+          'z-index': 25,
+        },
+      },
+      // ── Path: Failed node ──
+      {
+        selector: 'node.path-failed',
+        style: {
+          'background-color': '#7f1d1d',
+          'border-color': '#f87171',
+          'border-width': 3,
+          'border-style': 'dashed',
+          opacity: 0.7,
+          color: '#f87171',
+          'z-index': 15,
+        },
+      },
+      // ── Path: Edge on path ──
+      {
+        selector: 'edge.path-edge',
+        style: {
+          'line-color': '#22d3ee',
+          width: 4,
+          color: '#22d3ee',
+          'font-size': 10,
+          'font-weight': 700,
+          opacity: 1,
+          'z-index': 20,
+          'target-arrow-color': '#22d3ee',
+          'target-arrow-shape': 'triangle',
+          'arrow-scale': 1.2,
         },
       },
     ];

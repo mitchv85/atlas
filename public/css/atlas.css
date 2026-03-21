@@ -586,3 +586,255 @@ body {
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
+
+/* ── Path Analysis Bar ─────────────────────────────────────────────── */
+.path-bar {
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border);
+  padding: 10px 20px;
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  flex-shrink: 0;
+  z-index: 90;
+}
+
+.path-bar-section {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.path-label {
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+
+.path-select {
+  background: var(--bg-deep);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 6px 28px 6px 10px;
+  color: var(--text-primary);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.8rem;
+  outline: none;
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23536580' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  min-width: 140px;
+  transition: border-color 0.2s;
+}
+
+.path-select:focus {
+  border-color: var(--accent-dim);
+  box-shadow: 0 0 0 2px var(--accent-glow);
+}
+
+.path-bar-arrow {
+  display: flex;
+  align-items: center;
+  padding-bottom: 2px;
+  color: var(--text-muted);
+}
+
+.path-bar-arrow svg {
+  width: 20px;
+  height: 20px;
+}
+
+.path-bar-divider {
+  width: 1px;
+  height: 32px;
+  background: var(--border);
+  margin: 0 4px;
+  align-self: flex-end;
+  margin-bottom: 4px;
+}
+
+/* ── Path Result Summary ───────────────────────────────────────────── */
+.path-result-banner {
+  background: var(--accent-glow);
+  border: 1px solid rgba(34, 211, 238, 0.2);
+  border-radius: var(--radius-sm);
+  padding: 10px 16px;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.path-result-banner.failure {
+  background: rgba(248, 113, 113, 0.1);
+  border-color: rgba(248, 113, 113, 0.2);
+}
+
+.path-result-icon {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
+.path-result-text {
+  font-size: 0.82rem;
+  color: var(--text-primary);
+}
+
+.path-result-text strong {
+  color: var(--accent);
+}
+
+.path-result-banner.failure .path-result-text strong {
+  color: var(--red);
+}
+
+/* Path hop list */
+.path-hops {
+  list-style: none;
+  position: relative;
+}
+
+.path-hops::before {
+  content: '';
+  position: absolute;
+  left: 9px;
+  top: 8px;
+  bottom: 8px;
+  width: 2px;
+  background: var(--accent-dim);
+}
+
+.path-hop {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 8px 0;
+  position: relative;
+}
+
+.path-hop-dot {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--bg-surface);
+  border: 2px solid var(--accent);
+  flex-shrink: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.path-hop-dot.source { background: var(--accent); }
+.path-hop-dot.dest   { background: var(--green); border-color: var(--green); }
+.path-hop-dot.failed { background: var(--red); border-color: var(--red); }
+
+.path-hop-dot-inner {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--bg-deep);
+}
+
+.path-hop-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.path-hop-name {
+  font-weight: 600;
+  font-size: 0.85rem;
+  color: var(--text-primary);
+}
+
+.path-hop-detail {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.path-hop-label {
+  display: inline-block;
+  background: var(--accent-glow);
+  color: var(--accent);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.7rem;
+  padding: 1px 6px;
+  border-radius: 3px;
+  margin-top: 3px;
+}
+
+/* ── Backup Path Section ───────────────────────────────────────────── */
+.backup-section {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.backup-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  padding: 6px 0;
+}
+
+.backup-header h4 {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.backup-toggle {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  transition: transform 0.2s;
+}
+
+.backup-body {
+  display: none;
+  padding-top: 8px;
+}
+
+.backup-body.open {
+  display: block;
+}
+
+.backup-item {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  margin-bottom: 8px;
+}
+
+.backup-item-header {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+}
+
+.backup-item-header strong {
+  color: var(--red);
+}
+
+.backup-item-path {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.75rem;
+  color: var(--accent);
+}
+
+.backup-item-unreachable {
+  font-size: 0.78rem;
+  color: var(--red);
+  font-style: italic;
+}

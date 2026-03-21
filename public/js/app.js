@@ -8,6 +8,7 @@
   // ── State ─────────────────────────────────────────────────────────
   let devices = [];
   let topologyData = null;
+  let currentPathResult = null;
   const topo = new TopologyRenderer('cy');
 
   // ── DOM References ────────────────────────────────────────────────
@@ -27,6 +28,15 @@
   const btnCloseDetail = $('#btnCloseDetail');
   const statusDot = $('.status-dot');
   const statusText = $('.status-text');
+
+  // Path analysis
+  const pathBar = $('#pathBar');
+  const pathSource = $('#pathSource');
+  const pathDest = $('#pathDest');
+  const pathFailNode = $('#pathFailNode');
+  const pathAlgo = $('#pathAlgo');
+  const btnComputePath = $('#btnComputePath');
+  const btnClearPath = $('#btnClearPath');
 
   // ── Init ──────────────────────────────────────────────────────────
   async function init() {
@@ -62,6 +72,10 @@
     $('#btnZoomIn').addEventListener('click', () => topo.zoomIn());
     $('#btnZoomOut').addEventListener('click', () => topo.zoomOut());
     $('#btnLayoutCose').addEventListener('click', () => topo.runLayout('cose'));
+
+    // Path analysis
+    btnComputePath.addEventListener('click', handleComputePath);
+    btnClearPath.addEventListener('click', handleClearPath);
   }
 
   // ── Device Management ─────────────────────────────────────────────
@@ -168,7 +182,320 @@
     topologyData = data;
     emptyState.classList.add('hidden');
     topoToolbar.style.display = 'flex';
+    pathBar.style.display = 'flex';
     topo.loadTopology({ nodes: data.nodes, edges: data.edges });
+    populatePathDropdowns();
+  }
+
+  /**
+   * Populate the source/destination/failure dropdowns from the topology.
+   */
+  function populatePathDropdowns() {
+    const nodes = topo.getNodeList();
+
+    // Save current selections
+    const prevSrc = pathSource.value;
+    const prevDst = pathDest.value;
+    const prevFail = pathFailNode.value;
+
+    // Clear and rebuild
+    pathSource.innerHTML = '<option value="">Select source...</option>';
+    pathDest.innerHTML = '<option value="">Select destination...</option>';
+    pathFailNode.innerHTML = '<option value="">None (primary path)</option>';
+
+    for (const node of nodes) {
+      const optSrc = new Option(node.label, node.id);
+      const optDst = new Option(node.label, node.id);
+      const optFail = new Option(node.label, node.id);
+      pathSource.add(optSrc);
+      pathDest.add(optDst);
+      pathFailNode.add(optFail);
+    }
+
+    // Restore selections if still valid
+    if (prevSrc && nodes.some(n => n.id === prevSrc)) pathSource.value = prevSrc;
+    if (prevDst && nodes.some(n => n.id === prevDst)) pathDest.value = prevDst;
+    if (prevFail && nodes.some(n => n.id === prevFail)) pathFailNode.value = prevFail;
+  }
+
+  // ── Path Computation ─────────────────────────────────────────────
+  async function handleComputePath() {
+    const source = pathSource.value;
+    const dest = pathDest.value;
+    const failNode = pathFailNode.value;
+
+    if (!source || !dest) {
+      setStatus('error', 'Select both source and destination');
+      return;
+    }
+
+    if (source === dest) {
+      setStatus('error', 'Source and destination must be different');
+      return;
+    }
+
+    btnComputePath.disabled = true;
+    btnComputePath.classList.add('loading');
+
+    try {
+      // Always get the full analysis (primary + all backups)
+      const analysis = await API.analyzePath(source, dest);
+      currentPathResult = analysis;
+
+      // Determine which path to display
+      let displayPath;
+      let failedNodes = [];
+
+      if (failNode) {
+        // User selected a specific failure — find the matching backup
+        const backup = analysis.backups.find((b) => b.failedNode === failNode);
+        if (backup && backup.backupPath) {
+          displayPath = backup.backupPath;
+          failedNodes = [failNode];
+        } else if (backup && !backup.backupPath) {
+          // Unreachable under this failure
+          displayPath = null;
+          failedNodes = [failNode];
+        } else {
+          // Fallback: compute directly with exclusion
+          const result = await API.computePath(source, dest, [failNode]);
+          displayPath = result.reachable ? result : null;
+          failedNodes = [failNode];
+        }
+      } else {
+        displayPath = analysis.primary;
+      }
+
+      // Highlight on topology
+      if (displayPath) {
+        topo.highlightPath(displayPath, failedNodes);
+      } else {
+        topo.clearPath();
+        // Still mark the failed node visually
+        if (failedNodes.length > 0) {
+          topo.highlightPath(analysis.primary || { source, destination: dest, hops: [] }, failedNodes);
+        }
+      }
+
+      // Show detail panel with path info
+      showPathDetail(displayPath, analysis, failedNodes);
+      btnClearPath.style.display = 'inline-flex';
+
+      if (displayPath) {
+        const failLabel = failedNodes.length > 0
+          ? ` (${getHostname(failedNodes[0])} failed)`
+          : '';
+        setStatus('live', `Path: ${displayPath.hopCount} hops, metric ${displayPath.totalMetric}${failLabel}`);
+      } else {
+        setStatus('error', `Unreachable: ${getHostname(source)} → ${getHostname(dest)} with ${getHostname(failNode)} failed`);
+      }
+    } catch (err) {
+      setStatus('error', `Path error: ${err.message}`);
+    } finally {
+      btnComputePath.disabled = false;
+      btnComputePath.classList.remove('loading');
+    }
+  }
+
+  function handleClearPath() {
+    topo.clearPath();
+    currentPathResult = null;
+    btnClearPath.style.display = 'none';
+    closeDetail();
+    if (topologyData) {
+      setStatus('live', `${topologyData.metadata.nodeCount} nodes, ${topologyData.metadata.edgeCount} links`);
+    }
+  }
+
+  function getHostname(systemId) {
+    if (!topologyData) return systemId;
+    const node = topologyData.nodes.find((n) => n.data.id === systemId);
+    return node?.data?.hostname || systemId;
+  }
+
+  // ── Path Detail Panel ──────────────────────────────────────────────
+  function showPathDetail(pathData, analysis, failedNodes) {
+    const srcName = getHostname(pathSource.value);
+    const dstName = getHostname(pathDest.value);
+
+    if (failedNodes.length > 0) {
+      const failName = getHostname(failedNodes[0]);
+      detailTitle.textContent = `${srcName} → ${dstName} (${failName} ✕)`;
+    } else {
+      detailTitle.textContent = `${srcName} → ${dstName}`;
+    }
+
+    detailBody.innerHTML = buildPathDetailHTML(pathData, analysis, failedNodes);
+    detailPanel.classList.add('open');
+
+    // Wire up backup toggles
+    const backupHeaders = detailBody.querySelectorAll('.backup-header');
+    backupHeaders.forEach((header) => {
+      header.addEventListener('click', () => {
+        const body = header.nextElementSibling;
+        body.classList.toggle('open');
+        const toggle = header.querySelector('.backup-toggle');
+        toggle.textContent = body.classList.contains('open') ? '▾' : '▸';
+      });
+    });
+
+    // Wire up backup "Show" buttons
+    const backupShowBtns = detailBody.querySelectorAll('.btn-show-backup');
+    backupShowBtns.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const failedNode = btn.dataset.failNode;
+        pathFailNode.value = failedNode;
+        handleComputePath();
+      });
+    });
+  }
+
+  function buildPathDetailHTML(pathData, analysis, failedNodes) {
+    let html = '';
+
+    // Unreachable state
+    if (!pathData) {
+      const failName = failedNodes.length > 0 ? getHostname(failedNodes[0]) : 'constraint';
+      html += `
+        <div class="path-result-banner failure">
+          <svg class="path-result-icon" viewBox="0 0 20 20" fill="#f87171">
+            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/>
+          </svg>
+          <span class="path-result-text"><strong>Unreachable</strong> — destination cannot be reached with <strong>${esc(failName)}</strong> failed</span>
+        </div>`;
+
+      // Still show primary path if available
+      if (analysis?.primary) {
+        html += `
+          <div class="detail-section">
+            <h4>Primary Path (no failure)</h4>
+            ${buildHopListHTML(analysis.primary)}
+          </div>`;
+      }
+
+      return html;
+    }
+
+    // Result banner
+    const isBackup = failedNodes.length > 0;
+    html += `
+      <div class="path-result-banner">
+        <svg class="path-result-icon" viewBox="0 0 20 20" fill="${isBackup ? '#fbbf24' : '#22d3ee'}">
+          <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+        </svg>
+        <span class="path-result-text">
+          <strong>${isBackup ? 'TI-LFA Backup' : 'Primary Path'}</strong> — 
+          ${pathData.hopCount} hops, total metric ${pathData.totalMetric}, Algo ${pathData.algorithm}
+        </span>
+      </div>`;
+
+    // Label stack
+    if (pathData.labelStack && pathData.labelStack.length > 0) {
+      html += `
+        <div class="detail-section">
+          <h4>SR Label Stack</h4>`;
+
+      for (const label of pathData.labelStack) {
+        const srgbBase = 900000; // We know this from the topology
+        const globalLabel = srgbBase + label.label;
+        html += `
+          <div class="detail-row">
+            <span class="detail-label">${esc(label.type)} (${esc(label.prefix)})</span>
+            <span class="detail-value">
+              <span class="detail-badge cyan">SID ${label.label}</span>
+              <span class="prefix-metric" style="margin-left:6px;">→ label ${globalLabel}</span>
+            </span>
+          </div>`;
+      }
+      html += `</div>`;
+    }
+
+    // Hop-by-hop path
+    html += `
+      <div class="detail-section">
+        <h4>Hop-by-Hop Path</h4>
+        ${buildHopListHTML(pathData)}
+      </div>`;
+
+    // TI-LFA backup paths section
+    if (analysis?.backups && analysis.backups.length > 0 && failedNodes.length === 0) {
+      html += `
+        <div class="backup-section">
+          <div class="backup-header">
+            <h4>TI-LFA Backup Paths (Node Protection)</h4>
+            <span class="backup-toggle">▸</span>
+          </div>
+          <div class="backup-body">`;
+
+      for (const backup of analysis.backups) {
+        html += `<div class="backup-item">`;
+        html += `<div class="backup-item-header">If <strong>${esc(backup.failedHostname)}</strong> fails:</div>`;
+
+        if (backup.backupPath) {
+          const hopNames = [backup.backupPath.sourceHostname];
+          for (const hop of backup.backupPath.hops) {
+            hopNames.push(hop.toHostname);
+          }
+          html += `<div class="backup-item-path">${hopNames.join(' → ')}</div>`;
+          html += `<div style="margin-top:4px;font-size:0.72rem;color:var(--text-muted);">
+            ${backup.backupPath.hopCount} hops, metric ${backup.backupPath.totalMetric}
+          </div>`;
+          html += `<button class="btn btn-ghost btn-sm btn-show-backup" data-fail-node="${backup.failedNode}" style="margin-top:6px;">Show on Map</button>`;
+        } else {
+          html += `<div class="backup-item-unreachable">Destination unreachable</div>`;
+        }
+
+        html += `</div>`;
+      }
+
+      html += `</div></div>`;
+    }
+
+    return html;
+  }
+
+  function buildHopListHTML(pathData) {
+    if (!pathData || !pathData.hops || pathData.hops.length === 0) {
+      return '<p class="text-muted">No path data</p>';
+    }
+
+    let html = '<ul class="path-hops">';
+
+    // Source node
+    html += `
+      <li class="path-hop">
+        <div class="path-hop-dot source"><div class="path-hop-dot-inner"></div></div>
+        <div class="path-hop-info">
+          <div class="path-hop-name">${esc(pathData.sourceHostname)}</div>
+          <div class="path-hop-detail">source</div>
+        </div>
+      </li>`;
+
+    // Each hop
+    for (let i = 0; i < pathData.hops.length; i++) {
+      const hop = pathData.hops[i];
+      const isLast = i === pathData.hops.length - 1;
+
+      // Link info between hops
+      const adjSidLabel = hop.adjSids?.length > 0
+        ? hop.adjSids.map((s) => s.sid).join(', ')
+        : '';
+
+      html += `
+        <li class="path-hop">
+          <div class="path-hop-dot ${isLast ? 'dest' : ''}"></div>
+          <div class="path-hop-info">
+            <div class="path-hop-name">${esc(hop.toHostname)}</div>
+            <div class="path-hop-detail">
+              via ${esc(hop.localAddr || '?')} → ${esc(hop.neighborAddr || '?')}, metric ${hop.metric}
+            </div>
+            ${adjSidLabel ? `<div class="path-hop-label">Adj-SID: ${adjSidLabel}</div>` : ''}
+          </div>
+        </li>`;
+    }
+
+    html += '</ul>';
+    return html;
   }
 
   // ── Detail Panel ──────────────────────────────────────────────────

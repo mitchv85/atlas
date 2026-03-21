@@ -8,6 +8,7 @@ const deviceStore = require('../store/devices');
 const eapi = require('../services/eapi');
 const { parseLSDB, parseHostnameTable } = require('../services/isisParser');
 const { buildGraph } = require('../services/topologyBuilder');
+const { computePath, computePathWithBackups } = require('../services/spf');
 
 // In-memory cache of the last collected topology
 let cachedTopology = null;
@@ -90,6 +91,53 @@ router.get('/node/:systemId', (req, res) => {
 
   if (!node) return res.status(404).json({ error: 'Node not found in topology.' });
   res.json(node.data);
+});
+
+// POST /api/topology/path — Compute shortest path between two nodes
+// Body: { source, destination, excludeNodes?: string[] }
+router.post('/path', (req, res) => {
+  if (!cachedTopology) {
+    return res.status(404).json({ error: 'No topology data available.' });
+  }
+
+  const { source, destination, excludeNodes } = req.body;
+
+  if (!source || !destination) {
+    return res.status(400).json({ error: 'source and destination are required.' });
+  }
+
+  const path = computePath(cachedTopology, source, destination, {
+    excludeNodes: excludeNodes || [],
+  });
+
+  if (!path) {
+    return res.json({
+      reachable: false,
+      source,
+      destination,
+      excludeNodes: excludeNodes || [],
+      message: 'Destination is unreachable with the given constraints.',
+    });
+  }
+
+  res.json({ reachable: true, ...path });
+});
+
+// POST /api/topology/path/analyze — Compute primary path + all TI-LFA backup paths
+// Body: { source, destination }
+router.post('/path/analyze', (req, res) => {
+  if (!cachedTopology) {
+    return res.status(404).json({ error: 'No topology data available.' });
+  }
+
+  const { source, destination } = req.body;
+
+  if (!source || !destination) {
+    return res.status(400).json({ error: 'source and destination are required.' });
+  }
+
+  const result = computePathWithBackups(cachedTopology, source, destination);
+  res.json(result);
 });
 
 module.exports = router;
