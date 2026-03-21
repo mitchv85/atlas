@@ -243,8 +243,10 @@ function computePathWithBackups(topology, source, destination) {
     return { primary: null, nodeBackups: [], linkBackups: [] };
   }
 
+  // Enrich primary path with real label stack from tunnel FIB
+  enrichPathWithTunnelFib(primary, topology, false);
+
   // ── Node Protection ──
-  // For each transit node (not source or dest), compute backup path
   const nodeBackups = [];
   const transitNodes = primary.hops
     .map((h) => h.from)
@@ -260,6 +262,11 @@ function computePathWithBackups(topology, source, destination) {
       excludeNodes: [failedNode],
     });
 
+    // Enrich backup path with real TI-LFA label stack
+    if (backupPath) {
+      enrichPathWithTunnelFib(backupPath, topology, true);
+    }
+
     const failedNodeData = topology.nodes.find((n) => n.data.id === failedNode);
 
     nodeBackups.push({
@@ -271,7 +278,6 @@ function computePathWithBackups(topology, source, destination) {
   }
 
   // ── Link Protection ──
-  // For each link on the primary path, compute backup with that edge excluded
   const linkBackups = [];
   const seenEdges = new Set();
 
@@ -283,7 +289,11 @@ function computePathWithBackups(topology, source, destination) {
       excludeEdges: [hop.edgeId],
     });
 
-    // Build a human-readable label for this link
+    // Enrich backup path with real TI-LFA label stack
+    if (backupPath) {
+      enrichPathWithTunnelFib(backupPath, topology, true);
+    }
+
     const linkLabel = `${hop.fromHostname} ↔ ${hop.toHostname}`;
     const linkDetail = hop.localAddr && hop.neighborAddr
       ? `${hop.localAddr} ↔ ${hop.neighborAddr}`
@@ -303,6 +313,114 @@ function computePathWithBackups(topology, source, destination) {
   }
 
   return { primary, nodeBackups, linkBackups };
+}
+
+/**
+ * Look up tunnel FIB label stacks for a given source → destination.
+ *
+ * @param {Object} topology       - Full topology (must have .tunnelFib)
+ * @param {string} sourceId       - Source node systemId
+ * @param {string} destinationId  - Destination node systemId
+ * @returns {Object} - { primaryLabels: [...], backupLabels: [...] }
+ */
+function lookupTunnelFibLabels(topology, sourceId, destinationId) {
+  const result = { primaryLabels: [], backupLabels: [] };
+
+  if (!topology.tunnelFib) return result;
+
+  // Find source hostname to key into tunnelFib
+  const srcNode = topology.nodes.find((n) => n.data.id === sourceId);
+  const srcHostname = srcNode?.data?.hostname;
+  if (!srcHostname) return result;
+
+  // Find destination endpoint (loopback /32 prefix)
+  const dstNode = topology.nodes.find((n) => n.data.id === destinationId);
+  if (!dstNode) return result;
+
+  // Build possible endpoint strings from the destination's prefixes
+  const dstPrefixes = dstNode.data.prefixes || [];
+  const loopbacks = dstPrefixes
+    .filter((p) => p.mask === 32)
+    .map((p) => `${p.prefix}/${p.mask}`);
+
+  // Also try the router-id from routerCaps
+  const routerId = dstNode.data.routerCaps?.routerId;
+  if (routerId) loopbacks.push(`${routerId}/32`);
+
+  // Search all configured devices for matching tunnel FIB data
+  // The source node's hostname may match a device name in the FIB,
+  // or we search all device FIBs for the source hostname
+  const allDeviceFibs = Object.values(topology.tunnelFib);
+
+  // Try exact device name match first
+  let deviceFib = topology.tunnelFib[srcHostname];
+
+  // If not found, try all device FIBs (in case device name != hostname)
+  if (!deviceFib && allDeviceFibs.length > 0) {
+    deviceFib = allDeviceFibs[0]; // Use first available device's FIB
+  }
+
+  if (!deviceFib) return result;
+
+  // Look up each possible endpoint
+  for (const endpoint of loopbacks) {
+    const tunnel = deviceFib[endpoint];
+    if (!tunnel) continue;
+
+    if (tunnel.primaryPaths && tunnel.primaryPaths.length > 0) {
+      result.primaryLabels = tunnel.primaryPaths.map((p) => ({
+        labelStack: p.labelStack,
+        nexthop: p.nexthop,
+        interface: p.interface,
+      }));
+    }
+
+    if (tunnel.backupPaths && tunnel.backupPaths.length > 0) {
+      result.backupLabels = tunnel.backupPaths.map((p) => ({
+        labelStack: p.labelStack,
+        nexthop: p.nexthop,
+        interface: p.interface,
+      }));
+    }
+
+    break; // Found a match
+  }
+
+  return result;
+}
+
+/**
+ * Enrich a computed path with real label stack from tunnel FIB.
+ *
+ * @param {Object} path       - Path from computePath
+ * @param {Object} topology   - Full topology with tunnelFib
+ * @param {boolean} isBackup  - Whether this is a backup path
+ */
+function enrichPathWithTunnelFib(path, topology, isBackup = false) {
+  if (!path || !topology.tunnelFib) return;
+
+  const fibLabels = lookupTunnelFibLabels(topology, path.source, path.destination);
+
+  if (isBackup && fibLabels.backupLabels.length > 0) {
+    // Use the backup label stack from the tunnel FIB
+    path.labelStack = fibLabels.backupLabels.map((b) => ({
+      labels: b.labelStack,
+      nexthop: b.nexthop,
+      interface: b.interface,
+      type: 'tunnel-fib-backup',
+    }));
+    path.labelStackSource = 'tunnel-fib';
+  } else if (!isBackup && fibLabels.primaryLabels.length > 0) {
+    // Use the primary label stack from the tunnel FIB
+    path.labelStack = fibLabels.primaryLabels.map((p) => ({
+      labels: p.labelStack,
+      nexthop: p.nexthop,
+      interface: p.interface,
+      type: 'tunnel-fib-primary',
+    }));
+    path.labelStackSource = 'tunnel-fib';
+  }
+  // If no tunnel FIB data, keep the SPF-computed label stack
 }
 
 module.exports = { computePath, computePathWithBackups, buildAdjacencyList, dijkstra };

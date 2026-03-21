@@ -503,18 +503,43 @@
         <div class="detail-section">
           <h4>SR Label Stack</h4>`;
 
-      for (const label of pathData.labelStack) {
-        const srgbBase = 900000;
-        const globalLabel = srgbBase + label.label;
-        html += `
-          <div class="detail-row">
-            <span class="detail-label">${esc(label.type)} (${esc(label.prefix)})</span>
-            <span class="detail-value">
-              <span class="detail-badge cyan">SID ${label.label}</span>
-              <span class="prefix-metric" style="margin-left:6px;">→ label ${globalLabel}</span>
-            </span>
-          </div>`;
+      if (pathData.labelStackSource === 'tunnel-fib') {
+        // Tunnel FIB format: [{ labels: [...], nexthop, interface, type }]
+        for (const entry of pathData.labelStack) {
+          const labels = entry.labels || [];
+          html += `<div style="margin-bottom:10px;">`;
+          if (entry.nexthop) {
+            html += `<div style="font-size:0.72rem;color:var(--text-muted);margin-bottom:4px;">via ${esc(entry.nexthop)} (${esc(entry.interface || '')})</div>`;
+          }
+          html += `<div style="display:flex;gap:4px;flex-wrap:wrap;">`;
+          for (const lbl of labels) {
+            const decoded = decodeSrLabel(lbl);
+            html += `<span class="detail-badge ${decoded.color}" title="${esc(decoded.description)}" style="cursor:help;">${esc(lbl)}</span>`;
+          }
+          html += `</div>`;
+          if (labels.length > 0) {
+            html += `<div style="font-size:0.68rem;color:var(--text-muted);margin-top:4px;">`;
+            html += labels.map(l => decodeSrLabel(l).description).join(' → ');
+            html += `</div>`;
+          }
+          html += `</div>`;
+        }
+      } else {
+        // SPF-computed format: [{ label, type, prefix }]
+        for (const label of pathData.labelStack) {
+          const srgbBase = 900000;
+          const globalLabel = srgbBase + label.label;
+          html += `
+            <div class="detail-row">
+              <span class="detail-label">${esc(label.type)} (${esc(label.prefix)})</span>
+              <span class="detail-value">
+                <span class="detail-badge cyan">SID ${label.label}</span>
+                <span class="prefix-metric" style="margin-left:6px;">→ label ${globalLabel}</span>
+              </span>
+            </div>`;
+        }
       }
+
       html += `</div>`;
     }
 
@@ -869,6 +894,63 @@
     const div = document.createElement('div');
     div.textContent = String(str);
     return div.innerHTML;
+  }
+
+  /**
+   * Decode an SR MPLS label into a human-readable description.
+   * Uses knowledge of the SRGB range and known prefix-SIDs.
+   */
+  function decodeSrLabel(labelStr) {
+    const label = parseInt(labelStr, 10);
+    const srgbBase = 900000;
+    const srgbEnd = 965536;
+    const srlbBase = 965536;
+    const srlbEnd = 1031072;
+
+    // Implicit null (PHP)
+    if (label === 3) {
+      return { description: 'Implicit Null (PHP)', color: 'green' };
+    }
+
+    // SRGB range — Prefix-SID
+    if (label >= srgbBase && label < srgbEnd) {
+      const sid = label - srgbBase;
+      // Try to find the node with this prefix-SID
+      let nodeName = '';
+      if (topologyData) {
+        for (const node of topologyData.nodes) {
+          const match = (node.data.srPrefixSids || []).find((s) => s.sid === sid);
+          if (match) {
+            nodeName = ` (${node.data.hostname})`;
+            break;
+          }
+        }
+      }
+      return { description: `Prefix-SID ${sid}${nodeName}`, color: 'cyan' };
+    }
+
+    // SRLB range — likely Adj-SID (dynamic)
+    if (label >= srlbBase && label < srlbEnd) {
+      return { description: `Adj-SID ${label} (SRLB)`, color: 'green' };
+    }
+
+    // Below SRGB — likely a dynamic Adj-SID from the local label space
+    if (label > 15 && label < srgbBase) {
+      // Try to identify by looking up adj-SIDs in the topology
+      let adjInfo = '';
+      if (topologyData) {
+        for (const node of topologyData.nodes) {
+          const match = (node.data.srAdjSids || []).find((s) => s.sid === label);
+          if (match) {
+            adjInfo = ` (${node.data.hostname} → ${match.neighbor})`;
+            break;
+          }
+        }
+      }
+      return { description: `Adj-SID ${label}${adjInfo}`, color: 'green' };
+    }
+
+    return { description: `Label ${label}`, color: 'cyan' };
   }
 
   // ── Boot ──────────────────────────────────────────────────────────

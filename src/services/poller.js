@@ -11,6 +11,7 @@ const deviceStore = require('../store/devices');
 const eapi = require('../services/eapi');
 const { parseLSDB } = require('../services/isisParser');
 const { buildGraph } = require('../services/topologyBuilder');
+const { parseTunnelFib } = require('../services/tunnelParser');
 
 class TopologyPoller extends EventEmitter {
   constructor() {
@@ -97,10 +98,17 @@ class TopologyPoller extends EventEmitter {
       const allNodes = new Map();
       const allAdjacencies = [];
       const sourceDevices = [];
+      const perDeviceTunnels = new Map(); // device name -> tunnel map
 
       for (const device of allDevices) {
         try {
-          const results = await eapi.execute(device, ['show isis database detail'], 'json');
+          const results = await eapi.execute(
+            device,
+            ['show isis database detail', 'show tunnel fib'],
+            'json'
+          );
+
+          // Parse LSDB
           const lsdbRaw = results[0];
           const { nodes, adjacencies } = parseLSDB(lsdbRaw);
 
@@ -111,6 +119,12 @@ class TopologyPoller extends EventEmitter {
           }
           allAdjacencies.push(...adjacencies);
           sourceDevices.push(device.name);
+
+          // Parse Tunnel FIB
+          const tunnelFibRaw = results[1];
+          const tunnelMap = parseTunnelFib(tunnelFibRaw);
+          perDeviceTunnels.set(device.name, tunnelMap);
+
         } catch (deviceErr) {
           // Log but continue — one device failing shouldn't stop the whole poll
           console.error(`  Poll error for ${device.name}: ${deviceErr.message}`);
@@ -126,6 +140,15 @@ class TopologyPoller extends EventEmitter {
       // Build the graph
       const topology = buildGraph(allNodes, allAdjacencies);
       topology.metadata.sourceDevices = sourceDevices;
+
+      // Attach tunnel FIB data keyed by device name
+      topology.tunnelFib = {};
+      for (const [deviceName, tunnelMap] of perDeviceTunnels) {
+        topology.tunnelFib[deviceName] = {};
+        for (const [endpoint, info] of tunnelMap) {
+          topology.tunnelFib[deviceName][endpoint] = info;
+        }
+      }
 
       // Check if topology changed (simple hash: node count + edge count + node ids)
       const hash = this._computeHash(topology);
