@@ -212,6 +212,7 @@
           <span class="detail-label">Level</span>
           <span class="detail-badge cyan">L${d.level}</span>
         </div>
+        ${d.overload ? '<div class="detail-row"><span class="detail-label">Overload</span><span class="detail-badge amber">OL</span></div>' : ''}
       </div>
 
       <div class="detail-section">
@@ -221,16 +222,72 @@
           <span class="detail-value">${d.sequenceNumber}</span>
         </div>
         <div class="detail-row">
-          <span class="detail-label">Remaining Lifetime</span>
-          <span class="detail-value">${d.remainingLifetime}s</span>
+          <span class="detail-label">Checksum</span>
+          <span class="detail-value">0x${(d.checksum || 0).toString(16).toUpperCase()}</span>
         </div>
         <div class="detail-row">
-          <span class="detail-label">Neighbor Count</span>
+          <span class="detail-label">Neighbors</span>
           <span class="detail-value">${d.neighborCount}</span>
         </div>
       </div>`;
 
-    // Prefixes
+    // Router Capabilities — SR
+    const caps = d.routerCaps;
+    if (caps) {
+      html += `<div class="detail-section"><h4>Segment Routing</h4>`;
+
+      if (caps.routerId) {
+        html += `<div class="detail-row"><span class="detail-label">Router ID</span><span class="detail-value">${esc(caps.routerId)}</span></div>`;
+      }
+      if (caps.srgb && caps.srgb.length > 0) {
+        for (const srgb of caps.srgb) {
+          html += `<div class="detail-row"><span class="detail-label">SRGB</span><span class="detail-value">${srgb.base} - ${srgb.base + srgb.range - 1}</span></div>`;
+        }
+      }
+      if (caps.srlb && caps.srlb.length > 0) {
+        for (const srlb of caps.srlb) {
+          html += `<div class="detail-row"><span class="detail-label">SRLB</span><span class="detail-value">${srlb.base} - ${srlb.base + srlb.range - 1}</span></div>`;
+        }
+      }
+      if (caps.maxSIDDepth) {
+        html += `<div class="detail-row"><span class="detail-label">Max SID Depth</span><span class="detail-value">${caps.maxSIDDepth}</span></div>`;
+      }
+      html += `</div>`;
+    }
+
+    // SR Prefix SIDs
+    if (d.srPrefixSids && d.srPrefixSids.length > 0) {
+      html += `
+        <div class="detail-section">
+          <h4>SR Prefix SIDs (${d.srPrefixSids.length})</h4>
+          <ul class="prefix-list">
+            ${d.srPrefixSids
+              .map(
+                (s) =>
+                  `<li>${esc(s.prefix)}<span class="detail-badge cyan" style="margin-left:8px;">SID ${s.sid}</span><span class="prefix-metric">algo ${s.algorithm}${s.isNodeSid ? ' [N]' : ''}</span></li>`
+              )
+              .join('')}
+          </ul>
+        </div>`;
+    }
+
+    // SR Adj-SIDs
+    if (d.srAdjSids && d.srAdjSids.length > 0) {
+      html += `
+        <div class="detail-section">
+          <h4>SR Adjacency SIDs (${d.srAdjSids.length})</h4>
+          <ul class="prefix-list">
+            ${d.srAdjSids
+              .map(
+                (s) =>
+                  `<li>→ ${esc(s.neighbor)}<span class="detail-badge green" style="margin-left:8px;">${s.sid}</span></li>`
+              )
+              .join('')}
+          </ul>
+        </div>`;
+    }
+
+    // IP Reachability
     if (d.prefixes && d.prefixes.length > 0) {
       html += `
         <div class="detail-section">
@@ -242,17 +299,6 @@
                   `<li>${esc(p.prefix)}/${p.mask}<span class="prefix-metric">metric ${p.metric}</span></li>`
               )
               .join('')}
-          </ul>
-        </div>`;
-    }
-
-    // SR Prefix SIDs (Phase 2 placeholder)
-    if (d.srPrefixSids && d.srPrefixSids.length > 0) {
-      html += `
-        <div class="detail-section">
-          <h4>SR Prefix SIDs</h4>
-          <ul class="prefix-list">
-            ${d.srPrefixSids.map((s) => `<li>${esc(JSON.stringify(s))}</li>`).join('')}
           </ul>
         </div>`;
     }
@@ -291,14 +337,33 @@
 
     html += `</div>`;
 
-    // Interfaces
-    if (d.localIntf || d.remoteIntf) {
+    // IP Addresses
+    if (d.localAddr || d.neighborAddr) {
       html += `
         <div class="detail-section">
-          <h4>Interfaces</h4>
-          ${d.localIntf ? `<div class="detail-row"><span class="detail-label">${esc(d.sourceLabel)}</span><span class="detail-value">${esc(d.localIntf)}</span></div>` : ''}
-          ${d.remoteIntf ? `<div class="detail-row"><span class="detail-label">${esc(d.targetLabel)}</span><span class="detail-value">${esc(d.remoteIntf)}</span></div>` : ''}
+          <h4>Addresses</h4>
+          ${d.localAddr ? `<div class="detail-row"><span class="detail-label">${esc(d.sourceLabel)}</span><span class="detail-value">${esc(d.localAddr)}</span></div>` : ''}
+          ${d.neighborAddr ? `<div class="detail-row"><span class="detail-label">${esc(d.targetLabel)}</span><span class="detail-value">${esc(d.neighborAddr)}</span></div>` : ''}
         </div>`;
+    }
+
+    // Adj-SIDs (forward direction)
+    if (d.adjSids && d.adjSids.length > 0) {
+      html += `
+        <div class="detail-section">
+          <h4>Adjacency SIDs</h4>
+          ${d.adjSids.map(s =>
+            `<div class="detail-row"><span class="detail-label">${esc(d.sourceLabel)} → ${esc(d.targetLabel)}</span><span class="detail-badge green">${s.sid}</span></div>`
+          ).join('')}`;
+
+      // Reverse Adj-SIDs
+      if (d.reverseAdjSids && d.reverseAdjSids.length > 0) {
+        html += d.reverseAdjSids.map(s =>
+          `<div class="detail-row"><span class="detail-label">${esc(d.targetLabel)} → ${esc(d.sourceLabel)}</span><span class="detail-badge green">${s.sid}</span></div>`
+        ).join('');
+      }
+
+      html += `</div>`;
     }
 
     html += `

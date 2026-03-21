@@ -6,7 +6,7 @@ const express = require('express');
 const router = express.Router();
 const deviceStore = require('../store/devices');
 const eapi = require('../services/eapi');
-const { parseLSDB, parseNeighbors } = require('../services/isisParser');
+const { parseLSDB, parseHostnameTable } = require('../services/isisParser');
 const { buildGraph } = require('../services/topologyBuilder');
 
 // In-memory cache of the last collected topology

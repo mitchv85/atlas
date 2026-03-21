@@ -2,12 +2,7 @@
 // Topology Builder
 // ---------------------------------------------------------------------------
 // Converts parsed IS-IS LSDB data into a Cytoscape.js-compatible graph model.
-//
-// Output format:
-// {
-//   nodes: [{ data: { id, label, systemId, ... } }],
-//   edges: [{ data: { id, source, target, metric, ... } }]
-// }
+// Now includes SR Prefix SIDs, Adj-SIDs, and Router Capabilities.
 // ---------------------------------------------------------------------------
 
 /**
@@ -20,72 +15,83 @@
 function buildGraph(nodesMap, adjacencies) {
   const cyNodes = [];
   const cyEdges = [];
-  const edgeSet = new Set(); // Deduplicate bidirectional adjacencies
+  const edgeSet = new Map(); // Deduplicate bidirectional adjacencies
 
   // --- Build Nodes ---
   for (const [systemId, nodeInfo] of nodesMap) {
     cyNodes.push({
       data: {
         id: systemId,
-        label: nodeInfo.hostname,
+        label: nodeInfo.hostname || systemId,
         systemId: nodeInfo.systemId,
         hostname: nodeInfo.hostname,
         level: nodeInfo.level,
         instance: nodeInfo.instance,
         lspId: nodeInfo.lspId,
         sequenceNumber: nodeInfo.sequenceNumber,
+        checksum: nodeInfo.checksum,
         remainingLifetime: nodeInfo.remainingLifetime,
+        overload: nodeInfo.overload,
+        areaAddresses: nodeInfo.areaAddresses,
+        interfaceAddresses: nodeInfo.interfaceAddresses,
         prefixCount: nodeInfo.prefixes.length,
         prefixes: nodeInfo.prefixes,
-        neighborCount: nodeInfo.neighbors.length,
-        // Phase 2
+        neighborCount: nodeInfo.neighborList.length,
+        // SR data
         srPrefixSids: nodeInfo.srPrefixSids,
         srAdjSids: nodeInfo.srAdjSids,
-        // Phase 3
-        flexAlgos: nodeInfo.flexAlgos,
+        routerCaps: nodeInfo.routerCaps,
       },
     });
   }
 
-  // --- Build Edges (deduplicated) ---
+  // --- Build Edges (deduplicated, with both directions' data) ---
   for (const adj of adjacencies) {
     // Create a canonical edge key so A->B and B->A become one edge
     const edgeKey = [adj.fromSystemId, adj.toSystemId].sort().join('|');
 
     if (edgeSet.has(edgeKey)) {
-      // Already have this edge — update with reverse direction info
-      const existing = cyEdges.find((e) => e.data._edgeKey === edgeKey);
-      if (existing) {
-        existing.data.reverseMetric = adj.metric;
-        existing.data.reverseLocalIntf = adj.localIntf;
-        existing.data.reverseRemoteIntf = adj.remoteIntf;
+      // Already have this edge — enrich with reverse direction info
+      const existing = edgeSet.get(edgeKey);
+      existing.data.reverseMetric = adj.metric;
+      existing.data.reverseLocalAddr = adj.localAddr;
+      existing.data.reverseNeighborAddr = adj.neighborAddr;
+      existing.data.reverseAdjSids = adj.adjSids;
+      // Figure out which direction label to assign
+      if (existing.data.source === adj.toSystemId) {
+        // This adjacency is from target->source, so it's the reverse
+        existing.data.reverseHostname = adj.fromHostname;
       }
       continue;
     }
 
-    edgeSet.add(edgeKey);
-
-    // Look up hostnames for readable labels
     const fromNode = nodesMap.get(adj.fromSystemId);
     const toNode = nodesMap.get(adj.toSystemId);
 
-    cyEdges.push({
+    const edgeData = {
       data: {
-        id: `edge-${adj.fromSystemId}-${adj.toSystemId}`,
+        id: `edge-${edgeKey.replace('|', '-')}`,
         _edgeKey: edgeKey,
         source: adj.fromSystemId,
         target: adj.toSystemId,
         sourceLabel: fromNode?.hostname || adj.fromHostname || adj.fromSystemId,
-        targetLabel: toNode?.hostname || adj.toSystemId,
+        targetLabel: toNode?.hostname || adj.toHostname || adj.toSystemId,
         metric: adj.metric,
         level: adj.level,
-        localIntf: adj.localIntf,
-        remoteIntf: adj.remoteIntf,
+        // Forward direction (source -> target)
+        localAddr: adj.localAddr,
+        neighborAddr: adj.neighborAddr,
+        adjSids: adj.adjSids,
+        // Reverse direction (target -> source) — populated on second pass
         reverseMetric: null,
-        reverseLocalIntf: null,
-        reverseRemoteIntf: null,
+        reverseLocalAddr: null,
+        reverseNeighborAddr: null,
+        reverseAdjSids: [],
       },
-    });
+    };
+
+    edgeSet.set(edgeKey, edgeData);
+    cyEdges.push(edgeData);
   }
 
   return {
