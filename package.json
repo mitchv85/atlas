@@ -1,0 +1,19 @@
+{
+  "name": "atlas",
+  "version": "0.1.0",
+  "description": "Protocol-aware network topology visualization and path analysis engine",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "author": "Mitch Vaughan",
+  "license": "MIT",
+  "dependencies": {
+    "axios": "^1.7.0",
+    "dotenv": "^16.4.0",
+    "express": "^4.21.0",
+    "https-agent": "^1.0.0",
+    "uuid": "^10.0.0"
+  }
+}
