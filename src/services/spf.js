@@ -446,4 +446,4 @@ function enrichPathWithTunnelFib(path, topology, isBackup = false) {
   // If no tunnel FIB data, keep the SPF-computed label stack
 }
 
-module.exports = { computePath, computePathWithBackups, buildAdjacencyList, dijkstra };
+module.exports = { computePath, computePathWithBackups, lookupTunnelFibLabels, buildAdjacencyList, dijkstra };

@@ -55,6 +55,12 @@ const API = {
     return res.json();
   },
 
+  async getNodeReachability(systemId) {
+    const res = await fetch(`/api/topology/node/${systemId}/reachability`);
+    if (!res.ok) return null;
+    return res.json();
+  },
+
   // ── Path Computation ──────────────────────────────────────────────
   async computePath(source, destination, excludeNodes = [], excludeEdges = []) {
     const res = await fetch('/api/topology/path', {

@@ -665,10 +665,26 @@
   }
 
   // ── Detail Panel ──────────────────────────────────────────────────
-  function showNodeDetail(nodeData) {
+  async function showNodeDetail(nodeData) {
     detailTitle.textContent = nodeData.hostname || nodeData.label;
     detailBody.innerHTML = buildNodeDetailHTML(nodeData);
     detailPanel.classList.add('open');
+
+    // Async: fetch reachability data and populate the section
+    const reachContainer = detailBody.querySelector('#reachabilitySection');
+    if (reachContainer) {
+      try {
+        const reachData = await API.getNodeReachability(nodeData.systemId);
+        if (reachData && reachData.entries.length > 0) {
+          reachContainer.innerHTML = buildReachabilityHTML(reachData);
+          wireReachabilityHandlers(reachContainer, nodeData.systemId);
+        } else {
+          reachContainer.innerHTML = '<p class="text-muted">No remote Node SIDs found.</p>';
+        }
+      } catch (err) {
+        reachContainer.innerHTML = '<p class="text-muted">Error loading reachability.</p>';
+      }
+    }
   }
 
   function showEdgeDetail(edgeData) {
@@ -796,7 +812,157 @@
         </div>`;
     }
 
+    // Remote Node SID Reachability (async-loaded)
+    html += `
+      <div class="detail-section" style="margin-top:8px;padding-top:16px;border-top:1px solid var(--border);">
+        <h4>Remote Node SID Reachability</h4>
+        <div id="reachabilitySection">
+          <div class="reach-loading">Loading reachability...</div>
+        </div>
+      </div>`;
+
     return html;
+  }
+
+  /**
+   * Build the reachability table HTML.
+   */
+  function buildReachabilityHTML(reachData) {
+    let html = '<div class="reach-table">';
+
+    for (const entry of reachData.entries) {
+      const statusInfo = getProtectionInfo(entry.protectionStatus);
+      const rowId = `reach-${entry.systemId}`;
+
+      html += `
+        <div class="reach-row" data-system-id="${entry.systemId}" data-row-id="${rowId}">
+          <div class="reach-shield" title="${esc(statusInfo.title)}">${statusInfo.icon}</div>
+          <div class="reach-info">
+            <span class="reach-hostname">${esc(entry.hostname)}</span>
+            <span class="reach-sid detail-badge cyan">SID ${entry.sid}</span>
+          </div>
+          <span class="reach-meta">${entry.hopCount}h / m${entry.metric}</span>
+        </div>
+        <div class="reach-expand" id="${rowId}">
+          <div class="reach-expand-section">
+            <div class="reach-expand-label">Primary Path</div>
+            <div class="reach-path-chain">${entry.primaryChain.join(' → ')}</div>
+            ${entry.primaryLabelStack.length > 0 ? `
+              <div class="reach-label-stack">
+                ${entry.primaryLabelStack.map(l => {
+                  const decoded = decodeSrLabel(l);
+                  return '<span class="detail-badge ' + decoded.color + '" title="' + esc(decoded.description) + '" style="cursor:help;font-size:0.7rem;">' + esc(l) + '</span>';
+                }).join('')}
+              </div>` : ''}
+          </div>
+          ${entry.backupLabelStack.length > 0 ? `
+            <div class="reach-expand-section">
+              <div class="reach-expand-label">TI-LFA Backup Stack</div>
+              <div class="reach-label-stack">
+                ${entry.backupLabelStack.map(l => {
+                  const decoded = decodeSrLabel(l);
+                  return '<span class="detail-badge ' + decoded.color + '" title="' + esc(decoded.description) + '" style="cursor:help;font-size:0.7rem;">' + esc(l) + '</span>';
+                }).join('')}
+              </div>
+              <div style="font-size:0.68rem;color:var(--text-muted);margin-top:3px;">
+                ${entry.backupLabelStack.map(l => decodeSrLabel(l).description).join(' → ')}
+              </div>
+              ${entry.backupNexthop ? `<div style="font-size:0.68rem;color:var(--text-muted);margin-top:2px;">via ${esc(entry.backupNexthop)} (${esc(entry.backupInterface)})</div>` : ''}
+            </div>` : ''}
+          <div class="reach-actions">
+            <button class="btn btn-primary btn-sm btn-reach-primary" data-dest="${entry.systemId}">Show Primary</button>
+            ${entry.backupLabelStack.length > 0 ? `<button class="btn btn-ghost btn-sm btn-reach-backup" data-dest="${entry.systemId}">Show Backup</button>` : ''}
+          </div>
+        </div>`;
+    }
+
+    html += '</div>';
+    return html;
+  }
+
+  /**
+   * Get protection status icon and label.
+   */
+  function getProtectionInfo(status) {
+    switch (status) {
+      case 'node-protected':
+      case 'node-protected+ecmp':
+        return {
+          title: 'TI-LFA Node Protected',
+          icon: '<svg viewBox="0 0 20 20" fill="#34d399"><path fill-rule="evenodd" d="M10 1.944A11.954 11.954 0 012.166 5C2.056 5.649 2 6.319 2 7c0 5.225 3.34 9.67 8 11.317C14.66 16.67 18 12.225 18 7c0-.682-.057-1.35-.166-2.001A11.954 11.954 0 0110 1.944zM13.707 8.707a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>',
+        };
+      case 'ecmp':
+        return {
+          title: 'ECMP (Multiple Equal-Cost Paths)',
+          icon: '<svg viewBox="0 0 20 20" fill="#22d3ee"><path fill-rule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clip-rule="evenodd"/></svg>',
+        };
+      default:
+        return {
+          title: 'Unprotected',
+          icon: '<svg viewBox="0 0 20 20" fill="#fbbf24"><path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>',
+        };
+    }
+  }
+
+  /**
+   * Wire up click handlers for reachability rows.
+   */
+  function wireReachabilityHandlers(container, sourceId) {
+    // Toggle expand on row click
+    container.querySelectorAll('.reach-row').forEach((row) => {
+      row.addEventListener('click', () => {
+        const rowId = row.dataset.rowId;
+        const expand = document.getElementById(rowId);
+        const wasOpen = expand.classList.contains('open');
+
+        // Close all expanded rows
+        container.querySelectorAll('.reach-expand').forEach((e) => e.classList.remove('open'));
+        container.querySelectorAll('.reach-row').forEach((r) => r.classList.remove('expanded'));
+
+        if (!wasOpen) {
+          expand.classList.add('open');
+          row.classList.add('expanded');
+        }
+      });
+    });
+
+    // "Show Primary" buttons
+    container.querySelectorAll('.btn-reach-primary').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const destId = btn.dataset.dest;
+        pathSource.value = sourceId;
+        pathDest.value = destId;
+        pathFailNode.value = '';
+        pathFailLink.value = '';
+        handleComputePath();
+      });
+    });
+
+    // "Show Backup" buttons
+    container.querySelectorAll('.btn-reach-backup').forEach((btn) => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const destId = btn.dataset.dest;
+
+        // Find the first transit node on the primary path to simulate failure
+        pathSource.value = sourceId;
+        pathDest.value = destId;
+        pathFailLink.value = '';
+
+        // Compute primary first to find a transit node to fail
+        const analysis = await API.analyzePath(sourceId, destId);
+        if (analysis.nodeBackups && analysis.nodeBackups.length > 0) {
+          // Pick the first node-protected backup
+          const firstBackup = analysis.nodeBackups.find((b) => b.backupPath);
+          if (firstBackup) {
+            pathFailNode.value = firstBackup.failedNode;
+          }
+        }
+
+        handleComputePath();
+      });
+    });
   }
 
   function buildEdgeDetailHTML(d) {

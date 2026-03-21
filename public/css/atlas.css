@@ -838,3 +838,131 @@ body {
   color: var(--red);
   font-style: italic;
 }
+
+/* ── Reachability Table ────────────────────────────────────────────── */
+.reach-table {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.reach-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.reach-row:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-light);
+}
+
+.reach-row.expanded {
+  border-color: var(--accent-dim);
+  background: var(--bg-hover);
+}
+
+.reach-shield {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.reach-shield svg {
+  width: 16px;
+  height: 16px;
+}
+
+.reach-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.reach-hostname {
+  font-weight: 600;
+  font-size: 0.82rem;
+  color: var(--text-primary);
+}
+
+.reach-sid {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.72rem;
+}
+
+.reach-meta {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  margin-left: auto;
+}
+
+.reach-expand {
+  display: none;
+  padding: 10px;
+  background: var(--bg-deep);
+  border: 1px solid var(--border);
+  border-top: none;
+  border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+  margin-top: -3px;
+  margin-bottom: 2px;
+}
+
+.reach-expand.open {
+  display: block;
+}
+
+.reach-expand-section {
+  margin-bottom: 10px;
+}
+
+.reach-expand-section:last-child {
+  margin-bottom: 0;
+}
+
+.reach-expand-label {
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+.reach-path-chain {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.75rem;
+  color: var(--accent);
+}
+
+.reach-label-stack {
+  display: flex;
+  gap: 3px;
+  flex-wrap: wrap;
+  margin-top: 3px;
+}
+
+.reach-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.reach-loading {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  padding: 12px 0;
+  text-align: center;
+}
+
