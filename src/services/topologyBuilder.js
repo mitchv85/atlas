@@ -46,21 +46,24 @@ function buildGraph(nodesMap, adjacencies) {
   }
 
   // --- Build Edges (deduplicated, with both directions' data) ---
+  // Parallel links are differentiated by their interface addresses.
+  // Edge key: "nodeA|nodeB|addrLow|addrHigh" — the sorted address pair
+  // uniquely identifies a link even when multiple links exist between
+  // the same two nodes.
   for (const adj of adjacencies) {
-    // Create a canonical edge key so A->B and B->A become one edge
-    const edgeKey = [adj.fromSystemId, adj.toSystemId].sort().join('|');
+    const nodePair = [adj.fromSystemId, adj.toSystemId].sort().join('|');
+    const addrPair = [adj.localAddr || '', adj.neighborAddr || ''].sort().join('|');
+    const edgeKey = `${nodePair}|${addrPair}`;
 
     if (edgeSet.has(edgeKey)) {
       // Already have this edge — enrich with reverse direction info
       const existing = edgeSet.get(edgeKey);
-      existing.data.reverseMetric = adj.metric;
-      existing.data.reverseLocalAddr = adj.localAddr;
-      existing.data.reverseNeighborAddr = adj.neighborAddr;
-      existing.data.reverseAdjSids = adj.adjSids;
-      // Figure out which direction label to assign
-      if (existing.data.source === adj.toSystemId) {
-        // This adjacency is from target->source, so it's the reverse
-        existing.data.reverseHostname = adj.fromHostname;
+      // Only populate reverse fields if not already set
+      if (existing.data.reverseMetric === null) {
+        existing.data.reverseMetric = adj.metric;
+        existing.data.reverseLocalAddr = adj.localAddr;
+        existing.data.reverseNeighborAddr = adj.neighborAddr;
+        existing.data.reverseAdjSids = adj.adjSids;
       }
       continue;
     }
@@ -68,10 +71,17 @@ function buildGraph(nodesMap, adjacencies) {
     const fromNode = nodesMap.get(adj.fromSystemId);
     const toNode = nodesMap.get(adj.toSystemId);
 
+    // Count existing edges between this node pair for unique IDs
+    const parallelIndex = cyEdges.filter(
+      (e) => e.data._nodePair === nodePair
+    ).length;
+
     const edgeData = {
       data: {
-        id: `edge-${edgeKey.replace('|', '-')}`,
+        id: `edge-${nodePair.replace('|', '-')}-${parallelIndex}`,
         _edgeKey: edgeKey,
+        _nodePair: nodePair,
+        _parallelIndex: parallelIndex,
         source: adj.fromSystemId,
         target: adj.toSystemId,
         sourceLabel: fromNode?.hostname || adj.fromHostname || adj.fromSystemId,
