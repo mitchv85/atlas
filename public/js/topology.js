@@ -126,7 +126,12 @@ class TopologyRenderer {
   }
 
   _clearHighlight() {
-    this.cy.elements().removeClass('highlighted highlighted-edge neighbor dimmed path-node path-edge path-edge-fwd path-edge-rev path-source path-dest path-failed path-edge-failed path-failed-neighbor path-dimmed');
+    this.cy.elements().removeClass(
+      'highlighted highlighted-edge neighbor dimmed ' +
+      'path-node path-edge path-edge-fwd path-edge-rev path-source path-dest ' +
+      'path-failed path-edge-failed path-failed-neighbor path-dimmed ' +
+      'ecmp-node ecmp-shared-edge ecmp-path-0 ecmp-path-1 ecmp-path-2 ecmp-path-3 ecmp-source ecmp-dest'
+    );
   }
 
   /**
@@ -220,7 +225,84 @@ class TopologyRenderer {
    * Clear path highlighting.
    */
   clearPath() {
-    this.cy.elements().removeClass('path-node path-edge path-edge-fwd path-edge-rev path-source path-dest path-failed path-edge-failed path-failed-neighbor path-dimmed');
+    this.cy.elements().removeClass(
+      'path-node path-edge path-edge-fwd path-edge-rev path-source path-dest ' +
+      'path-failed path-edge-failed path-failed-neighbor path-dimmed ' +
+      'ecmp-node ecmp-shared-edge ecmp-path-0 ecmp-path-1 ecmp-path-2 ecmp-path-3 ecmp-source ecmp-dest'
+    );
+  }
+
+  /**
+   * ECMP path color palette.
+   */
+  static ECMP_COLORS = ['#22d3ee', '#fbbf24', '#a78bfa', '#fb7185'];
+  static ECMP_SHARED_COLOR = '#e8edf5';
+
+  /**
+   * Highlight multiple ECMP paths on the topology.
+   *
+   * @param {Object} ecmpResult - { paths, sharedEdges, sharedNodes }
+   */
+  highlightECMP(ecmpResult) {
+    this._clearHighlight();
+
+    if (!ecmpResult || !ecmpResult.paths || ecmpResult.paths.length === 0) return;
+
+    const { paths, sharedEdges = [], sharedNodes = [] } = ecmpResult;
+    const sharedEdgeSet = new Set(sharedEdges);
+    const sharedNodeSet = new Set(sharedNodes);
+
+    // Collect all elements involved in any path
+    const allNodeIds = new Set();
+    const allEdgeIds = new Set();
+
+    for (const path of paths) {
+      allNodeIds.add(path.source);
+      allNodeIds.add(path.destination);
+      for (const hop of path.hops) {
+        allNodeIds.add(hop.from);
+        allNodeIds.add(hop.to);
+        if (hop.edgeId) allEdgeIds.add(hop.edgeId);
+      }
+    }
+
+    // Dim everything
+    this.cy.elements().addClass('path-dimmed');
+
+    // Un-dim and class all participating nodes
+    for (const nodeId of allNodeIds) {
+      const node = this.cy.getElementById(nodeId);
+      if (node.length) {
+        node.removeClass('path-dimmed');
+        node.addClass('ecmp-node');
+      }
+    }
+
+    // Mark source and dest
+    if (paths[0]) {
+      const src = this.cy.getElementById(paths[0].source);
+      const dst = this.cy.getElementById(paths[0].destination);
+      if (src.length) src.addClass('ecmp-source');
+      if (dst.length) dst.addClass('ecmp-dest');
+    }
+
+    // Color each path's unique edges
+    for (let i = 0; i < paths.length && i < 4; i++) {
+      const path = paths[i];
+      for (const hop of path.hops) {
+        if (!hop.edgeId) continue;
+        const edge = this.cy.getElementById(hop.edgeId);
+        if (!edge.length) continue;
+
+        edge.removeClass('path-dimmed');
+
+        if (sharedEdgeSet.has(hop.edgeId)) {
+          edge.addClass('ecmp-shared-edge');
+        } else {
+          edge.addClass('ecmp-path-' + i);
+        }
+      }
+    }
   }
 
   /**
@@ -443,6 +525,99 @@ class TopologyRenderer {
           color: '#f87171',
           opacity: 0.7,
           'z-index': 15,
+        },
+      },
+      // ── ECMP: Node on any ECMP path ──
+      {
+        selector: 'node.ecmp-node',
+        style: {
+          'background-color': '#1e3a5f',
+          'border-color': '#e8edf5',
+          'border-width': 2.5,
+          'border-opacity': 0.8,
+          color: '#e8edf5',
+          'font-weight': 600,
+          opacity: 1,
+          'z-index': 20,
+        },
+      },
+      // ── ECMP: Source node ──
+      {
+        selector: 'node.ecmp-source',
+        style: {
+          'border-color': '#22d3ee',
+          'border-width': 4,
+          'background-color': '#0e7490',
+          width: 50,
+          height: 50,
+          'z-index': 25,
+        },
+      },
+      // ── ECMP: Destination node ──
+      {
+        selector: 'node.ecmp-dest',
+        style: {
+          'border-color': '#34d399',
+          'border-width': 4,
+          'background-color': '#065f46',
+          width: 50,
+          height: 50,
+          'z-index': 25,
+        },
+      },
+      // ── ECMP: Shared edge (on ALL paths) ──
+      {
+        selector: 'edge.ecmp-shared-edge',
+        style: {
+          'line-color': '#e8edf5',
+          width: 4,
+          color: '#e8edf5',
+          opacity: 1,
+          'z-index': 18,
+        },
+      },
+      // ── ECMP: Path 0 (Cyan) ──
+      {
+        selector: 'edge.ecmp-path-0',
+        style: {
+          'line-color': '#22d3ee',
+          width: 3.5,
+          color: '#22d3ee',
+          opacity: 1,
+          'z-index': 20,
+        },
+      },
+      // ── ECMP: Path 1 (Amber) ──
+      {
+        selector: 'edge.ecmp-path-1',
+        style: {
+          'line-color': '#fbbf24',
+          width: 3.5,
+          color: '#fbbf24',
+          opacity: 1,
+          'z-index': 20,
+        },
+      },
+      // ── ECMP: Path 2 (Violet) ──
+      {
+        selector: 'edge.ecmp-path-2',
+        style: {
+          'line-color': '#a78bfa',
+          width: 3.5,
+          color: '#a78bfa',
+          opacity: 1,
+          'z-index': 20,
+        },
+      },
+      // ── ECMP: Path 3 (Rose) ──
+      {
+        selector: 'edge.ecmp-path-3',
+        style: {
+          'line-color': '#fb7185',
+          width: 3.5,
+          color: '#fb7185',
+          opacity: 1,
+          'z-index': 20,
         },
       },
     ];

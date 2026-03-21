@@ -6,7 +6,7 @@
 
 const express = require('express');
 const router = express.Router();
-const { computePath, computePathWithBackups, lookupTunnelFibLabels } = require('../services/spf');
+const { computePath, computePathWithBackups, computeECMPPaths, lookupTunnelFibLabels } = require('../services/spf');
 
 /**
  * Helper: get the poller from the Express app.
@@ -205,6 +205,24 @@ router.post('/path/analyze', (req, res) => {
   }
 
   const result = computePathWithBackups(topology, source, destination);
+  res.json(result);
+});
+
+// POST /api/topology/path/ecmp — Compute all ECMP paths between two nodes
+// Body: { source, destination }
+router.post('/path/ecmp', (req, res) => {
+  const topology = getTopology(req);
+  if (!topology) {
+    return res.status(404).json({ error: 'No topology data available.' });
+  }
+
+  const { source, destination } = req.body;
+
+  if (!source || !destination) {
+    return res.status(400).json({ error: 'source and destination are required.' });
+  }
+
+  const result = computeECMPPaths(topology, source, destination);
   res.json(result);
 });
 

@@ -79,4 +79,13 @@ const API = {
     });
     return res.json();
   },
+
+  async computeECMP(source, destination) {
+    const res = await fetch('/api/topology/path/ecmp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source, destination }),
+    });
+    return res.json();
+  },
 };

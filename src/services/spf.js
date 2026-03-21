@@ -446,4 +446,215 @@ function enrichPathWithTunnelFib(path, topology, isBackup = false) {
   // If no tunnel FIB data, keep the SPF-computed label stack
 }
 
-module.exports = { computePath, computePathWithBackups, lookupTunnelFibLabels, buildAdjacencyList, dijkstra };
+// ---------------------------------------------------------------------------
+// ECMP — Equal Cost Multi-Path
+// ---------------------------------------------------------------------------
+
+/**
+ * Dijkstra variant that tracks ALL equal-cost predecessors per node.
+ *
+ * @param {Map}    adjList  - Adjacency list
+ * @param {string} sourceId - Source node systemId
+ * @returns {Object} - { dist, prevAll: Map<id, Array<{ node, edgeData, direction }>> }
+ */
+function dijkstraECMP(adjList, sourceId) {
+  const dist = new Map();
+  const prevAll = new Map(); // node -> array of equal-cost predecessors
+  const visited = new Set();
+  const pq = [];
+
+  for (const nodeId of adjList.keys()) {
+    dist.set(nodeId, Infinity);
+    prevAll.set(nodeId, []);
+  }
+
+  dist.set(sourceId, 0);
+  pq.push({ id: sourceId, cost: 0 });
+
+  while (pq.length > 0) {
+    pq.sort((a, b) => a.cost - b.cost);
+    const { id: current, cost: currentCost } = pq.shift();
+
+    if (visited.has(current)) continue;
+    visited.add(current);
+
+    const neighbors = adjList.get(current) || [];
+
+    for (const { neighbor, metric, edgeData, direction } of neighbors) {
+      if (visited.has(neighbor)) continue;
+
+      const newCost = currentCost + metric;
+      const currentBest = dist.get(neighbor);
+
+      if (newCost < currentBest) {
+        // Found a strictly better path — reset predecessors
+        dist.set(neighbor, newCost);
+        prevAll.set(neighbor, [{ node: current, edgeData, direction }]);
+        pq.push({ id: neighbor, cost: newCost });
+      } else if (newCost === currentBest) {
+        // Equal-cost — add to predecessors
+        prevAll.get(neighbor).push({ node: current, edgeData, direction });
+      }
+    }
+  }
+
+  return { dist, prevAll };
+}
+
+/**
+ * Enumerate all distinct shortest paths from source to destination.
+ * Walks all predecessor chains (DFS) and builds full path objects.
+ *
+ * @param {Map}    prevAll  - Multi-predecessor map from dijkstraECMP
+ * @param {Map}    dist     - Distance map
+ * @param {string} source   - Source systemId
+ * @param {string} dest     - Destination systemId
+ * @param {Object} topology - Full topology for node lookups
+ * @param {number} maxPaths - Safety cap on path enumeration (default 8)
+ * @returns {Object[]}      - Array of path objects (same format as extractPath)
+ */
+function enumerateAllPaths(prevAll, dist, source, dest, topology, maxPaths = 8) {
+  if (!dist.has(dest) || dist.get(dest) === Infinity) return [];
+
+  const nodeLookup = new Map();
+  for (const node of topology.nodes) {
+    nodeLookup.set(node.data.id, node.data);
+  }
+
+  const destNode = nodeLookup.get(dest);
+  const destPrefixSid = destNode?.srPrefixSids?.find(
+    (s) => s.isNodeSid && s.algorithm === 0
+  );
+
+  const paths = [];
+
+  // DFS to enumerate all paths (walking backwards from dest)
+  function dfs(current, hopsAccum) {
+    if (paths.length >= maxPaths) return; // Safety cap
+
+    if (current === source) {
+      // Build the path object
+      paths.push({
+        source,
+        sourceHostname: nodeLookup.get(source)?.hostname || source,
+        destination: dest,
+        destinationHostname: nodeLookup.get(dest)?.hostname || dest,
+        totalMetric: dist.get(dest),
+        hopCount: hopsAccum.length,
+        hops: [...hopsAccum],
+        destinationPrefixSid: destPrefixSid || null,
+        labelStack: destPrefixSid
+          ? [{ label: destPrefixSid.sid, type: 'prefix-sid', prefix: destPrefixSid.prefix }]
+          : [],
+        algorithm: 0,
+        algorithmName: 'SPF',
+      });
+      return;
+    }
+
+    const predecessors = prevAll.get(current) || [];
+    for (const prev of predecessors) {
+      const fromNode = nodeLookup.get(prev.node);
+      const toNode = nodeLookup.get(current);
+      const edge = prev.edgeData;
+
+      let localAddr, neighborAddr, adjSids;
+      if (prev.direction === 'forward') {
+        localAddr = edge.localAddr;
+        neighborAddr = edge.neighborAddr;
+        adjSids = edge.adjSids || [];
+      } else {
+        localAddr = edge.reverseLocalAddr || edge.neighborAddr;
+        neighborAddr = edge.reverseNeighborAddr || edge.localAddr;
+        adjSids = edge.reverseAdjSids || [];
+      }
+
+      const hop = {
+        from: prev.node,
+        fromHostname: fromNode?.hostname || prev.node,
+        to: current,
+        toHostname: toNode?.hostname || current,
+        metric: prev.direction === 'forward' ? edge.metric : (edge.reverseMetric ?? edge.metric),
+        localAddr,
+        neighborAddr,
+        adjSids,
+        edgeId: edge.id,
+      };
+
+      // Prepend hop and recurse
+      hopsAccum.unshift(hop);
+      dfs(prev.node, hopsAccum);
+      hopsAccum.shift(); // Backtrack
+    }
+  }
+
+  dfs(dest, []);
+  return paths;
+}
+
+/**
+ * Compute all ECMP paths between two nodes.
+ *
+ * @param {Object} topology    - Full topology
+ * @param {string} source      - Source systemId
+ * @param {string} destination - Destination systemId
+ * @param {Object} options     - { excludeNodes?, excludeEdges? }
+ * @returns {Object} - { paths: [], sharedEdges: [], sharedNodes: [] }
+ */
+function computeECMPPaths(topology, source, destination, options = {}) {
+  const excludeNodes = new Set(options.excludeNodes || []);
+  const excludeEdges = new Set(options.excludeEdges || []);
+
+  excludeNodes.delete(source);
+  excludeNodes.delete(destination);
+
+  const adjList = buildAdjacencyList(topology, excludeNodes, excludeEdges);
+
+  if (!adjList.has(source) || !adjList.has(destination)) {
+    return { paths: [], sharedEdges: [], sharedNodes: [] };
+  }
+
+  const { dist, prevAll } = dijkstraECMP(adjList, source);
+  const paths = enumerateAllPaths(prevAll, dist, source, destination, topology);
+
+  if (paths.length === 0) {
+    return { paths: [], sharedEdges: [], sharedNodes: [] };
+  }
+
+  // Compute shared vs divergent edges and nodes
+  // An edge/node is "shared" if it appears in ALL paths
+  const edgeCounts = new Map();
+  const nodeCounts = new Map();
+
+  for (const path of paths) {
+    const seenEdges = new Set();
+    const seenNodes = new Set();
+    seenNodes.add(path.source);
+
+    for (const hop of path.hops) {
+      seenNodes.add(hop.to);
+      if (hop.edgeId) seenEdges.add(hop.edgeId);
+    }
+
+    for (const eid of seenEdges) {
+      edgeCounts.set(eid, (edgeCounts.get(eid) || 0) + 1);
+    }
+    for (const nid of seenNodes) {
+      nodeCounts.set(nid, (nodeCounts.get(nid) || 0) + 1);
+    }
+  }
+
+  const pathCount = paths.length;
+  const sharedEdges = [...edgeCounts.entries()].filter(([_, c]) => c === pathCount).map(([id]) => id);
+  const sharedNodes = [...nodeCounts.entries()].filter(([_, c]) => c === pathCount).map(([id]) => id);
+
+  return {
+    paths,
+    pathCount,
+    totalMetric: paths[0].totalMetric,
+    sharedEdges,
+    sharedNodes,
+  };
+}
+
+module.exports = { computePath, computePathWithBackups, computeECMPPaths, lookupTunnelFibLabels, buildAdjacencyList, dijkstra };

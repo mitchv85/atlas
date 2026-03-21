@@ -328,7 +328,22 @@
     btnComputePath.classList.add('loading');
 
     try {
-      // Always get the full analysis (primary + all backups)
+      // No failure selected — check for ECMP first
+      if (!failNode && !failLink) {
+        const ecmpResult = await API.computeECMP(source, dest);
+
+        if (ecmpResult.pathCount > 1) {
+          // ECMP detected — use ECMP visualization
+          currentPathResult = ecmpResult;
+          topo.highlightECMP(ecmpResult);
+          showECMPDetail(ecmpResult);
+          btnClearPath.style.display = 'inline-flex';
+          setStatus('live', `ECMP: ${ecmpResult.pathCount} equal-cost paths, metric ${ecmpResult.totalMetric}`);
+          return;
+        }
+      }
+
+      // Single path or failure simulation — existing logic
       const analysis = await API.analyzePath(source, dest);
       currentPathResult = analysis;
 
@@ -338,7 +353,6 @@
       let failureLabel = '';
 
       if (failNode) {
-        // Node failure
         const backup = analysis.nodeBackups.find((b) => b.failedNode === failNode);
         if (backup) {
           displayPath = backup.backupPath;
@@ -350,7 +364,6 @@
         }
         failedNodes = [failNode];
       } else if (failLink) {
-        // Link failure
         const backup = analysis.linkBackups.find((b) => b.failedEdgeId === failLink);
         if (backup) {
           displayPath = backup.backupPath;
@@ -362,17 +375,14 @@
         }
         failedEdges = [failLink];
       } else {
-        // Primary path, no failure
         displayPath = analysis.primary;
       }
 
-      // Highlight on topology
       if (displayPath) {
         topo.highlightPath(displayPath, failedNodes, failedEdges);
       } else {
         topo.clearPath();
         if (failedNodes.length > 0 || failedEdges.length > 0) {
-          // Show the primary path dimmed with the failed element marked
           topo.highlightPath(
             analysis.primary || { source, destination: dest, hops: [] },
             failedNodes,
@@ -381,7 +391,6 @@
         }
       }
 
-      // Show detail panel
       showPathDetail(displayPath, analysis, failedNodes, failedEdges, failureLabel);
       btnClearPath.style.display = 'inline-flex';
 
@@ -413,6 +422,152 @@
     if (!topologyData) return systemId;
     const node = topologyData.nodes.find((n) => n.data.id === systemId);
     return node?.data?.hostname || systemId;
+  }
+
+  // ── ECMP Detail Panel ────────────────────────────────────────────
+  function showECMPDetail(ecmpResult) {
+    const srcName = getHostname(pathSource.value);
+    const dstName = getHostname(pathDest.value);
+
+    detailTitle.textContent = `${srcName} → ${dstName} (ECMP)`;
+    detailBody.innerHTML = buildECMPDetailHTML(ecmpResult);
+    detailPanel.classList.add('open');
+
+    // Wire hover-to-isolate on path rows
+    const pathRows = detailBody.querySelectorAll('.ecmp-path-row');
+    pathRows.forEach((row) => {
+      row.addEventListener('mouseenter', () => {
+        const idx = parseInt(row.dataset.pathIdx, 10);
+        isolateECMPPath(ecmpResult, idx);
+      });
+      row.addEventListener('mouseleave', () => {
+        topo.highlightECMP(ecmpResult);
+      });
+    });
+  }
+
+  function buildECMPDetailHTML(ecmpResult) {
+    const colors = ['#22d3ee', '#fbbf24', '#a78bfa', '#fb7185'];
+    const colorNames = ['Cyan', 'Amber', 'Violet', 'Rose'];
+
+    let html = `
+      <div class="path-result-banner">
+        <svg class="path-result-icon" viewBox="0 0 20 20" fill="#22d3ee">
+          <path fill-rule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clip-rule="evenodd"/>
+        </svg>
+        <span class="path-result-text">
+          <strong>ECMP — ${ecmpResult.pathCount} Equal-Cost Paths</strong><br>
+          Total metric ${ecmpResult.totalMetric}, Algo 0
+        </span>
+      </div>`;
+
+    // Color legend
+    html += `
+      <div class="detail-section">
+        <h4>Path Legend</h4>
+        <div style="font-size:0.72rem;color:var(--text-muted);margin-bottom:8px;">
+          Hover a path below to isolate it on the topology
+        </div>`;
+
+    for (let i = 0; i < ecmpResult.paths.length && i < 4; i++) {
+      const path = ecmpResult.paths[i];
+      const chain = [path.sourceHostname, ...path.hops.map(h => h.toHostname)];
+      const color = colors[i];
+
+      html += `
+        <div class="ecmp-path-row" data-path-idx="${i}" style="
+          display:flex;align-items:center;gap:10px;padding:8px 10px;
+          background:var(--bg-elevated);border:1px solid var(--border);
+          border-radius:var(--radius-sm);margin-bottom:4px;cursor:pointer;
+          transition:background 0.15s;
+        ">
+          <div style="width:12px;height:12px;border-radius:2px;background:${color};flex-shrink:0;"></div>
+          <div style="flex:1;">
+            <div style="font-family:'JetBrains Mono',monospace;font-size:0.78rem;color:${color};">
+              ${chain.join(' → ')}
+            </div>
+            <div style="font-size:0.68rem;color:var(--text-muted);margin-top:2px;">
+              ${path.hopCount} hops
+            </div>
+          </div>
+        </div>`;
+    }
+
+    html += `</div>`;
+
+    // Per-hop breakdown for each path
+    html += `
+      <div class="detail-section">
+        <h4>Hop Details</h4>`;
+
+    for (let i = 0; i < ecmpResult.paths.length && i < 4; i++) {
+      const path = ecmpResult.paths[i];
+      const color = colors[i];
+
+      html += `
+        <div style="margin-bottom:12px;">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
+            <div style="width:8px;height:8px;border-radius:2px;background:${color};"></div>
+            <span style="font-size:0.72rem;font-weight:600;color:${color};">Path ${i + 1}</span>
+          </div>`;
+
+      for (const hop of path.hops) {
+        const adjSidStr = hop.adjSids?.length > 0 ? hop.adjSids.map(s => s.sid).join(', ') : '';
+        html += `
+          <div style="font-size:0.72rem;color:var(--text-secondary);padding:2px 0 2px 14px;border-left:2px solid ${color}22;">
+            ${esc(hop.fromHostname)} → ${esc(hop.toHostname)}
+            <span style="color:var(--text-muted);">via ${esc(hop.localAddr || '?')} → ${esc(hop.neighborAddr || '?')}</span>
+            ${adjSidStr ? `<span class="detail-badge green" style="font-size:0.65rem;margin-left:4px;">Adj ${adjSidStr}</span>` : ''}
+          </div>`;
+      }
+
+      html += `</div>`;
+    }
+
+    html += `</div>`;
+
+    return html;
+  }
+
+  /**
+   * Temporarily isolate a single ECMP path (on hover).
+   */
+  function isolateECMPPath(ecmpResult, pathIdx) {
+    topo._clearHighlight();
+    const path = ecmpResult.paths[pathIdx];
+    if (!path) return;
+
+    // Dim everything
+    topo.cy.elements().addClass('path-dimmed');
+
+    // Highlight just this path's nodes and edges
+    const nodeIds = new Set([path.source, path.destination]);
+    for (const hop of path.hops) {
+      nodeIds.add(hop.from);
+      nodeIds.add(hop.to);
+    }
+
+    for (const nid of nodeIds) {
+      const node = topo.cy.getElementById(nid);
+      if (node.length) {
+        node.removeClass('path-dimmed');
+        node.addClass('ecmp-node');
+      }
+    }
+
+    const src = topo.cy.getElementById(path.source);
+    const dst = topo.cy.getElementById(path.destination);
+    if (src.length) src.addClass('ecmp-source');
+    if (dst.length) dst.addClass('ecmp-dest');
+
+    for (const hop of path.hops) {
+      if (!hop.edgeId) continue;
+      const edge = topo.cy.getElementById(hop.edgeId);
+      if (edge.length) {
+        edge.removeClass('path-dimmed');
+        edge.addClass('ecmp-path-' + pathIdx);
+      }
+    }
   }
 
   // ── Path Detail Panel ──────────────────────────────────────────────
