@@ -141,12 +141,35 @@ class TopologyPoller extends EventEmitter {
       const topology = buildGraph(allNodes, allAdjacencies);
       topology.metadata.sourceDevices = sourceDevices;
 
-      // Attach tunnel FIB data keyed by device name
+      // Attach tunnel FIB data keyed by device name AND IS-IS hostname.
+      // The lookup function matches by IS-IS hostname, but the config might
+      // use a different name. Store under both to ensure reliable matching.
       topology.tunnelFib = {};
       for (const [deviceName, tunnelMap] of perDeviceTunnels) {
-        topology.tunnelFib[deviceName] = {};
+        const fibObj = {};
+        const fibEndpoints = new Set();
         for (const [endpoint, info] of tunnelMap) {
-          topology.tunnelFib[deviceName][endpoint] = info;
+          fibObj[endpoint] = info;
+          fibEndpoints.add(endpoint);
+        }
+
+        // Store under config device name
+        topology.tunnelFib[deviceName] = fibObj;
+
+        // Detect the source node: the node whose loopback is NOT in the
+        // tunnel FIB endpoints (a device doesn't build a tunnel to itself).
+        for (const [_sysId, nodeInfo] of allNodes) {
+          const rid = nodeInfo.routerCaps?.routerId;
+          if (!rid || !nodeInfo.hostname) continue;
+          const ridEndpoint = `${rid}/32`;
+
+          if (!fibEndpoints.has(ridEndpoint)) {
+            // This node is the source device — store FIB under its hostname
+            if (nodeInfo.hostname !== deviceName) {
+              topology.tunnelFib[nodeInfo.hostname] = fibObj;
+            }
+            break;
+          }
         }
       }
 

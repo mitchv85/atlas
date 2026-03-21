@@ -318,6 +318,11 @@ function computePathWithBackups(topology, source, destination) {
 /**
  * Look up tunnel FIB label stacks for a given source → destination.
  *
+ * Matching strategy (in order):
+ * 1. Exact device name match on source hostname
+ * 2. Case-insensitive device name match
+ * 3. Search all device FIBs for one that contains the destination endpoint
+ *
  * @param {Object} topology       - Full topology (must have .tunnelFib)
  * @param {string} sourceId       - Source node systemId
  * @param {string} destinationId  - Destination node systemId
@@ -326,38 +331,56 @@ function computePathWithBackups(topology, source, destination) {
 function lookupTunnelFibLabels(topology, sourceId, destinationId) {
   const result = { primaryLabels: [], backupLabels: [] };
 
-  if (!topology.tunnelFib) return result;
+  if (!topology.tunnelFib || Object.keys(topology.tunnelFib).length === 0) return result;
 
-  // Find source hostname to key into tunnelFib
-  const srcNode = topology.nodes.find((n) => n.data.id === sourceId);
-  const srcHostname = srcNode?.data?.hostname;
-  if (!srcHostname) return result;
-
-  // Find destination endpoint (loopback /32 prefix)
+  // Build destination endpoint candidates
   const dstNode = topology.nodes.find((n) => n.data.id === destinationId);
   if (!dstNode) return result;
 
-  // Build possible endpoint strings from the destination's prefixes
   const dstPrefixes = dstNode.data.prefixes || [];
   const loopbacks = dstPrefixes
     .filter((p) => p.mask === 32)
     .map((p) => `${p.prefix}/${p.mask}`);
 
-  // Also try the router-id from routerCaps
   const routerId = dstNode.data.routerCaps?.routerId;
-  if (routerId) loopbacks.push(`${routerId}/32`);
+  if (routerId) {
+    const ep = `${routerId}/32`;
+    if (!loopbacks.includes(ep)) loopbacks.push(ep);
+  }
 
-  // Search all configured devices for matching tunnel FIB data
-  // The source node's hostname may match a device name in the FIB,
-  // or we search all device FIBs for the source hostname
-  const allDeviceFibs = Object.values(topology.tunnelFib);
+  if (loopbacks.length === 0) return result;
 
-  // Try exact device name match first
-  let deviceFib = topology.tunnelFib[srcHostname];
+  // Find the right device FIB — try multiple matching strategies
+  const srcNode = topology.nodes.find((n) => n.data.id === sourceId);
+  const srcHostname = srcNode?.data?.hostname || '';
 
-  // If not found, try all device FIBs (in case device name != hostname)
-  if (!deviceFib && allDeviceFibs.length > 0) {
-    deviceFib = allDeviceFibs[0]; // Use first available device's FIB
+  let deviceFib = null;
+
+  // Strategy 1: exact device name match
+  deviceFib = topology.tunnelFib[srcHostname];
+
+  // Strategy 2: case-insensitive match
+  if (!deviceFib) {
+    const lowerSrc = srcHostname.toLowerCase();
+    for (const [devName, fib] of Object.entries(topology.tunnelFib)) {
+      if (devName.toLowerCase() === lowerSrc) {
+        deviceFib = fib;
+        break;
+      }
+    }
+  }
+
+  // Strategy 3: search all device FIBs for one that has our destination endpoint
+  if (!deviceFib) {
+    for (const [_devName, fib] of Object.entries(topology.tunnelFib)) {
+      for (const ep of loopbacks) {
+        if (fib[ep]) {
+          deviceFib = fib;
+          break;
+        }
+      }
+      if (deviceFib) break;
+    }
   }
 
   if (!deviceFib) return result;
