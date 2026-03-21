@@ -126,7 +126,7 @@ class TopologyRenderer {
   }
 
   _clearHighlight() {
-    this.cy.elements().removeClass('highlighted highlighted-edge neighbor dimmed path-node path-edge path-source path-dest path-failed path-edge-failed path-failed-neighbor path-dimmed');
+    this.cy.elements().removeClass('highlighted highlighted-edge neighbor dimmed path-node path-edge path-edge-fwd path-edge-rev path-source path-dest path-failed path-edge-failed path-failed-neighbor path-dimmed');
   }
 
   /**
@@ -141,9 +141,9 @@ class TopologyRenderer {
 
     if (!pathData || !pathData.hops || pathData.hops.length === 0) return;
 
-    // Collect all nodes and edges on the path
+    // Collect all nodes and edges on the path, tracking traversal direction
     const pathNodeIds = new Set();
-    const pathEdgeIds = new Set();
+    const pathEdgeDirection = new Map(); // edgeId -> 'forward' | 'reverse'
 
     pathNodeIds.add(pathData.source);
     pathNodeIds.add(pathData.destination);
@@ -151,7 +151,17 @@ class TopologyRenderer {
     for (const hop of pathData.hops) {
       pathNodeIds.add(hop.from);
       pathNodeIds.add(hop.to);
-      if (hop.edgeId) pathEdgeIds.add(hop.edgeId);
+      if (hop.edgeId) {
+        // Determine if the path traverses this edge forward or reverse
+        // relative to the Cytoscape edge's source→target direction
+        const cyEdge = this.cy.getElementById(hop.edgeId);
+        if (cyEdge.length) {
+          const edgeSrc = cyEdge.data('source');
+          // If the hop's "from" matches the edge's source, we're going forward
+          const direction = (hop.from === edgeSrc) ? 'forward' : 'reverse';
+          pathEdgeDirection.set(hop.edgeId, direction);
+        }
+      }
     }
 
     // Dim everything first
@@ -166,12 +176,14 @@ class TopologyRenderer {
       }
     }
 
-    // Highlight path edges
-    for (const edgeId of pathEdgeIds) {
+    // Highlight path edges with correct arrow direction
+    for (const [edgeId, direction] of pathEdgeDirection) {
       const edge = this.cy.getElementById(edgeId);
       if (edge.length) {
         edge.removeClass('path-dimmed');
         edge.addClass('path-edge');
+        // Apply direction class so the arrow points the right way
+        edge.addClass(direction === 'forward' ? 'path-edge-fwd' : 'path-edge-rev');
       }
     }
 
@@ -196,7 +208,6 @@ class TopologyRenderer {
       if (fEdge.length) {
         fEdge.removeClass('path-dimmed');
         fEdge.addClass('path-edge-failed');
-        // Also un-dim the endpoint nodes so the failed link is visible in context
         fEdge.connectedNodes().forEach((n) => {
           n.removeClass('path-dimmed');
           if (!n.hasClass('path-node')) n.addClass('path-failed-neighbor');
@@ -209,7 +220,7 @@ class TopologyRenderer {
    * Clear path highlighting.
    */
   clearPath() {
-    this.cy.elements().removeClass('path-node path-edge path-source path-dest path-failed path-edge-failed path-failed-neighbor path-dimmed');
+    this.cy.elements().removeClass('path-node path-edge path-edge-fwd path-edge-rev path-source path-dest path-failed path-edge-failed path-failed-neighbor path-dimmed');
   }
 
   /**
@@ -385,7 +396,7 @@ class TopologyRenderer {
           color: '#94a3b8',
         },
       },
-      // ── Path: Edge on path ──
+      // ── Path: Edge on path (base style, no arrows) ──
       {
         selector: 'edge.path-edge',
         style: {
@@ -396,9 +407,26 @@ class TopologyRenderer {
           'font-weight': 700,
           opacity: 1,
           'z-index': 20,
+        },
+      },
+      // ── Path: Edge traversed forward (source→target) — arrow at target ──
+      {
+        selector: 'edge.path-edge-fwd',
+        style: {
           'target-arrow-color': '#22d3ee',
           'target-arrow-shape': 'triangle',
           'arrow-scale': 1.2,
+          'source-arrow-shape': 'none',
+        },
+      },
+      // ── Path: Edge traversed reverse (target→source) — arrow at source ──
+      {
+        selector: 'edge.path-edge-rev',
+        style: {
+          'source-arrow-color': '#22d3ee',
+          'source-arrow-shape': 'triangle',
+          'arrow-scale': 1.2,
+          'target-arrow-shape': 'none',
         },
       },
       // ── Path: Failed edge ──
