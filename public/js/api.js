@@ -56,11 +56,11 @@ const API = {
   },
 
   // ── Path Computation ──────────────────────────────────────────────
-  async computePath(source, destination, excludeNodes = []) {
+  async computePath(source, destination, excludeNodes = [], excludeEdges = []) {
     const res = await fetch('/api/topology/path', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ source, destination, excludeNodes }),
+      body: JSON.stringify({ source, destination, excludeNodes, excludeEdges }),
     });
     return res.json();
   },

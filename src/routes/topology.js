@@ -94,13 +94,13 @@ router.get('/node/:systemId', (req, res) => {
 });
 
 // POST /api/topology/path — Compute shortest path between two nodes
-// Body: { source, destination, excludeNodes?: string[] }
+// Body: { source, destination, excludeNodes?: string[], excludeEdges?: string[] }
 router.post('/path', (req, res) => {
   if (!cachedTopology) {
     return res.status(404).json({ error: 'No topology data available.' });
   }
 
-  const { source, destination, excludeNodes } = req.body;
+  const { source, destination, excludeNodes, excludeEdges } = req.body;
 
   if (!source || !destination) {
     return res.status(400).json({ error: 'source and destination are required.' });
@@ -108,6 +108,7 @@ router.post('/path', (req, res) => {
 
   const path = computePath(cachedTopology, source, destination, {
     excludeNodes: excludeNodes || [],
+    excludeEdges: excludeEdges || [],
   });
 
   if (!path) {
@@ -116,6 +117,7 @@ router.post('/path', (req, res) => {
       source,
       destination,
       excludeNodes: excludeNodes || [],
+      excludeEdges: excludeEdges || [],
       message: 'Destination is unreachable with the given constraints.',
     });
   }

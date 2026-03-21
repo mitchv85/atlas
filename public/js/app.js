@@ -34,6 +34,7 @@
   const pathSource = $('#pathSource');
   const pathDest = $('#pathDest');
   const pathFailNode = $('#pathFailNode');
+  const pathFailLink = $('#pathFailLink');
   const pathAlgo = $('#pathAlgo');
   const btnComputePath = $('#btnComputePath');
   const btnClearPath = $('#btnClearPath');
@@ -76,6 +77,14 @@
     // Path analysis
     btnComputePath.addEventListener('click', handleComputePath);
     btnClearPath.addEventListener('click', handleClearPath);
+
+    // Mutual exclusion: selecting a node failure clears link failure and vice versa
+    pathFailNode.addEventListener('change', () => {
+      if (pathFailNode.value) pathFailLink.value = '';
+    });
+    pathFailLink.addEventListener('change', () => {
+      if (pathFailLink.value) pathFailNode.value = '';
+    });
   }
 
   // ── Device Management ─────────────────────────────────────────────
@@ -197,11 +206,12 @@
     const prevSrc = pathSource.value;
     const prevDst = pathDest.value;
     const prevFail = pathFailNode.value;
+    const prevFailLink = pathFailLink.value;
 
-    // Clear and rebuild
+    // Clear and rebuild node dropdowns
     pathSource.innerHTML = '<option value="">Select source...</option>';
     pathDest.innerHTML = '<option value="">Select destination...</option>';
-    pathFailNode.innerHTML = '<option value="">None (primary path)</option>';
+    pathFailNode.innerHTML = '<option value="">None</option>';
 
     for (const node of nodes) {
       const optSrc = new Option(node.label, node.id);
@@ -212,10 +222,23 @@
       pathFailNode.add(optFail);
     }
 
+    // Populate link failure dropdown from topology edges
+    pathFailLink.innerHTML = '<option value="">None</option>';
+    if (topologyData && topologyData.edges) {
+      for (const edge of topologyData.edges) {
+        const d = edge.data;
+        const label = `${d.sourceLabel} ↔ ${d.targetLabel}`;
+        const detail = d.localAddr ? ` (${d.localAddr})` : '';
+        const opt = new Option(label + detail, d.id);
+        pathFailLink.add(opt);
+      }
+    }
+
     // Restore selections if still valid
     if (prevSrc && nodes.some(n => n.id === prevSrc)) pathSource.value = prevSrc;
     if (prevDst && nodes.some(n => n.id === prevDst)) pathDest.value = prevDst;
     if (prevFail && nodes.some(n => n.id === prevFail)) pathFailNode.value = prevFail;
+    if (prevFailLink) pathFailLink.value = prevFailLink;
   }
 
   // ── Path Computation ─────────────────────────────────────────────
@@ -223,6 +246,7 @@
     const source = pathSource.value;
     const dest = pathDest.value;
     const failNode = pathFailNode.value;
+    const failLink = pathFailLink.value;
 
     if (!source || !dest) {
       setStatus('error', 'Select both source and destination');
@@ -242,52 +266,64 @@
       const analysis = await API.analyzePath(source, dest);
       currentPathResult = analysis;
 
-      // Determine which path to display
       let displayPath;
       let failedNodes = [];
+      let failedEdges = [];
+      let failureLabel = '';
 
       if (failNode) {
-        // User selected a specific failure — find the matching backup
-        const backup = analysis.backups.find((b) => b.failedNode === failNode);
-        if (backup && backup.backupPath) {
+        // Node failure
+        const backup = analysis.nodeBackups.find((b) => b.failedNode === failNode);
+        if (backup) {
           displayPath = backup.backupPath;
-          failedNodes = [failNode];
-        } else if (backup && !backup.backupPath) {
-          // Unreachable under this failure
-          displayPath = null;
-          failedNodes = [failNode];
+          failureLabel = backup.failedHostname;
         } else {
-          // Fallback: compute directly with exclusion
-          const result = await API.computePath(source, dest, [failNode]);
+          const result = await API.computePath(source, dest, [failNode], []);
           displayPath = result.reachable ? result : null;
-          failedNodes = [failNode];
+          failureLabel = getHostname(failNode);
         }
+        failedNodes = [failNode];
+      } else if (failLink) {
+        // Link failure
+        const backup = analysis.linkBackups.find((b) => b.failedEdgeId === failLink);
+        if (backup) {
+          displayPath = backup.backupPath;
+          failureLabel = backup.failedLinkLabel;
+        } else {
+          const result = await API.computePath(source, dest, [], [failLink]);
+          displayPath = result.reachable ? result : null;
+          failureLabel = failLink;
+        }
+        failedEdges = [failLink];
       } else {
+        // Primary path, no failure
         displayPath = analysis.primary;
       }
 
       // Highlight on topology
       if (displayPath) {
-        topo.highlightPath(displayPath, failedNodes);
+        topo.highlightPath(displayPath, failedNodes, failedEdges);
       } else {
         topo.clearPath();
-        // Still mark the failed node visually
-        if (failedNodes.length > 0) {
-          topo.highlightPath(analysis.primary || { source, destination: dest, hops: [] }, failedNodes);
+        if (failedNodes.length > 0 || failedEdges.length > 0) {
+          // Show the primary path dimmed with the failed element marked
+          topo.highlightPath(
+            analysis.primary || { source, destination: dest, hops: [] },
+            failedNodes,
+            failedEdges
+          );
         }
       }
 
-      // Show detail panel with path info
-      showPathDetail(displayPath, analysis, failedNodes);
+      // Show detail panel
+      showPathDetail(displayPath, analysis, failedNodes, failedEdges, failureLabel);
       btnClearPath.style.display = 'inline-flex';
 
       if (displayPath) {
-        const failLabel = failedNodes.length > 0
-          ? ` (${getHostname(failedNodes[0])} failed)`
-          : '';
-        setStatus('live', `Path: ${displayPath.hopCount} hops, metric ${displayPath.totalMetric}${failLabel}`);
+        const failSuffix = failureLabel ? ` (${failureLabel} failed)` : '';
+        setStatus('live', `Path: ${displayPath.hopCount} hops, metric ${displayPath.totalMetric}${failSuffix}`);
       } else {
-        setStatus('error', `Unreachable: ${getHostname(source)} → ${getHostname(dest)} with ${getHostname(failNode)} failed`);
+        setStatus('error', `Unreachable: ${getHostname(source)} → ${getHostname(dest)} with ${failureLabel} failed`);
       }
     } catch (err) {
       setStatus('error', `Path error: ${err.message}`);
@@ -314,21 +350,20 @@
   }
 
   // ── Path Detail Panel ──────────────────────────────────────────────
-  function showPathDetail(pathData, analysis, failedNodes) {
+  function showPathDetail(pathData, analysis, failedNodes, failedEdges, failureLabel) {
     const srcName = getHostname(pathSource.value);
     const dstName = getHostname(pathDest.value);
 
-    if (failedNodes.length > 0) {
-      const failName = getHostname(failedNodes[0]);
-      detailTitle.textContent = `${srcName} → ${dstName} (${failName} ✕)`;
+    if (failureLabel) {
+      detailTitle.textContent = `${srcName} → ${dstName} (${failureLabel} ✕)`;
     } else {
       detailTitle.textContent = `${srcName} → ${dstName}`;
     }
 
-    detailBody.innerHTML = buildPathDetailHTML(pathData, analysis, failedNodes);
+    detailBody.innerHTML = buildPathDetailHTML(pathData, analysis, failedNodes, failedEdges, failureLabel);
     detailPanel.classList.add('open');
 
-    // Wire up backup toggles
+    // Wire up backup section toggles
     const backupHeaders = detailBody.querySelectorAll('.backup-header');
     backupHeaders.forEach((header) => {
       header.addEventListener('click', () => {
@@ -339,32 +374,38 @@
       });
     });
 
-    // Wire up backup "Show" buttons
-    const backupShowBtns = detailBody.querySelectorAll('.btn-show-backup');
-    backupShowBtns.forEach((btn) => {
+    // Wire up "Show on Map" buttons for node failures
+    detailBody.querySelectorAll('.btn-show-node-backup').forEach((btn) => {
       btn.addEventListener('click', () => {
-        const failedNode = btn.dataset.failNode;
-        pathFailNode.value = failedNode;
+        pathFailLink.value = '';
+        pathFailNode.value = btn.dataset.failNode;
+        handleComputePath();
+      });
+    });
+
+    // Wire up "Show on Map" buttons for link failures
+    detailBody.querySelectorAll('.btn-show-link-backup').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        pathFailNode.value = '';
+        pathFailLink.value = btn.dataset.failEdge;
         handleComputePath();
       });
     });
   }
 
-  function buildPathDetailHTML(pathData, analysis, failedNodes) {
+  function buildPathDetailHTML(pathData, analysis, failedNodes, failedEdges, failureLabel) {
     let html = '';
 
     // Unreachable state
     if (!pathData) {
-      const failName = failedNodes.length > 0 ? getHostname(failedNodes[0]) : 'constraint';
       html += `
         <div class="path-result-banner failure">
           <svg class="path-result-icon" viewBox="0 0 20 20" fill="#f87171">
             <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/>
           </svg>
-          <span class="path-result-text"><strong>Unreachable</strong> — destination cannot be reached with <strong>${esc(failName)}</strong> failed</span>
+          <span class="path-result-text"><strong>Unreachable</strong> — destination cannot be reached with <strong>${esc(failureLabel)}</strong> failed</span>
         </div>`;
 
-      // Still show primary path if available
       if (analysis?.primary) {
         html += `
           <div class="detail-section">
@@ -377,14 +418,15 @@
     }
 
     // Result banner
-    const isBackup = failedNodes.length > 0;
+    const isBackup = failedNodes.length > 0 || failedEdges.length > 0;
+    const protectionType = failedNodes.length > 0 ? 'Node Protection' : 'Link Protection';
     html += `
       <div class="path-result-banner">
         <svg class="path-result-icon" viewBox="0 0 20 20" fill="${isBackup ? '#fbbf24' : '#22d3ee'}">
           <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
         </svg>
         <span class="path-result-text">
-          <strong>${isBackup ? 'TI-LFA Backup' : 'Primary Path'}</strong> — 
+          <strong>${isBackup ? 'TI-LFA Backup (' + protectionType + ')' : 'Primary Path'}</strong> — 
           ${pathData.hopCount} hops, total metric ${pathData.totalMetric}, Algo ${pathData.algorithm}
         </span>
       </div>`;
@@ -396,7 +438,7 @@
           <h4>SR Label Stack</h4>`;
 
       for (const label of pathData.labelStack) {
-        const srgbBase = 900000; // We know this from the topology
+        const srgbBase = 900000;
         const globalLabel = srgbBase + label.label;
         html += `
           <div class="detail-row">
@@ -417,30 +459,63 @@
         ${buildHopListHTML(pathData)}
       </div>`;
 
-    // TI-LFA backup paths section
-    if (analysis?.backups && analysis.backups.length > 0 && failedNodes.length === 0) {
+    // ── TI-LFA Node Protection backups ──
+    if (analysis?.nodeBackups && analysis.nodeBackups.length > 0 && !isBackup) {
       html += `
         <div class="backup-section">
           <div class="backup-header">
-            <h4>TI-LFA Backup Paths (Node Protection)</h4>
+            <h4>Node Protection Backups</h4>
             <span class="backup-toggle">▸</span>
           </div>
           <div class="backup-body">`;
 
-      for (const backup of analysis.backups) {
+      for (const backup of analysis.nodeBackups) {
         html += `<div class="backup-item">`;
         html += `<div class="backup-item-header">If <strong>${esc(backup.failedHostname)}</strong> fails:</div>`;
 
         if (backup.backupPath) {
           const hopNames = [backup.backupPath.sourceHostname];
-          for (const hop of backup.backupPath.hops) {
-            hopNames.push(hop.toHostname);
-          }
+          for (const hop of backup.backupPath.hops) hopNames.push(hop.toHostname);
           html += `<div class="backup-item-path">${hopNames.join(' → ')}</div>`;
           html += `<div style="margin-top:4px;font-size:0.72rem;color:var(--text-muted);">
             ${backup.backupPath.hopCount} hops, metric ${backup.backupPath.totalMetric}
           </div>`;
-          html += `<button class="btn btn-ghost btn-sm btn-show-backup" data-fail-node="${backup.failedNode}" style="margin-top:6px;">Show on Map</button>`;
+          html += `<button class="btn btn-ghost btn-sm btn-show-node-backup" data-fail-node="${backup.failedNode}" style="margin-top:6px;">Show on Map</button>`;
+        } else {
+          html += `<div class="backup-item-unreachable">Destination unreachable</div>`;
+        }
+
+        html += `</div>`;
+      }
+
+      html += `</div></div>`;
+    }
+
+    // ── TI-LFA Link Protection backups ──
+    if (analysis?.linkBackups && analysis.linkBackups.length > 0 && !isBackup) {
+      html += `
+        <div class="backup-section">
+          <div class="backup-header">
+            <h4>Link Protection Backups</h4>
+            <span class="backup-toggle">▸</span>
+          </div>
+          <div class="backup-body">`;
+
+      for (const backup of analysis.linkBackups) {
+        html += `<div class="backup-item">`;
+        html += `<div class="backup-item-header">If link <strong>${esc(backup.failedLinkLabel)}</strong> fails:</div>`;
+        if (backup.failedLinkDetail) {
+          html += `<div style="font-family:'JetBrains Mono',monospace;font-size:0.72rem;color:var(--text-muted);margin-bottom:4px;">${esc(backup.failedLinkDetail)}</div>`;
+        }
+
+        if (backup.backupPath) {
+          const hopNames = [backup.backupPath.sourceHostname];
+          for (const hop of backup.backupPath.hops) hopNames.push(hop.toHostname);
+          html += `<div class="backup-item-path">${hopNames.join(' → ')}</div>`;
+          html += `<div style="margin-top:4px;font-size:0.72rem;color:var(--text-muted);">
+            ${backup.backupPath.hopCount} hops, metric ${backup.backupPath.totalMetric}
+          </div>`;
+          html += `<button class="btn btn-ghost btn-sm btn-show-link-backup" data-fail-edge="${backup.failedEdgeId}" style="margin-top:6px;">Show on Map</button>`;
         } else {
           html += `<div class="backup-item-unreachable">Destination unreachable</div>`;
         }

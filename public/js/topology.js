@@ -126,16 +126,17 @@ class TopologyRenderer {
   }
 
   _clearHighlight() {
-    this.cy.elements().removeClass('highlighted highlighted-edge neighbor dimmed path-node path-edge path-source path-dest path-failed path-dimmed');
+    this.cy.elements().removeClass('highlighted highlighted-edge neighbor dimmed path-node path-edge path-source path-dest path-failed path-edge-failed path-failed-neighbor path-dimmed');
   }
 
   /**
    * Highlight a computed path on the topology.
    *
    * @param {Object}   pathData    - Path result from the API
-   * @param {string[]} failedNodes - Nodes to mark as failed
+   * @param {string[]} failedNodes - Node IDs to mark as failed
+   * @param {string[]} failedEdges - Edge IDs to mark as failed
    */
-  highlightPath(pathData, failedNodes = []) {
+  highlightPath(pathData, failedNodes = [], failedEdges = []) {
     this._clearHighlight();
 
     if (!pathData || !pathData.hops || pathData.hops.length === 0) return;
@@ -188,13 +189,27 @@ class TopologyRenderer {
         fNode.addClass('path-failed');
       }
     }
+
+    // Mark failed edges
+    for (const failedId of failedEdges) {
+      const fEdge = this.cy.getElementById(failedId);
+      if (fEdge.length) {
+        fEdge.removeClass('path-dimmed');
+        fEdge.addClass('path-edge-failed');
+        // Also un-dim the endpoint nodes so the failed link is visible in context
+        fEdge.connectedNodes().forEach((n) => {
+          n.removeClass('path-dimmed');
+          if (!n.hasClass('path-node')) n.addClass('path-failed-neighbor');
+        });
+      }
+    }
   }
 
   /**
    * Clear path highlighting.
    */
   clearPath() {
-    this.cy.elements().removeClass('path-node path-edge path-source path-dest path-failed path-dimmed');
+    this.cy.elements().removeClass('path-node path-edge path-source path-dest path-failed path-edge-failed path-failed-neighbor path-dimmed');
   }
 
   /**
@@ -361,6 +376,15 @@ class TopologyRenderer {
           'z-index': 15,
         },
       },
+      // ── Path: Neighbor of failed element (visible but neutral) ──
+      {
+        selector: 'node.path-failed-neighbor',
+        style: {
+          opacity: 0.6,
+          'border-color': '#536580',
+          color: '#94a3b8',
+        },
+      },
       // ── Path: Edge on path ──
       {
         selector: 'edge.path-edge',
@@ -375,6 +399,19 @@ class TopologyRenderer {
           'target-arrow-color': '#22d3ee',
           'target-arrow-shape': 'triangle',
           'arrow-scale': 1.2,
+        },
+      },
+      // ── Path: Failed edge ──
+      {
+        selector: 'edge.path-edge-failed',
+        style: {
+          'line-color': '#f87171',
+          'line-style': 'dashed',
+          'line-dash-pattern': [8, 4],
+          width: 3,
+          color: '#f87171',
+          opacity: 0.7,
+          'z-index': 15,
         },
       },
     ];

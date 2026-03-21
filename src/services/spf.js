@@ -2,7 +2,7 @@
 // SPF Engine — Dijkstra's Shortest Path First
 // ---------------------------------------------------------------------------
 // Computes shortest paths on the IS-IS topology graph.
-// Supports node exclusion for TI-LFA failure simulation.
+// Supports node AND link exclusion for TI-LFA failure simulation.
 //
 // Input:  Topology graph (nodes + edges from topologyBuilder)
 // Output: Shortest path with hop-by-hop detail including metrics and SIDs
@@ -11,11 +11,12 @@
 /**
  * Build an adjacency list from the Cytoscape.js graph model.
  *
- * @param {Object} topology - { nodes: [], edges: [] }
- * @param {Set}    excludeNodes - Set of systemIds to exclude (failure simulation)
- * @returns {Map<string, Array<{ neighbor, metric, edgeData }>>}
+ * @param {Object} topology     - { nodes: [], edges: [] }
+ * @param {Set}    excludeNodes - Set of systemIds to exclude (node failure)
+ * @param {Set}    excludeEdges - Set of edge IDs to exclude (link failure)
+ * @returns {Map<string, Array<{ neighbor, metric, edgeData, direction }>>}
  */
-function buildAdjacencyList(topology, excludeNodes = new Set()) {
+function buildAdjacencyList(topology, excludeNodes = new Set(), excludeEdges = new Set()) {
   const adj = new Map();
 
   // Initialize all non-excluded nodes
@@ -29,6 +30,9 @@ function buildAdjacencyList(topology, excludeNodes = new Set()) {
   for (const edge of topology.edges) {
     const src = edge.data.source;
     const tgt = edge.data.target;
+
+    // Skip excluded edges
+    if (excludeEdges.has(edge.data.id)) continue;
 
     // Skip edges involving excluded nodes
     if (excludeNodes.has(src) || excludeNodes.has(tgt)) continue;
@@ -144,12 +148,10 @@ function extractPath(prev, dist, source, dest, topology) {
     let localAddr, neighborAddr, adjSids;
 
     if (prevInfo.direction === 'forward') {
-      // Edge goes source->target, we're traversing source->target
       localAddr = edge.localAddr;
       neighborAddr = edge.neighborAddr;
       adjSids = edge.adjSids || [];
     } else {
-      // Edge goes source->target, but we're traversing target->source
       localAddr = edge.reverseLocalAddr || edge.neighborAddr;
       neighborAddr = edge.reverseNeighborAddr || edge.localAddr;
       adjSids = edge.reverseAdjSids || [];
@@ -201,17 +203,18 @@ function extractPath(prev, dist, source, dest, topology) {
  * @param {Object} topology     - Full topology { nodes, edges }
  * @param {string} source       - Source node systemId
  * @param {string} destination  - Destination node systemId
- * @param {Object} options      - { excludeNodes: string[] } for failure simulation
+ * @param {Object} options      - { excludeNodes?: string[], excludeEdges?: string[] }
  * @returns {Object|null}       - Path object or null
  */
 function computePath(topology, source, destination, options = {}) {
   const excludeNodes = new Set(options.excludeNodes || []);
+  const excludeEdges = new Set(options.excludeEdges || []);
 
   // Source and dest cannot be excluded
   excludeNodes.delete(source);
   excludeNodes.delete(destination);
 
-  const adjList = buildAdjacencyList(topology, excludeNodes);
+  const adjList = buildAdjacencyList(topology, excludeNodes, excludeEdges);
 
   if (!adjList.has(source)) return null;
   if (!adjList.has(destination)) return null;
@@ -221,32 +224,33 @@ function computePath(topology, source, destination, options = {}) {
 }
 
 /**
- * Compute primary path + TI-LFA backup paths for all transit nodes.
+ * Compute primary path + TI-LFA backup paths for all transit nodes AND links.
  *
- * For each transit node on the primary path, compute the backup path
- * that would be used if that node failed (node protection).
+ * Node protection: for each transit node, compute backup with that node excluded.
+ * Link protection: for each link on the primary path, compute backup with that
+ *                  specific edge excluded.
  *
  * @param {Object} topology    - Full topology
  * @param {string} source      - Source systemId
  * @param {string} destination - Destination systemId
- * @returns {Object} - { primary, backups: [{ failedNode, failedHostname, backupPath }] }
+ * @returns {Object} - { primary, nodeBackups: [...], linkBackups: [...] }
  */
 function computePathWithBackups(topology, source, destination) {
   // Primary path (no failures)
   const primary = computePath(topology, source, destination);
 
   if (!primary) {
-    return { primary: null, backups: [] };
+    return { primary: null, nodeBackups: [], linkBackups: [] };
   }
 
+  // ── Node Protection ──
   // For each transit node (not source or dest), compute backup path
-  const backups = [];
+  const nodeBackups = [];
   const transitNodes = primary.hops
     .map((h) => h.from)
     .filter((n) => n !== source)
     .concat(primary.hops.map((h) => h.to).filter((n) => n !== destination));
 
-  // Deduplicate transit nodes
   const uniqueTransit = [...new Set(transitNodes)].filter(
     (n) => n !== source && n !== destination
   );
@@ -256,17 +260,49 @@ function computePathWithBackups(topology, source, destination) {
       excludeNodes: [failedNode],
     });
 
-    // Node lookup for hostname
     const failedNodeData = topology.nodes.find((n) => n.data.id === failedNode);
 
-    backups.push({
+    nodeBackups.push({
+      type: 'node',
       failedNode,
       failedHostname: failedNodeData?.data?.hostname || failedNode,
       backupPath,
     });
   }
 
-  return { primary, backups };
+  // ── Link Protection ──
+  // For each link on the primary path, compute backup with that edge excluded
+  const linkBackups = [];
+  const seenEdges = new Set();
+
+  for (const hop of primary.hops) {
+    if (!hop.edgeId || seenEdges.has(hop.edgeId)) continue;
+    seenEdges.add(hop.edgeId);
+
+    const backupPath = computePath(topology, source, destination, {
+      excludeEdges: [hop.edgeId],
+    });
+
+    // Build a human-readable label for this link
+    const linkLabel = `${hop.fromHostname} ↔ ${hop.toHostname}`;
+    const linkDetail = hop.localAddr && hop.neighborAddr
+      ? `${hop.localAddr} ↔ ${hop.neighborAddr}`
+      : '';
+
+    linkBackups.push({
+      type: 'link',
+      failedEdgeId: hop.edgeId,
+      failedLinkLabel: linkLabel,
+      failedLinkDetail: linkDetail,
+      fromNode: hop.from,
+      fromHostname: hop.fromHostname,
+      toNode: hop.to,
+      toHostname: hop.toHostname,
+      backupPath,
+    });
+  }
+
+  return { primary, nodeBackups, linkBackups };
 }
 
 module.exports = { computePath, computePathWithBackups, buildAdjacencyList, dijkstra };
