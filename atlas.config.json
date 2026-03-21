@@ -1,0 +1,16 @@
+{
+  "polling": {
+    "enabled": true,
+    "intervalSeconds": 15
+  },
+  "devices": [
+    {
+      "name": "PE-1",
+      "host": "10.0.0.1",
+      "port": 443,
+      "username": "admin",
+      "password": "admin",
+      "transport": "https"
+    }
+  ]
+}

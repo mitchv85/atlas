@@ -10,6 +10,7 @@
   let topologyData = null;
   let currentPathResult = null;
   const topo = new TopologyRenderer('cy');
+  const socket = new AtlasSocket();
 
   // ── DOM References ────────────────────────────────────────────────
   const $ = (sel) => document.querySelector(sel);
@@ -48,11 +49,47 @@
     bindEvents();
     await refreshDevices();
 
-    // Try loading any cached topology
+    // Try loading any cached topology (from a prior poll or manual collect)
     const existing = await API.getTopology();
     if (existing) {
       loadTopologyIntoView(existing);
     }
+
+    // Connect WebSocket for real-time updates
+    initSocket();
+  }
+
+  /**
+   * Wire up WebSocket event handlers.
+   */
+  function initSocket() {
+    // Topology changed — full reload
+    socket.on('topology:changed', (topology) => {
+      loadTopologyIntoView(topology, true); // true = preserve layout
+    });
+
+    // Status updates from poller
+    socket.on('status', (status) => {
+      if (status.collecting) {
+        setStatus('collecting', 'Polling...');
+      } else if (status.nodeCount > 0) {
+        setStatus('live', `${status.nodeCount} nodes, ${status.edgeCount} links`);
+      }
+    });
+
+    // Connection state
+    socket.on('connection', ({ status }) => {
+      const dot = document.querySelector('.status-dot');
+      if (status === 'websocket') {
+        dot.title = 'WebSocket connected';
+      } else if (status === 'polling') {
+        dot.title = 'Polling fallback';
+      } else {
+        dot.title = 'Disconnected';
+      }
+    });
+
+    socket.connect();
   }
 
   // ── Event Binding ─────────────────────────────────────────────────
@@ -187,12 +224,41 @@
     }
   }
 
-  function loadTopologyIntoView(data) {
+  function loadTopologyIntoView(data, preserveLayout = false) {
+    const hadTopology = !!topologyData;
     topologyData = data;
     emptyState.classList.add('hidden');
     topoToolbar.style.display = 'flex';
     pathBar.style.display = 'flex';
-    topo.loadTopology({ nodes: data.nodes, edges: data.edges });
+
+    if (preserveLayout && hadTopology) {
+      // Smart update: refresh data without resetting the layout.
+      // Save current positions, reload data, restore positions.
+      const positions = {};
+      topo.cy.nodes().forEach((n) => {
+        positions[n.id()] = { ...n.position() };
+      });
+
+      topo.cy.elements().remove();
+      topo.cy.add(data.nodes);
+      topo.cy.add(data.edges);
+
+      // Restore known positions; new nodes get auto-placed
+      topo.cy.nodes().forEach((n) => {
+        if (positions[n.id()]) {
+          n.position(positions[n.id()]);
+        }
+      });
+
+      // Run layout only if there are new nodes without positions
+      const newNodes = topo.cy.nodes().filter((n) => !positions[n.id()]);
+      if (newNodes.length > 0) {
+        topo.runLayout('cose');
+      }
+    } else {
+      topo.loadTopology({ nodes: data.nodes, edges: data.edges });
+    }
+
     populatePathDropdowns();
   }
 
