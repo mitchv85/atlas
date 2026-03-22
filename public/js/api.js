@@ -28,11 +28,6 @@ const API = {
     return res.json();
   },
 
-  async removeDevice(id) {
-    const res = await fetch(`/api/devices/${id}`, { method: 'DELETE' });
-    return res.json();
-  },
-
   async addDevice(device) {
     const res = await fetch('/api/devices', {
       method: 'POST',

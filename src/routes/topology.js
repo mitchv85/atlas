@@ -47,7 +47,7 @@ router.post('/collect', async (req, res) => {
 
     res.json(topology);
   } catch (err) {
-    console.error('Topology collection error:', err);
+    console.error('  Topology collection error:', err);
     res.status(500).json({ error: err.message });
   }
 });

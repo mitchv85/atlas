@@ -218,11 +218,12 @@ sshWss.on('connection', (ws, req) => {
 // ---------------------------------------------------------------------------
 server.listen(PORT, () => {
   console.log(`\n  ╔══════════════════════════════════════╗`);
-  console.log(`  ║          A T L A S   v0.2.1          ║`);
-  console.log(`  ║   Topology Visualization Engine       ║`);
+  console.log(`  ║          A T L A S   v0.3.0          ║`);
+  console.log(`  ║   Network Topology & Operations       ║`);
   console.log(`  ╠══════════════════════════════════════╣`);
   console.log(`  ║  http://localhost:${PORT}               ║`);
   console.log(`  ║  WebSocket: ws://localhost:${PORT}/ws    ║`);
+  console.log(`  ║  SSH Proxy: ws://localhost:${PORT}/ssh   ║`);
   console.log(`  ╚══════════════════════════════════════╝\n`);
 
   // Start the background poller

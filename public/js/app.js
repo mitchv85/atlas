@@ -42,12 +42,6 @@
   const devicesFileInput = $('#devicesFileInput');
   const importStatus = $('#importStatus');
 
-  // Legacy modal (kept for backward compat)
-  const deviceModal = $('#deviceModal');
-  const btnCloseModal = $('#btnCloseModal');
-  const addDeviceForm = $('#addDeviceForm');
-  const deviceList = $('#deviceList');
-
   // Path analysis
   const pathBar = $('#pathBar');
   const pathSource = $('#pathSource');
@@ -83,9 +77,14 @@
 
   // ── Devices Page ────────────────────────────────────────────────
   async function refreshDevicesPage() {
-    const list = await API.getDevices();
-    devices = list;
-    btnCollect.disabled = devices.length === 0;
+    try {
+      const list = await API.getDevices();
+      devices = list;
+      btnCollect.disabled = devices.length === 0;
+    } catch (err) {
+      console.error('Failed to refresh devices:', err.message);
+      return;
+    }
 
     if (selectedDeviceId) {
       const dev = devices.find((d) => d.id === selectedDeviceId);
@@ -212,9 +211,13 @@
   async function deleteDevice(id) {
     const device = devices.find((d) => d.id === id);
     if (!device || !confirm(`Delete ${device.name}?`)) return;
-    await API.deleteDevice(id);
-    deviceTestResults.delete(id);
-    await refreshDevicesPage();
+    try {
+      await API.deleteDevice(id);
+      deviceTestResults.delete(id);
+      await refreshDevicesPage();
+    } catch (err) {
+      console.error('Failed to delete device:', err.message);
+    }
   }
 
   async function addDeviceFromForm() {
@@ -229,13 +232,15 @@
     if (!host) return addDeviceError.textContent = 'Host / IP is required';
     if (!username) return addDeviceError.textContent = 'Username is required';
 
-    const result = await API.addDevice({ name, host, username, password, port, transport: 'https' });
-    if (result.error) return addDeviceError.textContent = result.error;
-
-    // Clear form
-    $('#addDevName').value = '';
-    $('#addDevHost').value = '';
-    await refreshDevicesPage();
+    try {
+      const result = await API.addDevice({ name, host, username, password, port, transport: 'https' });
+      if (result.error) return addDeviceError.textContent = result.error;
+      $('#addDevName').value = '';
+      $('#addDevHost').value = '';
+      await refreshDevicesPage();
+    } catch (err) {
+      addDeviceError.textContent = `Error: ${err.message}`;
+    }
   }
 
   // ── Bulk Import ─────────────────────────────────────────────────
@@ -1069,13 +1074,6 @@
     // "Add Your First Device" button switches to Devices tab
     btnEmptyAddDevice.addEventListener('click', () => switchTab('devices'));
 
-    // Legacy modal handlers (still used if modal HTML exists)
-    if (btnCloseModal) btnCloseModal.addEventListener('click', closeDeviceModal);
-    if (deviceModal) deviceModal.addEventListener('click', (e) => {
-      if (e.target === deviceModal) closeDeviceModal();
-    });
-    if (addDeviceForm) addDeviceForm.addEventListener('submit', handleAddDevice);
-
     btnCollect.addEventListener('click', handleCollect);
     btnCloseDetail.addEventListener('click', closeDetail);
 
@@ -1142,88 +1140,14 @@
     });
   }
 
-  // ── Device Management (legacy modal + init helper) ───────────────
+  // ── Device Init ──────────────────────────────────────────────────
   async function refreshDevices() {
-    devices = await API.getDevices();
-    btnCollect.disabled = devices.length === 0;
-    // Also update legacy modal list if it exists
-    if (deviceList) renderDeviceList();
-  }
-
-  function renderDeviceList() {
-    if (!deviceList) return;
-    if (devices.length === 0) {
-      deviceList.innerHTML = '<p class="text-muted">No devices configured yet.</p>';
-      return;
+    try {
+      devices = await API.getDevices();
+      btnCollect.disabled = devices.length === 0;
+    } catch (err) {
+      console.error('Failed to load devices:', err.message);
     }
-
-    deviceList.innerHTML = devices
-      .map(
-        (d) => `
-      <div class="device-card" data-id="${d.id}">
-        <div class="device-card-info">
-          <span class="device-card-name">${esc(d.name)}</span>
-          <span class="device-card-host">${esc(d.host)}:${d.port || 443}</span>
-        </div>
-        <div class="device-card-actions">
-          <button class="btn btn-ghost btn-sm btn-test" data-id="${d.id}">Test</button>
-          <button class="btn btn-danger btn-sm btn-remove" data-id="${d.id}">Remove</button>
-        </div>
-      </div>`
-      )
-      .join('');
-
-    // Bind test/remove buttons
-    deviceList.querySelectorAll('.btn-test').forEach((btn) =>
-      btn.addEventListener('click', () => handleTestDevice(btn.dataset.id))
-    );
-    deviceList.querySelectorAll('.btn-remove').forEach((btn) =>
-      btn.addEventListener('click', () => handleRemoveDevice(btn.dataset.id))
-    );
-  }
-
-  async function handleAddDevice(e) {
-    e.preventDefault();
-    const device = {
-      name: $('#devName').value.trim(),
-      host: $('#devHost').value.trim(),
-      username: $('#devUser').value.trim(),
-      password: $('#devPass').value,
-      port: parseInt($('#devPort').value) || 443,
-    };
-
-    await API.addDevice(device);
-    addDeviceForm.reset();
-    $('#devPort').value = 443;
-    await refreshDevices();
-  }
-
-  async function handleRemoveDevice(id) {
-    await API.removeDevice(id);
-    await refreshDevices();
-  }
-
-  async function handleTestDevice(id) {
-    const btn = deviceList.querySelector(`.btn-test[data-id="${id}"]`);
-    const original = btn.textContent;
-    btn.textContent = 'Testing...';
-    btn.disabled = true;
-
-    const result = await API.testDevice(id);
-
-    if (result.success) {
-      btn.textContent = 'Connected!';
-      btn.style.color = 'var(--green)';
-    } else {
-      btn.textContent = 'Failed';
-      btn.style.color = 'var(--red)';
-    }
-
-    setTimeout(() => {
-      btn.textContent = original;
-      btn.style.color = '';
-      btn.disabled = false;
-    }, 2000);
   }
 
   // ── Topology Collection ───────────────────────────────────────────
@@ -2606,15 +2530,6 @@
     }
 
     return html;
-  }
-
-  // ── Modal Helpers ─────────────────────────────────────────────────
-  function openDeviceModal() {
-    deviceModal.classList.add('open');
-  }
-
-  function closeDeviceModal() {
-    deviceModal.classList.remove('open');
   }
 
   // ── Status Indicator ──────────────────────────────────────────────
