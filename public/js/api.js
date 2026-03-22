@@ -9,6 +9,16 @@ const API = {
     return res.json();
   },
 
+  async getDeviceInfo() {
+    const res = await fetch('/api/devices/info');
+    return res.json();
+  },
+
+  async getDeviceConfig(id) {
+    const res = await fetch(`/api/devices/${id}/config`);
+    return res.json();
+  },
+
   async addDevice(device) {
     const res = await fetch('/api/devices', {
       method: 'POST',

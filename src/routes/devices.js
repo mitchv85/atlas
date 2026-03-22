@@ -28,6 +28,51 @@ router.post('/', (req, res) => {
 
 // ── Static path routes BEFORE :id routes ─────────────────────────────
 
+// GET /api/devices/info — Collect version + hardware info from all devices
+router.get('/info', async (_req, res) => {
+  const allDevices = deviceStore.getAllRaw();
+  const results = {};
+
+  await Promise.all(
+    allDevices.map(async (device) => {
+      try {
+        const output = await eapi.execute(
+          device,
+          ['show version', 'show hardware system forwarding-chips'],
+          'json'
+        );
+        const ver = output[0] || {};
+        const chipsRes = output[1] || {};
+        const chipsArr = Array.isArray(chipsRes.chips)
+          ? chipsRes.chips
+          : Object.values(chipsRes.chips || chipsRes.forwardingChips || {});
+        const chipNames = [...new Set(chipsArr.map((c) => c.chipName).filter(Boolean))];
+        const fwdAgents = [...new Set(chipsArr.map((c) => c.forwardingAgent).filter(Boolean))];
+
+        results[device.name] = {
+          model: ver.modelName || '—',
+          serial: ver.serialNumber || '—',
+          systemMac: ver.systemMacAddress || '—',
+          eosVersion: ver.version || '—',
+          arch: ver.architecture || '—',
+          fwdAgent: fwdAgents.length > 0 ? fwdAgents.join(', ') : '—',
+          chipset: chipNames.length > 0 ? chipNames.join(', ') : 'x86',
+          uptime: ver.uptime || 0,
+          totalRam: ver.memTotal || 0,
+          freeRam: ver.memFree || 0,
+        };
+      } catch {
+        results[device.name] = {
+          model: '—', serial: '—', systemMac: '—', eosVersion: '—',
+          arch: '—', fwdAgent: '—', chipset: '—', uptime: 0, totalRam: 0, freeRam: 0,
+        };
+      }
+    })
+  );
+
+  res.json(results);
+});
+
 // POST /api/devices/bulk — Bulk import devices
 // Body: { devices: [{ name, host, username, password, port?, transport? }, ...] }
 router.post('/bulk', (req, res) => {
@@ -154,6 +199,20 @@ router.post('/:id/command', async (req, res) => {
     res.json({ output, error: null });
   } catch (err) {
     res.json({ output: null, error: err.message });
+  }
+});
+
+// GET /api/devices/:id/config — Get running config
+router.get('/:id/config', async (req, res) => {
+  const device = deviceStore.getRaw(req.params.id);
+  if (!device) return res.status(404).json({ error: 'Device not found' });
+
+  try {
+    const results = await eapi.execute(device, ['enable', 'show running-config'], 'text');
+    const config = results[1]?.output || '(no output)';
+    res.json({ config, error: null });
+  } catch (err) {
+    res.json({ config: null, error: err.message });
   }
 });
 

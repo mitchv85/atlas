@@ -62,6 +62,8 @@
   // ── Tab Switching ───────────────────────────────────────────────
   let activeTab = 'topology';
   const deviceTestResults = new Map(); // id → 'ok' | 'fail' | 'testing'
+  let deviceInfo = {};                  // name → { model, serial, eosVersion, ... }
+  let selectedDeviceId = null;          // currently viewed device detail
 
   function switchTab(tabName) {
     activeTab = tabName;
@@ -85,7 +87,23 @@
     const list = await API.getDevices();
     devices = list;
     btnCollect.disabled = devices.length === 0;
+
+    if (selectedDeviceId) {
+      const dev = devices.find((d) => d.id === selectedDeviceId);
+      if (dev) {
+        showDeviceDetail(dev);
+        return;
+      }
+      selectedDeviceId = null;
+    }
+
     renderDevicesTable(list);
+
+    // Fetch device info in background
+    API.getDeviceInfo().then((info) => {
+      deviceInfo = info;
+      renderDevicesTable(devices); // Re-render with enriched data
+    }).catch(() => {});
   }
 
   function renderDevicesTable(list) {
@@ -103,12 +121,17 @@
       const testState = deviceTestResults.get(d.id) || 'unknown';
       const dotClass = testState === 'ok' ? 'ok' : testState === 'fail' ? 'fail' : testState === 'testing' ? 'testing' : '';
       const statusLabel = testState === 'ok' ? 'Reachable' : testState === 'fail' ? 'Unreachable' : testState === 'testing' ? 'Testing...' : '—';
+      const info = deviceInfo[d.name] || {};
+      const infoCell = (val) => val && val !== '—' ? esc(val) : '<span style="color:var(--text-muted);">—</span>';
 
-      return `<tr data-id="${d.id}">
-        <td>${esc(d.name)}</td>
+      return `<tr data-id="${d.id}" class="dev-row-clickable">
+        <td><strong>${esc(d.name)}</strong></td>
         <td>${esc(d.host)}</td>
-        <td>${d.port}</td>
-        <td>${esc(d.transport)}</td>
+        <td>${infoCell(info.model)}</td>
+        <td>${infoCell(info.eosVersion)}</td>
+        <td>${infoCell(info.serial)}</td>
+        <td>${infoCell(info.chipset)}</td>
+        <td>${infoCell(info.fwdAgent)}</td>
         <td>
           <span class="dev-status">
             <span class="dev-status-dot ${dotClass}"></span>
@@ -136,6 +159,14 @@
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
         deleteDevice(btn.dataset.id);
+      });
+    });
+
+    // Wire row clicks for device detail
+    devicesTableBody.querySelectorAll('.dev-row-clickable').forEach((row) => {
+      row.addEventListener('click', () => {
+        const dev = devices.find((d) => d.id === row.dataset.id);
+        if (dev) showDeviceDetail(dev);
       });
     });
   }
@@ -259,6 +290,369 @@
     a.href = URL.createObjectURL(blob);
     a.download = `atlas-devices-${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
+  }
+
+  // ── Device Detail View ──────────────────────────────────────────
+  let deviceDetailTab = 'overview';
+
+  function showDeviceDetail(device) {
+    selectedDeviceId = device.id;
+    const devPage = document.querySelector('.devices-page');
+    const info = deviceInfo[device.name] || {};
+    const testState = deviceTestResults.get(device.id) || 'unknown';
+    const dotClass = testState === 'ok' ? 'ok' : testState === 'fail' ? 'fail' : '';
+
+    const tabs = [
+      { id: 'overview', label: 'Overview' },
+      { id: 'commands', label: 'Quick Commands' },
+    ];
+
+    const infoFields = [
+      { label: 'MGMT IP', value: device.host },
+      { label: 'MODEL', value: info.model },
+      { label: 'SERIAL', value: info.serial },
+      { label: 'SYSTEM MAC', value: info.systemMac },
+      { label: 'EOS VERSION', value: info.eosVersion },
+      { label: 'ARCH', value: info.arch },
+      { label: 'FWD AGENT', value: info.fwdAgent },
+      { label: 'CHIPSET', value: info.chipset },
+    ];
+
+    devPage.innerHTML = `
+      <!-- Header -->
+      <div class="device-detail-header">
+        <button class="btn btn-ghost btn-sm" id="btnDevDetailBack">← Back</button>
+        <div class="device-detail-identity">
+          <span class="dev-status-dot ${dotClass}" style="width:10px;height:10px;"></span>
+          <h2>${esc(device.name)}</h2>
+          <span class="device-detail-host">${esc(device.host)}:${device.port}</span>
+        </div>
+      </div>
+
+      <!-- Sub-tabs -->
+      <div class="device-detail-tabs">
+        ${tabs.map((t) => `
+          <button class="device-detail-tab ${t.id === deviceDetailTab ? 'active' : ''}" data-dtab="${t.id}">${t.label}</button>
+        `).join('')}
+      </div>
+
+      <!-- Tab content -->
+      <div id="deviceDetailContent"></div>
+    `;
+
+    // Wire back button
+    devPage.querySelector('#btnDevDetailBack').addEventListener('click', () => {
+      selectedDeviceId = null;
+      deviceDetailTab = 'overview';
+      refreshDevicesPage();
+    });
+
+    // Wire sub-tabs
+    devPage.querySelectorAll('.device-detail-tab').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        deviceDetailTab = btn.dataset.dtab;
+        showDeviceDetail(device);
+      });
+    });
+
+    const content = devPage.querySelector('#deviceDetailContent');
+
+    if (deviceDetailTab === 'overview') {
+      renderDeviceOverview(content, device, infoFields);
+    } else if (deviceDetailTab === 'commands') {
+      renderDeviceCommands(content, device);
+    }
+  }
+
+  function renderDeviceOverview(container, device, infoFields) {
+    container.innerHTML = `
+      <!-- Info cards -->
+      <div class="device-info-grid">
+        ${infoFields.map(({ label, value }) => `
+          <div class="device-info-card">
+            <div class="device-info-label">${label}</div>
+            <div class="device-info-value">${value && value !== '—' ? esc(value) : '<span style="color:var(--text-muted);">—</span>'}</div>
+          </div>
+        `).join('')}
+      </div>
+
+      <!-- Running Config -->
+      <div class="device-config-section">
+        <div class="device-config-toolbar">
+          <span class="device-config-title">RUNNING CONFIGURATION</span>
+          <div class="device-config-actions">
+            <input type="text" class="cli-input" id="configFind" placeholder="Find..." style="width:120px;font-size:0.72rem;" />
+            <span id="configFindCount" style="font-family:'JetBrains Mono',monospace;font-size:0.65rem;color:var(--text-muted);min-width:50px;"></span>
+            <button class="btn btn-ghost btn-sm" id="configFindPrev" style="display:none;">↑</button>
+            <button class="btn btn-ghost btn-sm" id="configFindNext" style="display:none;">↓</button>
+            <button class="btn btn-ghost btn-sm" id="configCopy">Copy</button>
+          </div>
+        </div>
+        <div class="device-config-body" id="configBody">
+          <div class="cli-output-empty">Loading running configuration...</div>
+        </div>
+      </div>
+    `;
+
+    // Fetch config
+    let configText = '';
+    let findText = '';
+    let findIdx = 0;
+
+    API.getDeviceConfig(device.id).then((result) => {
+      if (result.error) {
+        container.querySelector('#configBody').innerHTML =
+          `<div class="cli-output-error">ERROR: ${esc(result.error)}</div>`;
+        return;
+      }
+
+      configText = result.config || '';
+      renderConfig();
+    });
+
+    function renderConfig() {
+      const body = container.querySelector('#configBody');
+      const lines = configText.split('\n');
+      const lowerFind = findText.toLowerCase();
+      const matches = [];
+
+      if (findText) {
+        lines.forEach((line, i) => {
+          if (line.toLowerCase().includes(lowerFind)) matches.push(i);
+        });
+      }
+
+      const countEl = container.querySelector('#configFindCount');
+      const prevBtn = container.querySelector('#configFindPrev');
+      const nextBtn = container.querySelector('#configFindNext');
+
+      if (findText) {
+        countEl.textContent = matches.length ? `${Math.min(findIdx + 1, matches.length)} / ${matches.length}` : 'NO MATCH';
+        countEl.style.color = matches.length ? 'var(--text-secondary)' : 'var(--red)';
+        prevBtn.style.display = '';
+        nextBtn.style.display = '';
+      } else {
+        countEl.textContent = `${lines.length} lines`;
+        prevBtn.style.display = 'none';
+        nextBtn.style.display = 'none';
+      }
+
+      body.innerHTML = `<pre style="margin:0;font-family:'JetBrains Mono',monospace;font-size:0.72rem;line-height:1.6;">${
+        lines.map((line, i) => {
+          const isCurrent = matches[findIdx] === i;
+          const isMatch = findText && line.toLowerCase().includes(lowerFind);
+          const bg = isCurrent ? 'rgba(245,158,11,0.12)' : 'transparent';
+          const color = colorConfigLine(line);
+          let rendered = esc(line) || ' ';
+
+          if (isMatch && findText) {
+            const re = new RegExp('(' + escRegex(findText) + ')', 'gi');
+            rendered = esc(line).replace(re, isCurrent
+              ? '<span style="background:#f59e0b;color:#000;border-radius:2px;padding:0 1px;">$1</span>'
+              : '<span style="background:#78350f;color:#fcd34d;border-radius:2px;padding:0 1px;">$1</span>');
+          }
+
+          return '<div data-line="' + i + '" style="background:' + bg + ';border-radius:2px;"><span style="color:' + color + ';">' + rendered + '</span></div>';
+        }).join('')
+      }</pre>`;
+
+      // Scroll to current match
+      if (matches.length > 0) {
+        const target = body.querySelector(`[data-line="${matches[findIdx]}"]`);
+        if (target) target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      }
+    }
+
+    function colorConfigLine(line) {
+      if (/^!/.test(line)) return 'var(--text-muted)';
+      if (/^(interface|router|vrf|policy-map|class-map|ip access-list|route-map|spanning-tree|mpls|segment-routing|evpn)/.test(line)) return 'var(--accent)';
+      if (/^\s+(ip address|ipv6 address|description|shutdown|no shutdown|mtu|isis|ospf|bgp|evpn|neighbor|network|redistribute)/.test(line)) return '#a78bfa';
+      if (/^\s+no /.test(line)) return '#f87171';
+      return 'var(--text-primary)';
+    }
+
+    function escRegex(str) {
+      return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+
+    // Wire find
+    const findInput = container.querySelector('#configFind');
+    findInput.addEventListener('input', () => {
+      findText = findInput.value;
+      findIdx = 0;
+      if (configText) renderConfig();
+    });
+    findInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.shiftKey ? findIdx-- : findIdx++;
+        const lines = configText.split('\n');
+        const matches = lines.reduce((acc, l, i) => {
+          if (l.toLowerCase().includes(findText.toLowerCase())) acc.push(i);
+          return acc;
+        }, []);
+        if (matches.length) {
+          findIdx = ((findIdx % matches.length) + matches.length) % matches.length;
+        }
+        renderConfig();
+      }
+    });
+
+    container.querySelector('#configFindPrev').addEventListener('click', () => {
+      findIdx--;
+      const lines = configText.split('\n');
+      const matches = lines.reduce((acc, l, i) => {
+        if (l.toLowerCase().includes(findText.toLowerCase())) acc.push(i);
+        return acc;
+      }, []);
+      if (matches.length) findIdx = ((findIdx % matches.length) + matches.length) % matches.length;
+      renderConfig();
+    });
+
+    container.querySelector('#configFindNext').addEventListener('click', () => {
+      findIdx++;
+      const lines = configText.split('\n');
+      const matches = lines.reduce((acc, l, i) => {
+        if (l.toLowerCase().includes(findText.toLowerCase())) acc.push(i);
+        return acc;
+      }, []);
+      if (matches.length) findIdx = findIdx % matches.length;
+      renderConfig();
+    });
+
+    // Wire copy
+    container.querySelector('#configCopy').addEventListener('click', async () => {
+      if (!configText) return;
+      const btn = container.querySelector('#configCopy');
+      try {
+        await navigator.clipboard.writeText(configText);
+      } catch {
+        const ta = document.createElement('textarea');
+        ta.value = configText;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+      }
+      btn.textContent = 'Copied!';
+      setTimeout(() => { btn.textContent = 'Copy'; }, 1500);
+    });
+  }
+
+  function renderDeviceCommands(container, device) {
+    const quickPicks = [
+      { label: 'show isis neighbors', fmt: 'text' },
+      { label: 'show isis database detail', fmt: 'text' },
+      { label: 'show isis segment-routing tunnel', fmt: 'text' },
+      { label: 'show tunnel fib', fmt: 'text' },
+      { label: 'show isis ti-lfa path detail', fmt: 'text' },
+      { label: 'show mpls lfib route', fmt: 'text' },
+      { label: 'show interfaces status', fmt: 'text' },
+      { label: 'show interfaces counters errors', fmt: 'text' },
+      { label: 'show ip interface brief', fmt: 'text' },
+      { label: 'show ip route summary', fmt: 'text' },
+      { label: 'show ip bgp summary', fmt: 'text' },
+      { label: 'show bgp evpn summary', fmt: 'text' },
+      { label: 'show version', fmt: 'text' },
+      { label: 'show log last 50', fmt: 'text' },
+    ];
+
+    container.innerHTML = `
+      <div class="cli-section" style="margin-top:0;padding-top:0;border-top:none;">
+        <div class="cli-input-row">
+          <input type="text" class="cli-input" id="devCmdInput" placeholder="show ... (↑↓ for history)" />
+          <select class="cli-format-select" id="devCmdFormat">
+            <option value="text">text</option>
+            <option value="json">json</option>
+          </select>
+          <button class="cli-run-btn" id="devCmdRun">▶ RUN</button>
+        </div>
+        <div class="cli-quick-picks">
+          <span class="cli-quick-label">QUICK:</span>
+          ${quickPicks.map((qp) =>
+            `<button class="cli-quick-btn" data-cmd="${esc(qp.label)}" data-fmt="${qp.fmt}">${esc(qp.label)}</button>`
+          ).join('')}
+        </div>
+        <div class="cli-output-header" id="devCmdHeader" style="display:none;">
+          <button class="btn btn-ghost btn-sm" id="devCmdCopy">Copy</button>
+        </div>
+        <div class="cli-output" id="devCmdOutput">
+          <div class="cli-output-empty">ENTER A COMMAND OR CLICK A QUICK PICK</div>
+        </div>
+      </div>
+    `;
+
+    const cmdInput = container.querySelector('#devCmdInput');
+    const cmdFormat = container.querySelector('#devCmdFormat');
+    const cmdRun = container.querySelector('#devCmdRun');
+    const cmdOutput = container.querySelector('#devCmdOutput');
+    const cmdHeader = container.querySelector('#devCmdHeader');
+    const cmdCopy = container.querySelector('#devCmdCopy');
+
+    const history = [];
+    let histIdx = -1;
+    let lastOutput = '';
+
+    const runCommand = async (cmd, fmt) => {
+      cmd = cmd || cmdInput.value;
+      fmt = fmt || cmdFormat.value;
+      if (!cmd.trim()) return;
+
+      const idx = history.indexOf(cmd);
+      if (idx > -1) history.splice(idx, 1);
+      history.unshift(cmd);
+      histIdx = -1;
+
+      cmdRun.disabled = true;
+      cmdRun.textContent = '...';
+      cmdOutput.innerHTML = '<div class="cli-output-empty">Running...</div>';
+      cmdHeader.style.display = 'none';
+      lastOutput = '';
+
+      try {
+        const result = await API.runCommand(device.name, cmd.trim(), fmt);
+        if (result.error) {
+          cmdOutput.innerHTML = `<div class="cli-output-error">ERROR: ${esc(result.error)}</div>`;
+        } else {
+          lastOutput = result.output || '(no output)';
+          cmdOutput.innerHTML = `<pre>${esc(lastOutput)}</pre>`;
+          cmdHeader.style.display = 'flex';
+        }
+      } catch (err) {
+        cmdOutput.innerHTML = `<div class="cli-output-error">ERROR: ${esc(err.message)}</div>`;
+      }
+
+      cmdRun.disabled = false;
+      cmdRun.textContent = '▶ RUN';
+    };
+
+    cmdRun.addEventListener('click', () => runCommand());
+
+    cmdInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { runCommand(); return; }
+      if (e.key === 'ArrowUp') { e.preventDefault(); histIdx = Math.min(histIdx + 1, history.length - 1); cmdInput.value = history[histIdx] || ''; }
+      if (e.key === 'ArrowDown') { e.preventDefault(); histIdx = Math.max(histIdx - 1, -1); cmdInput.value = histIdx === -1 ? '' : history[histIdx]; }
+    });
+
+    container.querySelectorAll('.cli-quick-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        cmdInput.value = btn.dataset.cmd;
+        cmdFormat.value = btn.dataset.fmt;
+        runCommand(btn.dataset.cmd, btn.dataset.fmt);
+      });
+    });
+
+    cmdCopy.addEventListener('click', async () => {
+      if (!lastOutput) return;
+      try { await navigator.clipboard.writeText(lastOutput); } catch {
+        const ta = document.createElement('textarea');
+        ta.value = lastOutput; ta.style.position = 'fixed'; ta.style.opacity = '0';
+        document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
+      }
+      cmdCopy.textContent = 'Copied!';
+      setTimeout(() => { cmdCopy.textContent = 'Copy'; }, 1500);
+    });
   }
 
   // ── Init ──────────────────────────────────────────────────────────
