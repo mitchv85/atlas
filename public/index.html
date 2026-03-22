@@ -158,84 +158,90 @@
     <!-- ============================================================= -->
     <div class="tab-view" id="viewDevices">
       <div class="devices-page">
-        <!-- Toolbar -->
-        <div class="devices-toolbar">
-          <div class="devices-toolbar-left">
-            <h2 class="devices-heading">Device Inventory</h2>
-            <span class="devices-count" id="devicesCount">0 devices</span>
+        <!-- ── Table View ── -->
+        <div id="devicesTableView">
+          <!-- Toolbar -->
+          <div class="devices-toolbar">
+            <div class="devices-toolbar-left">
+              <h2 class="devices-heading">Device Inventory</h2>
+              <span class="devices-count" id="devicesCount">0 devices</span>
+            </div>
+            <div class="devices-toolbar-right">
+              <button class="btn btn-ghost btn-sm" id="btnRefreshDevices">⟳ Refresh</button>
+              <button class="btn btn-ghost btn-sm" id="btnExportDevices">↓ Export CSV</button>
+              <button class="btn btn-ghost btn-sm" id="btnTestAll">⚡ Test All</button>
+            </div>
           </div>
-          <div class="devices-toolbar-right">
-            <button class="btn btn-ghost btn-sm" id="btnRefreshDevices">⟳ Refresh</button>
-            <button class="btn btn-ghost btn-sm" id="btnExportDevices">↓ Export CSV</button>
-            <button class="btn btn-ghost btn-sm" id="btnTestAll">⚡ Test All</button>
+
+          <!-- Device Table -->
+          <div class="devices-table-wrap">
+            <table class="devices-table" id="devicesTable">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Host / IP</th>
+                  <th>Model</th>
+                  <th>EOS Version</th>
+                  <th>Serial</th>
+                  <th>Chipset</th>
+                  <th>Fwd Agent</th>
+                  <th>Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="devicesTableBody">
+              </tbody>
+            </table>
+            <div class="devices-empty" id="devicesEmpty">
+              No devices configured. Add one below or import from CSV/JSON.
+            </div>
+          </div>
+
+          <!-- Add Device Form -->
+          <div class="devices-add-section">
+            <h3>Add Device</h3>
+            <div class="devices-add-form" id="addDeviceFormNew">
+              <div class="form-group">
+                <label>Name</label>
+                <input type="text" id="addDevName" placeholder="e.g. PE-1" />
+              </div>
+              <div class="form-group">
+                <label>Host / IP</label>
+                <input type="text" id="addDevHost" placeholder="e.g. 10.0.0.1" />
+              </div>
+              <div class="form-group">
+                <label>Username</label>
+                <input type="text" id="addDevUser" placeholder="admin" value="admin" />
+              </div>
+              <div class="form-group">
+                <label>Password</label>
+                <input type="password" id="addDevPass" placeholder="password" value="admin" />
+              </div>
+              <div class="form-group form-group-sm">
+                <label>Port</label>
+                <input type="number" id="addDevPort" value="443" />
+              </div>
+              <button class="btn btn-primary btn-sm" id="btnAddDevice">+ Add</button>
+            </div>
+            <div class="devices-add-error" id="addDeviceError"></div>
+          </div>
+
+          <!-- Bulk Import -->
+          <div class="devices-import-section">
+            <h3>Bulk Import</h3>
+            <p class="text-muted" style="font-size:0.78rem;margin-bottom:10px;">
+              Drop a CSV or JSON file, or click to browse. CSV columns: name, host, username, password, port, transport
+            </p>
+            <div class="devices-dropzone" id="devicesDropzone">
+              <input type="file" id="devicesFileInput" accept=".csv,.json" style="display:none;" />
+              <div class="dropzone-label">Drop CSV or JSON file here, or <span class="dropzone-browse">browse</span></div>
+            </div>
+            <div class="devices-import-status" id="importStatus"></div>
           </div>
         </div>
 
-        <!-- Device Table -->
-        <div class="devices-table-wrap">
-          <table class="devices-table" id="devicesTable">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Host / IP</th>
-                <th>Model</th>
-                <th>EOS Version</th>
-                <th>Serial</th>
-                <th>Chipset</th>
-                <th>Fwd Agent</th>
-                <th>Status</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody id="devicesTableBody">
-              <!-- Populated dynamically -->
-            </tbody>
-          </table>
-          <div class="devices-empty" id="devicesEmpty">
-            No devices configured. Add one below or import from CSV/JSON.
-          </div>
-        </div>
-
-        <!-- Add Device Form -->
-        <div class="devices-add-section">
-          <h3>Add Device</h3>
-          <div class="devices-add-form" id="addDeviceFormNew">
-            <div class="form-group">
-              <label>Name</label>
-              <input type="text" id="addDevName" placeholder="e.g. PE-1" />
-            </div>
-            <div class="form-group">
-              <label>Host / IP</label>
-              <input type="text" id="addDevHost" placeholder="e.g. 10.0.0.1" />
-            </div>
-            <div class="form-group">
-              <label>Username</label>
-              <input type="text" id="addDevUser" placeholder="admin" value="admin" />
-            </div>
-            <div class="form-group">
-              <label>Password</label>
-              <input type="password" id="addDevPass" placeholder="password" value="admin" />
-            </div>
-            <div class="form-group form-group-sm">
-              <label>Port</label>
-              <input type="number" id="addDevPort" value="443" />
-            </div>
-            <button class="btn btn-primary btn-sm" id="btnAddDevice">+ Add</button>
-          </div>
-          <div class="devices-add-error" id="addDeviceError"></div>
-        </div>
-
-        <!-- Bulk Import -->
-        <div class="devices-import-section">
-          <h3>Bulk Import</h3>
-          <p class="text-muted" style="font-size:0.78rem;margin-bottom:10px;">
-            Drop a CSV or JSON file, or click to browse. CSV columns: name, host, username, password, port, transport
-          </p>
-          <div class="devices-dropzone" id="devicesDropzone">
-            <input type="file" id="devicesFileInput" accept=".csv,.json" style="display:none;" />
-            <div class="dropzone-label">Drop CSV or JSON file here, or <span class="dropzone-browse">browse</span></div>
-          </div>
-          <div class="devices-import-status" id="importStatus"></div>
+        <!-- ── Detail View (hidden by default) ── -->
+        <div id="devicesDetailView" style="display:none;">
         </div>
       </div>
     </div>

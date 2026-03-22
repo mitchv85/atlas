@@ -30,10 +30,9 @@
   const viewTopology = $('#viewTopology');
   const viewDevices = $('#viewDevices');
 
-  // Devices page
-  const devicesTableBody = $('#devicesTableBody');
-  const devicesEmpty = $('#devicesEmpty');
-  const devicesCount = $('#devicesCount');
+  // Devices page — use containers, re-query children as needed
+  const devicesTableView = $('#devicesTableView');
+  const devicesDetailView = $('#devicesDetailView');
   const btnRefreshDevices = $('#btnRefreshDevices');
   const btnExportDevices = $('#btnExportDevices');
   const btnTestAll = $('#btnTestAll');
@@ -97,27 +96,37 @@
       selectedDeviceId = null;
     }
 
+    // Show table view, hide detail view
+    devicesTableView.style.display = '';
+    devicesDetailView.style.display = 'none';
+
     renderDevicesTable(list);
 
     // Fetch device info in background
     API.getDeviceInfo().then((info) => {
       deviceInfo = info;
-      renderDevicesTable(devices); // Re-render with enriched data
+      if (!selectedDeviceId) renderDevicesTable(devices);
     }).catch(() => {});
   }
 
   function renderDevicesTable(list) {
-    devicesCount.textContent = `${list.length} device${list.length !== 1 ? 's' : ''}`;
+    // Re-query mutable DOM children each time
+    const tbody = document.getElementById('devicesTableBody');
+    const empty = document.getElementById('devicesEmpty');
+    const count = document.getElementById('devicesCount');
+    if (!tbody || !count) return;
+
+    count.textContent = `${list.length} device${list.length !== 1 ? 's' : ''}`;
 
     if (list.length === 0) {
-      devicesEmpty.classList.add('visible');
-      devicesTableBody.innerHTML = '';
+      empty.classList.add('visible');
+      tbody.innerHTML = '';
       return;
     }
 
-    devicesEmpty.classList.remove('visible');
+    empty.classList.remove('visible');
 
-    devicesTableBody.innerHTML = list.map((d) => {
+    tbody.innerHTML = list.map((d) => {
       const testState = deviceTestResults.get(d.id) || 'unknown';
       const dotClass = testState === 'ok' ? 'ok' : testState === 'fail' ? 'fail' : testState === 'testing' ? 'testing' : '';
       const statusLabel = testState === 'ok' ? 'Reachable' : testState === 'fail' ? 'Unreachable' : testState === 'testing' ? 'Testing...' : '—';
@@ -148,14 +157,14 @@
     }).join('');
 
     // Wire action buttons
-    devicesTableBody.querySelectorAll('.dev-test-btn').forEach((btn) => {
+    tbody.querySelectorAll('.dev-test-btn').forEach((btn) => {
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
         testSingleDevice(btn.dataset.id);
       });
     });
 
-    devicesTableBody.querySelectorAll('.dev-delete-btn').forEach((btn) => {
+    tbody.querySelectorAll('.dev-delete-btn').forEach((btn) => {
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
         deleteDevice(btn.dataset.id);
@@ -163,7 +172,7 @@
     });
 
     // Wire row clicks for device detail
-    devicesTableBody.querySelectorAll('.dev-row-clickable').forEach((row) => {
+    tbody.querySelectorAll('.dev-row-clickable').forEach((row) => {
       row.addEventListener('click', () => {
         const dev = devices.find((d) => d.id === row.dataset.id);
         if (dev) showDeviceDetail(dev);
@@ -297,7 +306,11 @@
 
   function showDeviceDetail(device) {
     selectedDeviceId = device.id;
-    const devPage = document.querySelector('.devices-page');
+
+    // Toggle containers
+    devicesTableView.style.display = 'none';
+    devicesDetailView.style.display = '';
+
     const info = deviceInfo[device.name] || {};
     const testState = deviceTestResults.get(device.id) || 'unknown';
     const dotClass = testState === 'ok' ? 'ok' : testState === 'fail' ? 'fail' : '';
@@ -305,6 +318,7 @@
     const tabs = [
       { id: 'overview', label: 'Overview' },
       { id: 'commands', label: 'Quick Commands' },
+      { id: 'flash', label: 'Flash' },
     ];
 
     const infoFields = [
@@ -318,7 +332,7 @@
       { label: 'CHIPSET', value: info.chipset },
     ];
 
-    devPage.innerHTML = `
+    devicesDetailView.innerHTML = `
       <!-- Header -->
       <div class="device-detail-header">
         <button class="btn btn-ghost btn-sm" id="btnDevDetailBack">← Back</button>
@@ -341,26 +355,30 @@
     `;
 
     // Wire back button
-    devPage.querySelector('#btnDevDetailBack').addEventListener('click', () => {
+    devicesDetailView.querySelector('#btnDevDetailBack').addEventListener('click', () => {
       selectedDeviceId = null;
       deviceDetailTab = 'overview';
-      refreshDevicesPage();
+      devicesDetailView.style.display = 'none';
+      devicesTableView.style.display = '';
+      renderDevicesTable(devices);
     });
 
     // Wire sub-tabs
-    devPage.querySelectorAll('.device-detail-tab').forEach((btn) => {
+    devicesDetailView.querySelectorAll('.device-detail-tab').forEach((btn) => {
       btn.addEventListener('click', () => {
         deviceDetailTab = btn.dataset.dtab;
         showDeviceDetail(device);
       });
     });
 
-    const content = devPage.querySelector('#deviceDetailContent');
+    const content = devicesDetailView.querySelector('#deviceDetailContent');
 
     if (deviceDetailTab === 'overview') {
       renderDeviceOverview(content, device, infoFields);
     } else if (deviceDetailTab === 'commands') {
       renderDeviceCommands(content, device);
+    } else if (deviceDetailTab === 'flash') {
+      renderDeviceFlash(content, device);
     }
   }
 
@@ -653,6 +671,159 @@
       cmdCopy.textContent = 'Copied!';
       setTimeout(() => { cmdCopy.textContent = 'Copy'; }, 1500);
     });
+  }
+
+  // ── Flash Tab ───────────────────────────────────────────────────
+  function renderDeviceFlash(container, device) {
+    let currentPath = '';
+    const pathStack = [];
+
+    container.innerHTML = `
+      <div class="flash-nav">
+        <div class="flash-breadcrumb" id="flashBreadcrumb">
+          <span class="flash-crumb flash-crumb-root" data-idx="-1">flash:</span>
+        </div>
+        <div class="flash-toolbar-right">
+          <button class="btn btn-ghost btn-sm" id="flashRefresh">⟳ Refresh</button>
+        </div>
+      </div>
+      <div class="flash-listing" id="flashListing">
+        <div class="cli-output-empty">Loading...</div>
+      </div>
+    `;
+
+    async function loadDir(path) {
+      const listing = container.querySelector('#flashListing');
+      listing.innerHTML = '<div class="cli-output-empty">Loading...</div>';
+
+      const flashPath = path ? `flash:/${path}` : 'flash:';
+      const cmd = `dir ${flashPath}`;
+
+      try {
+        const result = await API.runCommand(device.name, cmd, 'text');
+        if (result.error) {
+          listing.innerHTML = `<div class="cli-output-error">ERROR: ${esc(result.error)}</div>`;
+          return;
+        }
+
+        const entries = parseDirOutput(result.output || '');
+        renderFlashListing(listing, entries);
+      } catch (err) {
+        listing.innerHTML = `<div class="cli-output-error">ERROR: ${esc(err.message)}</div>`;
+      }
+    }
+
+    function parseDirOutput(text) {
+      const entries = [];
+      for (const line of text.split('\n')) {
+        // Match lines like: -rwx  145637376  May 11 2025 17:25:34  EOS-4.33.2F-DPE.swi
+        // Or: drwx      4096  Mar 20 2025 17:22:08  .boot-config
+        const m = line.match(/^\s*([d-][rwx-]{3})\s+(\d+)\s+(\w+\s+\d+\s+\d+\s+[\d:]+)\s+(.+)$/);
+        if (m) {
+          const isDir = m[1].startsWith('d');
+          const name = m[4].trim();
+          if (name === '.' || name === '..') continue;
+          entries.push({
+            type: isDir ? 'dir' : 'file',
+            name,
+            size: parseInt(m[2], 10),
+            date: m[3].trim(),
+          });
+        }
+      }
+      // Sort: dirs first, then by name
+      entries.sort((a, b) => {
+        if (a.type !== b.type) return a.type === 'dir' ? -1 : 1;
+        return a.name.localeCompare(b.name);
+      });
+      return entries;
+    }
+
+    function humanSize(bytes) {
+      if (!bytes) return '—';
+      const units = ['B', 'KB', 'MB', 'GB'];
+      let i = 0, n = bytes;
+      while (n >= 1024 && i < units.length - 1) { n /= 1024; i++; }
+      return `${n < 10 ? n.toFixed(1) : Math.round(n)} ${units[i]}`;
+    }
+
+    function fileIcon(entry) {
+      if (entry.type === 'dir') return '📁';
+      const ext = entry.name.split('.').pop().toLowerCase();
+      if (['swi', 'swix'].includes(ext)) return '💿';
+      if (['log'].includes(ext)) return '📜';
+      if (['cfg', 'conf', 'config'].includes(ext)) return '⚙️';
+      if (['json'].includes(ext)) return '📋';
+      return '📄';
+    }
+
+    function renderFlashListing(listingEl, entries) {
+      if (entries.length === 0) {
+        listingEl.innerHTML = '<div class="cli-output-empty">Directory is empty</div>';
+        return;
+      }
+
+      listingEl.innerHTML = `
+        <table class="devices-table flash-table">
+          <thead>
+            <tr><th></th><th>Name</th><th>Size</th><th>Modified</th></tr>
+          </thead>
+          <tbody>
+            ${entries.map((e) => `
+              <tr class="${e.type === 'dir' ? 'flash-dir-row' : ''}" data-name="${esc(e.name)}" data-type="${e.type}">
+                <td style="width:28px;text-align:center;">${fileIcon(e)}</td>
+                <td>${e.type === 'dir' ? `<strong>${esc(e.name)}/</strong>` : esc(e.name)}</td>
+                <td style="white-space:nowrap;">${e.type === 'dir' ? '—' : humanSize(e.size)}</td>
+                <td style="white-space:nowrap;">${esc(e.date)}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `;
+
+      // Wire directory clicks
+      listingEl.querySelectorAll('.flash-dir-row').forEach((row) => {
+        row.style.cursor = 'pointer';
+        row.addEventListener('click', () => {
+          const dirName = row.dataset.name;
+          pathStack.push(dirName);
+          currentPath = pathStack.join('/');
+          updateBreadcrumb();
+          loadDir(currentPath);
+        });
+      });
+    }
+
+    function updateBreadcrumb() {
+      const bc = container.querySelector('#flashBreadcrumb');
+      let html = '<span class="flash-crumb flash-crumb-root" data-idx="-1">flash:</span>';
+      pathStack.forEach((dir, idx) => {
+        html += ` / <span class="flash-crumb" data-idx="${idx}">${esc(dir)}</span>`;
+      });
+      bc.innerHTML = html;
+
+      // Wire breadcrumb clicks
+      bc.querySelectorAll('.flash-crumb').forEach((crumb) => {
+        crumb.style.cursor = 'pointer';
+        crumb.addEventListener('click', () => {
+          const idx = parseInt(crumb.dataset.idx, 10);
+          if (idx === -1) {
+            pathStack.length = 0;
+          } else {
+            pathStack.length = idx + 1;
+          }
+          currentPath = pathStack.join('/');
+          updateBreadcrumb();
+          loadDir(currentPath);
+        });
+      });
+    }
+
+    // Wire refresh
+    container.querySelector('#flashRefresh').addEventListener('click', () => loadDir(currentPath));
+
+    // Initial load
+    loadDir('');
   }
 
   // ── Init ──────────────────────────────────────────────────────────

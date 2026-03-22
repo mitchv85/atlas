@@ -7,6 +7,13 @@ const router = express.Router();
 const deviceStore = require('../store/devices');
 const eapi = require('../services/eapi');
 
+// Allowlist of safe read-only command prefixes
+const SAFE_PREFIXES = ['show ', 'dir '];
+function isSafeCommand(cmd) {
+  const trimmed = cmd.trim().toLowerCase();
+  return SAFE_PREFIXES.some((p) => trimmed.startsWith(p));
+}
+
 // GET /api/devices — List all devices
 router.get('/', (_req, res) => {
   res.json(deviceStore.list());
@@ -134,9 +141,8 @@ router.post('/by-hostname/:hostname/command', async (req, res) => {
   const { cmd, format = 'text' } = req.body;
   if (!cmd) return res.status(400).json({ error: 'cmd is required' });
 
-  const trimmed = cmd.trim().toLowerCase();
-  if (!trimmed.startsWith('show ')) {
-    return res.status(400).json({ error: 'Only show commands are permitted.' });
+  if (!isSafeCommand(cmd)) {
+    return res.status(400).json({ error: 'Only show and dir commands are permitted.' });
   }
 
   try {
@@ -185,9 +191,8 @@ router.post('/:id/command', async (req, res) => {
   const { cmd, format = 'text' } = req.body;
   if (!cmd) return res.status(400).json({ error: 'cmd is required' });
 
-  const trimmed = cmd.trim().toLowerCase();
-  if (!trimmed.startsWith('show ')) {
-    return res.status(400).json({ error: 'Only show commands are permitted.' });
+  if (!isSafeCommand(cmd)) {
+    return res.status(400).json({ error: 'Only show and dir commands are permitted.' });
   }
 
   try {
