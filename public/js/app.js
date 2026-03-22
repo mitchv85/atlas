@@ -448,7 +448,6 @@
 
   function buildECMPDetailHTML(ecmpResult) {
     const colors = ['#22d3ee', '#fbbf24', '#a78bfa', '#fb7185'];
-    const colorNames = ['Cyan', 'Amber', 'Violet', 'Rose'];
 
     let html = `
       <div class="path-result-banner">
@@ -461,7 +460,7 @@
         </span>
       </div>`;
 
-    // Color legend
+    // Color legend with label stacks
     html += `
       <div class="detail-section">
         <h4>Path Legend</h4>
@@ -474,14 +473,18 @@
       const chain = [path.sourceHostname, ...path.hops.map(h => h.toHostname)];
       const color = colors[i];
 
+      // Extract label stack for this path
+      const labelEntry = (path.labelStack && path.labelStack.length > 0) ? path.labelStack[0] : null;
+      const labels = labelEntry?.labels || [];
+
       html += `
         <div class="ecmp-path-row" data-path-idx="${i}" style="
-          display:flex;align-items:center;gap:10px;padding:8px 10px;
+          display:flex;align-items:flex-start;gap:10px;padding:8px 10px;
           background:var(--bg-elevated);border:1px solid var(--border);
           border-radius:var(--radius-sm);margin-bottom:4px;cursor:pointer;
           transition:background 0.15s;
         ">
-          <div style="width:12px;height:12px;border-radius:2px;background:${color};flex-shrink:0;"></div>
+          <div style="width:12px;height:12px;border-radius:2px;background:${color};flex-shrink:0;margin-top:3px;"></div>
           <div style="flex:1;">
             <div style="font-family:'JetBrains Mono',monospace;font-size:0.78rem;color:${color};">
               ${chain.join(' → ')}
@@ -489,6 +492,16 @@
             <div style="font-size:0.68rem;color:var(--text-muted);margin-top:2px;">
               ${path.hopCount} hops
             </div>
+            ${labels.length > 0 ? `
+              <div style="display:flex;gap:3px;flex-wrap:wrap;margin-top:4px;">
+                ${labels.map(l => {
+                  const decoded = decodeSrLabel(l);
+                  return '<span class="detail-badge ' + decoded.color + '" title="' + esc(decoded.description) + '" style="cursor:help;font-size:0.65rem;">' + esc(l) + '</span>';
+                }).join('')}
+              </div>
+              <div style="font-size:0.62rem;color:var(--text-muted);margin-top:2px;">
+                ${labels.map(l => decodeSrLabel(l).description).join(' → ')}
+              </div>` : ''}
           </div>
         </div>`;
     }
@@ -503,12 +516,15 @@
     for (let i = 0; i < ecmpResult.paths.length && i < 4; i++) {
       const path = ecmpResult.paths[i];
       const color = colors[i];
+      const labelEntry = (path.labelStack && path.labelStack.length > 0) ? path.labelStack[0] : null;
+      const labels = labelEntry?.labels || [];
 
       html += `
         <div style="margin-bottom:12px;">
-          <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
             <div style="width:8px;height:8px;border-radius:2px;background:${color};"></div>
             <span style="font-size:0.72rem;font-weight:600;color:${color};">Path ${i + 1}</span>
+            ${labels.length > 0 ? `<span style="font-family:'JetBrains Mono',monospace;font-size:0.65rem;color:var(--text-muted);">[ ${labels.join(' ')} ]</span>` : ''}
           </div>`;
 
       for (const hop of path.hops) {

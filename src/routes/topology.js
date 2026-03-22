@@ -6,7 +6,7 @@
 
 const express = require('express');
 const router = express.Router();
-const { computePath, computePathWithBackups, computeECMPPaths, lookupTunnelFibLabels } = require('../services/spf');
+const { computePath, computePathWithBackups, computeECMPPaths, enrichECMPWithTunnelFib, lookupTunnelFibLabels } = require('../services/spf');
 
 /**
  * Helper: get the poller from the Express app.
@@ -223,6 +223,12 @@ router.post('/path/ecmp', (req, res) => {
   }
 
   const result = computeECMPPaths(topology, source, destination);
+
+  // Enrich each path with real label stacks from the tunnel FIB
+  if (result.paths.length > 0) {
+    enrichECMPWithTunnelFib(result.paths, topology);
+  }
+
   res.json(result);
 });
 

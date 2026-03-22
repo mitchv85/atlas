@@ -657,4 +657,67 @@ function computeECMPPaths(topology, source, destination, options = {}) {
   };
 }
 
-module.exports = { computePath, computePathWithBackups, computeECMPPaths, lookupTunnelFibLabels, buildAdjacencyList, dijkstra };
+/**
+ * Enrich ECMP paths with label stacks from the tunnel FIB.
+ *
+ * Matches each path to its tunnel FIB entry by comparing the first-hop
+ * neighbor address against tunnel FIB primary via next-hops.
+ *
+ * @param {Object[]} paths    - Array of path objects from computeECMPPaths
+ * @param {Object}   topology - Full topology with tunnelFib
+ */
+function enrichECMPWithTunnelFib(paths, topology) {
+  if (!topology.tunnelFib || paths.length === 0) return;
+
+  const source = paths[0].source;
+  const destination = paths[0].destination;
+  const fibInfo = lookupTunnelFibLabels(topology, source, destination);
+
+  if (fibInfo.primaryLabels.length === 0) return;
+
+  // Build a nexthop -> label stack lookup from the tunnel FIB
+  const nexthopToLabels = new Map();
+  for (const entry of fibInfo.primaryLabels) {
+    if (entry.nexthop) {
+      nexthopToLabels.set(entry.nexthop, entry);
+    }
+  }
+
+  for (const path of paths) {
+    if (path.hops.length === 0) continue;
+
+    // The first hop's neighborAddr is the next-hop from the source
+    const firstHopNexthop = path.hops[0].neighborAddr;
+
+    // Try exact match on first-hop next-hop
+    const matched = nexthopToLabels.get(firstHopNexthop);
+
+    if (matched) {
+      path.labelStack = [{
+        labels: matched.labelStack,
+        nexthop: matched.nexthop,
+        interface: matched.interface,
+        type: 'tunnel-fib-primary',
+      }];
+      path.labelStackSource = 'tunnel-fib';
+    } else if (fibInfo.primaryLabels.length === 1) {
+      // Only one FIB entry — use it for all paths (same label, different IGP next-hop)
+      const single = fibInfo.primaryLabels[0];
+      path.labelStack = [{
+        labels: single.labelStack,
+        nexthop: single.nexthop,
+        interface: single.interface,
+        type: 'tunnel-fib-primary',
+      }];
+      path.labelStackSource = 'tunnel-fib';
+    }
+    // If no match, keep the SPF-computed labelStack
+  }
+
+  // Also attach backup labels to the result for reference
+  if (fibInfo.backupLabels.length > 0) {
+    paths._backupLabels = fibInfo.backupLabels;
+  }
+}
+
+module.exports = { computePath, computePathWithBackups, computeECMPPaths, enrichECMPWithTunnelFib, lookupTunnelFibLabels, buildAdjacencyList, dijkstra };
