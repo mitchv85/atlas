@@ -46,8 +46,21 @@
     topo.onNodeClick = showNodeDetail;
     topo.onEdgeClick = showEdgeDetail;
 
+    // Save positions to server when nodes are dragged
+    topo.onNodeDragEnd = (positions) => {
+      API.savePositions(positions);
+    };
+
     bindEvents();
     await refreshDevices();
+
+    // Load saved positions before loading topology
+    try {
+      const savedPositions = await API.getPositions();
+      topo.setSavedPositions(savedPositions);
+    } catch (e) {
+      // No positions saved yet — that's fine
+    }
 
     // Try loading any cached topology (from a prior poll or manual collect)
     const existing = await API.getTopology();
@@ -238,6 +251,9 @@
       topo.cy.nodes().forEach((n) => {
         positions[n.id()] = { ...n.position() };
       });
+
+      // Also merge into saved positions cache
+      topo.setSavedPositions({ ...topo._savedPositions, ...positions });
 
       topo.cy.elements().remove();
       topo.cy.add(data.nodes);

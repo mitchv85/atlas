@@ -6,3 +6,6 @@ node_modules/
 # PM2
 logs/
 .pm2/
+
+# User-specific state
+atlas.positions.json

@@ -8,6 +8,16 @@ class TopologyRenderer {
     this.containerId = containerId;
     this.onNodeClick = null;
     this.onEdgeClick = null;
+    this.onNodeDragEnd = null; // Callback when node positions change
+    this._savedPositions = {};  // { nodeId: { x, y } }
+    this._dragSaveTimer = null; // Debounce timer for position saves
+  }
+
+  /**
+   * Set saved positions (loaded from server).
+   */
+  setSavedPositions(positions) {
+    this._savedPositions = positions || {};
   }
 
   /**
@@ -41,11 +51,16 @@ class TopologyRenderer {
       }
     });
 
+    // Save positions on drag end (debounced)
+    this.cy.on('dragfree', 'node', () => {
+      this._debounceSavePositions();
+    });
+
     return this;
   }
 
   /**
-   * Load topology data and apply layout.
+   * Load topology data and apply saved positions or layout.
    *
    * @param {Object} topology - { nodes: [], edges: [] } in Cytoscape format
    */
@@ -57,14 +72,55 @@ class TopologyRenderer {
     this.cy.add(topology.nodes);
     this.cy.add(topology.edges);
 
-    // Apply force-directed layout
-    this.runLayout('cose');
+    // Apply saved positions where available
+    const nodesWithoutPosition = [];
+    this.cy.nodes().forEach((n) => {
+      const saved = this._savedPositions[n.id()];
+      if (saved) {
+        n.position(saved);
+      } else {
+        nodesWithoutPosition.push(n);
+      }
+    });
+
+    if (nodesWithoutPosition.length > 0 && nodesWithoutPosition.length === this.cy.nodes().length) {
+      // No saved positions at all — run full layout
+      this.runLayout('cose');
+    } else if (nodesWithoutPosition.length > 0) {
+      // Some new nodes without positions — run layout to place them
+      this.runLayout('cose');
+    }
+    // If all nodes have saved positions, just render (no layout needed)
+  }
+
+  /**
+   * Debounced save of all current positions.
+   */
+  _debounceSavePositions() {
+    clearTimeout(this._dragSaveTimer);
+    this._dragSaveTimer = setTimeout(() => {
+      const positions = {};
+      this.cy.nodes().forEach((n) => {
+        const pos = n.position();
+        positions[n.id()] = { x: pos.x, y: pos.y };
+      });
+      // Update local cache
+      this._savedPositions = positions;
+      // Notify callback
+      if (this.onNodeDragEnd) this.onNodeDragEnd(positions);
+    }, 300);
   }
 
   /**
    * Run a layout algorithm.
    */
   runLayout(name = 'cose') {
+    const self = this;
+    const onStop = function () {
+      // Save positions after layout completes
+      self._debounceSavePositions();
+    };
+
     const layouts = {
       cose: {
         name: 'cose',
@@ -76,18 +132,21 @@ class TopologyRenderer {
         gravity: 0.25,
         numIter: 1000,
         padding: 50,
+        stop: onStop,
       },
       grid: {
         name: 'grid',
         animate: true,
         animationDuration: 500,
         padding: 50,
+        stop: onStop,
       },
       circle: {
         name: 'circle',
         animate: true,
         animationDuration: 500,
         padding: 50,
+        stop: onStop,
       },
     };
 

@@ -232,4 +232,18 @@ router.post('/path/ecmp', (req, res) => {
   res.json(result);
 });
 
+// GET /api/topology/positions — Get saved node positions
+router.get('/positions', (_req, res) => {
+  const positionStore = require('../store/positions');
+  res.json(positionStore.getAll());
+});
+
+// PUT /api/topology/positions — Save node positions
+// Body: { nodeId: { x, y }, ... }
+router.put('/positions', (req, res) => {
+  const positionStore = require('../store/positions');
+  positionStore.update(req.body);
+  res.json({ success: true });
+});
+
 module.exports = router;

@@ -97,4 +97,18 @@ const API = {
     });
     return res.json();
   },
+
+  // ── Positions ─────────────────────────────────────────────────────
+  async getPositions() {
+    const res = await fetch('/api/topology/positions');
+    return res.json();
+  },
+
+  async savePositions(positions) {
+    await fetch('/api/topology/positions', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(positions),
+    });
+  },
 };
