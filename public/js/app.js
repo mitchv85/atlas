@@ -12,6 +12,50 @@
   const topo = new TopologyRenderer('cy');
   const socket = new AtlasSocket();
 
+  // ── Shared Constants ────────────────────────────────────────────
+  const SR_QUICK_PICKS = [
+    { label: 'show isis neighbors',              fmt: 'text' },
+    { label: 'show isis database detail',         fmt: 'text' },
+    { label: 'show isis segment-routing tunnel',  fmt: 'text' },
+    { label: 'show tunnel fib',                   fmt: 'text' },
+    { label: 'show isis ti-lfa path detail',      fmt: 'text' },
+    { label: 'show mpls lfib route',              fmt: 'text' },
+    { label: 'show interfaces status',            fmt: 'text' },
+    { label: 'show interfaces counters errors',   fmt: 'text' },
+    { label: 'show ip interface brief',           fmt: 'text' },
+    { label: 'show ip route summary',             fmt: 'text' },
+    { label: 'show ip bgp summary',              fmt: 'text' },
+    { label: 'show bgp evpn summary',            fmt: 'text' },
+    { label: 'show version',                      fmt: 'text' },
+    { label: 'show log last 50',                  fmt: 'text' },
+  ];
+
+  /**
+   * Copy text to clipboard with fallback for non-HTTPS contexts.
+   * Updates a button element with a brief "Copied!" flash.
+   * @param {string} text - Text to copy
+   * @param {HTMLElement} [btn] - Optional button to flash with confirmation
+   */
+  async function copyToClipboard(text, btn) {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+    }
+    if (btn) {
+      const original = btn.textContent;
+      btn.textContent = 'Copied!';
+      setTimeout(() => { btn.textContent = original; }, 1500);
+    }
+  }
+
   // ── DOM References ────────────────────────────────────────────────
   const $ = (sel) => document.querySelector(sel);
   const btnCollect = $('#btnCollect');
@@ -555,44 +599,13 @@
     });
 
     // Wire copy
-    container.querySelector('#configCopy').addEventListener('click', async () => {
+    container.querySelector('#configCopy').addEventListener('click', () => {
       if (!configText) return;
-      const btn = container.querySelector('#configCopy');
-      try {
-        await navigator.clipboard.writeText(configText);
-      } catch {
-        const ta = document.createElement('textarea');
-        ta.value = configText;
-        ta.style.position = 'fixed';
-        ta.style.opacity = '0';
-        document.body.appendChild(ta);
-        ta.select();
-        document.execCommand('copy');
-        document.body.removeChild(ta);
-      }
-      btn.textContent = 'Copied!';
-      setTimeout(() => { btn.textContent = 'Copy'; }, 1500);
+      copyToClipboard(configText, container.querySelector('#configCopy'));
     });
   }
 
   function renderDeviceCommands(container, device) {
-    const quickPicks = [
-      { label: 'show isis neighbors', fmt: 'text' },
-      { label: 'show isis database detail', fmt: 'text' },
-      { label: 'show isis segment-routing tunnel', fmt: 'text' },
-      { label: 'show tunnel fib', fmt: 'text' },
-      { label: 'show isis ti-lfa path detail', fmt: 'text' },
-      { label: 'show mpls lfib route', fmt: 'text' },
-      { label: 'show interfaces status', fmt: 'text' },
-      { label: 'show interfaces counters errors', fmt: 'text' },
-      { label: 'show ip interface brief', fmt: 'text' },
-      { label: 'show ip route summary', fmt: 'text' },
-      { label: 'show ip bgp summary', fmt: 'text' },
-      { label: 'show bgp evpn summary', fmt: 'text' },
-      { label: 'show version', fmt: 'text' },
-      { label: 'show log last 50', fmt: 'text' },
-    ];
-
     container.innerHTML = `
       <div class="cli-section" style="margin-top:0;padding-top:0;border-top:none;">
         <div class="cli-input-row">
@@ -605,7 +618,7 @@
         </div>
         <div class="cli-quick-picks">
           <span class="cli-quick-label">QUICK:</span>
-          ${quickPicks.map((qp) =>
+          ${SR_QUICK_PICKS.map((qp) =>
             `<button class="cli-quick-btn" data-cmd="${esc(qp.label)}" data-fmt="${qp.fmt}">${esc(qp.label)}</button>`
           ).join('')}
         </div>
@@ -678,15 +691,9 @@
       });
     });
 
-    cmdCopy.addEventListener('click', async () => {
+    cmdCopy.addEventListener('click', () => {
       if (!lastOutput) return;
-      try { await navigator.clipboard.writeText(lastOutput); } catch {
-        const ta = document.createElement('textarea');
-        ta.value = lastOutput; ta.style.position = 'fixed'; ta.style.opacity = '0';
-        document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
-      }
-      cmdCopy.textContent = 'Copied!';
-      setTimeout(() => { cmdCopy.textContent = 'Copy'; }, 1500);
+      copyToClipboard(lastOutput, cmdCopy);
     });
   }
 
@@ -1752,7 +1759,7 @@
           <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
         </svg>
         <span class="path-result-text">
-          <strong>${isBackup ? 'TI-LFA Backup (' + protectionType + ')' : 'Primary Path'}</strong> — 
+          <strong>${isBackup ? 'TI-LFA Backup (' + protectionType + ')' : 'Primary Path'}</strong> —
           ${pathData.hopCount} hops, total metric ${pathData.totalMetric}, Algo ${pathData.algorithm}
         </span>
       </div>`;
@@ -2023,25 +2030,9 @@
 
     // Copy button
     if (cliCopyBtn) {
-      cliCopyBtn.addEventListener('click', async () => {
+      cliCopyBtn.addEventListener('click', () => {
         if (!lastOutput) return;
-        try {
-          await navigator.clipboard.writeText(lastOutput);
-          cliCopyBtn.textContent = 'Copied!';
-          setTimeout(() => { cliCopyBtn.textContent = 'Copy'; }, 1500);
-        } catch {
-          // Fallback for non-HTTPS contexts
-          const ta = document.createElement('textarea');
-          ta.value = lastOutput;
-          ta.style.position = 'fixed';
-          ta.style.opacity = '0';
-          document.body.appendChild(ta);
-          ta.select();
-          document.execCommand('copy');
-          document.body.removeChild(ta);
-          cliCopyBtn.textContent = 'Copied!';
-          setTimeout(() => { cliCopyBtn.textContent = 'Copy'; }, 1500);
-        }
+        copyToClipboard(lastOutput, cliCopyBtn);
       });
     }
 
@@ -2219,21 +2210,6 @@
    * Build the CLI panel HTML for a given device hostname.
    */
   function buildCLIPanelHTML(hostname) {
-    const quickPicks = [
-      { label: 'show isis neighbors',              fmt: 'text' },
-      { label: 'show isis database detail',         fmt: 'text' },
-      { label: 'show isis segment-routing tunnel',  fmt: 'text' },
-      { label: 'show tunnel fib',                   fmt: 'text' },
-      { label: 'show isis ti-lfa path detail',      fmt: 'text' },
-      { label: 'show mpls lfib route',              fmt: 'text' },
-      { label: 'show interfaces status',            fmt: 'text' },
-      { label: 'show interfaces counters errors',   fmt: 'text' },
-      { label: 'show ip interface brief',           fmt: 'text' },
-      { label: 'show ip route summary',             fmt: 'text' },
-      { label: 'show version',                      fmt: 'text' },
-      { label: 'show log last 50',                  fmt: 'text' },
-    ];
-
     return `
       <div class="cli-section">
         <h4>CLI — ${esc(hostname)}</h4>
@@ -2247,7 +2223,7 @@
         </div>
         <div class="cli-quick-picks">
           <span class="cli-quick-label">QUICK:</span>
-          ${quickPicks.map(
+          ${SR_QUICK_PICKS.map(
             (qp) =>
               `<button class="cli-quick-btn" data-cmd="${esc(qp.label)}" data-fmt="${qp.fmt}">${esc(qp.label)}</button>`
           ).join('')}
