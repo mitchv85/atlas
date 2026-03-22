@@ -127,6 +127,11 @@ body {
   animation: pulse 1s infinite;
 }
 
+.status-dot.error {
+  background: var(--red);
+  box-shadow: 0 0 6px var(--red);
+}
+
 @keyframes pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.4; }

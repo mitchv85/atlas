@@ -94,6 +94,7 @@ class TopologyPoller extends EventEmitter {
     if (allDevices.length === 0) return;
 
     this._collecting = true;
+    this.emit('status:collecting');
 
     try {
       const allNodes = new Map();
@@ -152,6 +153,7 @@ class TopologyPoller extends EventEmitter {
       if (allNodes.size === 0) {
         this._lastError = 'No data from any device';
         this._collecting = false;
+        this.emit('status:updated');
         return;
       }
 
@@ -313,6 +315,7 @@ class TopologyPoller extends EventEmitter {
       this._lastHash = hash;
       this._lastError = null;
       this._collectCount++;
+      this._collecting = false; // Clear BEFORE emit so getStatus() returns collecting: false
 
       // Emit events
       if (changed) {
@@ -323,8 +326,8 @@ class TopologyPoller extends EventEmitter {
     } catch (err) {
       this._lastError = err.message;
       console.error('  Poll error:', err.message);
-    } finally {
       this._collecting = false;
+      this.emit('status:updated');
     }
   }
 

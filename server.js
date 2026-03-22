@@ -102,6 +102,16 @@ poller.on('topology:updated', (topology) => {
   broadcast({ type: 'status', data: poller.getStatus() });
 });
 
+// Collection started
+poller.on('status:collecting', () => {
+  broadcast({ type: 'status', data: poller.getStatus() });
+});
+
+// Collection ended without topology update (error or no data)
+poller.on('status:updated', () => {
+  broadcast({ type: 'status', data: poller.getStatus() });
+});
+
 // ---------------------------------------------------------------------------
 // Start
 // ---------------------------------------------------------------------------

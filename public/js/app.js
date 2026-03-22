@@ -85,6 +85,8 @@
     socket.on('status', (status) => {
       if (status.collecting) {
         setStatus('collecting', 'Polling...');
+      } else if (status.lastError) {
+        setStatus('error', `Poll error: ${status.lastError}`);
       } else if (status.nodeCount > 0) {
         setStatus('live', `${status.nodeCount} nodes, ${status.edgeCount} links`);
       }
@@ -1478,6 +1480,7 @@
     statusDot.className = 'status-dot';
     if (state === 'live') statusDot.classList.add('live');
     if (state === 'collecting') statusDot.classList.add('collecting');
+    if (state === 'error') statusDot.classList.add('error');
     statusText.textContent = text;
   }
 
