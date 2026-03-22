@@ -1,0 +1,392 @@
+{
+    "jsonrpc": "2.0",
+    "id": "atlas-debug",
+    "result": [
+        {
+            "categories": {
+                "IS-IS SR": {
+                    "entries": {
+                        "3": {
+                            "tunnelType": "IS-IS SR",
+                            "tunnelIndex": 3,
+                            "vias": [
+                                {
+                                    "type": "ip",
+                                    "nexthop": "20.1.3.3",
+                                    "interface": "Ethernet1",
+                                    "mplsEncap": {
+                                        "labelStack": [
+                                            "900004"
+                                        ]
+                                    }
+                                },
+                                {
+                                    "type": "ip",
+                                    "nexthop": "20.1.2.2",
+                                    "interface": "Ethernet47",
+                                    "mplsEncap": {
+                                        "labelStack": [
+                                            "900004"
+                                        ]
+                                    }
+                                }
+                            ],
+                            "backupVias": [],
+                            "endpoint": "100.0.0.4/32",
+                            "tunnelViaStatus": "notProgrammed"
+                        },
+                        "1": {
+                            "tunnelType": "IS-IS SR",
+                            "tunnelIndex": 1,
+                            "vias": [
+                                {
+                                    "type": "ip",
+                                    "nexthop": "20.1.2.2",
+                                    "interface": "Ethernet47",
+                                    "mplsEncap": {
+                                        "labelStack": [
+                                            "3",
+                                            "3"
+                                        ]
+                                    },
+                                    "resolvingTunnelInfo": {
+                                        "vias": [
+                                            {
+                                                "type": "ip",
+                                                "nexthop": "20.1.2.2",
+                                                "interface": "Ethernet47",
+                                                "mplsEncap": {
+                                                    "labelStack": [
+                                                        "3"
+                                                    ]
+                                                }
+                                            }
+                                        ],
+                                        "backupVias": [
+                                            {
+                                                "type": "ip",
+                                                "nexthop": "20.1.3.3",
+                                                "interface": "Ethernet1",
+                                                "mplsEncap": {
+                                                    "labelStack": [
+                                                        "900004",
+                                                        "900002"
+                                                    ]
+                                                }
+                                            }
+                                        ]
+                                    }
+                                }
+                            ],
+                            "backupVias": [],
+                            "endpoint": "100.0.0.2/32",
+                            "tunnelViaStatus": "notProgrammed"
+                        },
+                        "6": {
+                            "tunnelType": "IS-IS SR",
+                            "tunnelIndex": 6,
+                            "vias": [
+                                {
+                                    "type": "ip",
+                                    "nexthop": "20.1.3.3",
+                                    "interface": "Ethernet1",
+                                    "mplsEncap": {
+                                        "labelStack": [
+                                            "900005",
+                                            "3"
+                                        ]
+                                    },
+                                    "resolvingTunnelInfo": {
+                                        "vias": [
+                                            {
+                                                "type": "ip",
+                                                "nexthop": "20.1.3.3",
+                                                "interface": "Ethernet1",
+                                                "mplsEncap": {
+                                                    "labelStack": [
+                                                        "900005"
+                                                    ]
+                                                }
+                                            }
+                                        ],
+                                        "backupVias": [
+                                            {
+                                                "type": "ip",
+                                                "nexthop": "20.1.2.2",
+                                                "interface": "Ethernet47",
+                                                "mplsEncap": {
+                                                    "labelStack": [
+                                                        "900006",
+                                                        "149153",
+                                                        "116385"
+                                                    ]
+                                                }
+                                            }
+                                        ]
+                                    }
+                                }
+                            ],
+                            "backupVias": [],
+                            "endpoint": "100.0.0.5/32",
+                            "tunnelViaStatus": "notProgrammed"
+                        },
+                        "5": {
+                            "tunnelType": "IS-IS SR",
+                            "tunnelIndex": 5,
+                            "vias": [
+                                {
+                                    "type": "ip",
+                                    "nexthop": "20.1.3.3",
+                                    "interface": "Ethernet1",
+                                    "mplsEncap": {
+                                        "labelStack": [
+                                            "900007",
+                                            "3"
+                                        ]
+                                    },
+                                    "resolvingTunnelInfo": {
+                                        "vias": [
+                                            {
+                                                "type": "ip",
+                                                "nexthop": "20.1.3.3",
+                                                "interface": "Ethernet1",
+                                                "mplsEncap": {
+                                                    "labelStack": [
+                                                        "900007"
+                                                    ]
+                                                }
+                                            }
+                                        ],
+                                        "backupVias": [
+                                            {
+                                                "type": "ip",
+                                                "nexthop": "20.1.2.2",
+                                                "interface": "Ethernet47",
+                                                "mplsEncap": {
+                                                    "labelStack": [
+                                                        "900006",
+                                                        "149153"
+                                                    ]
+                                                }
+                                            }
+                                        ]
+                                    }
+                                }
+                            ],
+                            "backupVias": [],
+                            "endpoint": "100.0.0.7/32",
+                            "tunnelViaStatus": "notProgrammed"
+                        },
+                        "2": {
+                            "tunnelType": "IS-IS SR",
+                            "tunnelIndex": 2,
+                            "vias": [
+                                {
+                                    "type": "ip",
+                                    "nexthop": "20.1.3.3",
+                                    "interface": "Ethernet1",
+                                    "mplsEncap": {
+                                        "labelStack": [
+                                            "900006"
+                                        ]
+                                    }
+                                },
+                                {
+                                    "type": "ip",
+                                    "nexthop": "20.1.2.2",
+                                    "interface": "Ethernet47",
+                                    "mplsEncap": {
+                                        "labelStack": [
+                                            "900006"
+                                        ]
+                                    }
+                                }
+                            ],
+                            "backupVias": [],
+                            "endpoint": "100.0.0.6/32",
+                            "tunnelViaStatus": "notProgrammed"
+                        },
+                        "4": {
+                            "tunnelType": "IS-IS SR",
+                            "tunnelIndex": 4,
+                            "vias": [
+                                {
+                                    "type": "ip",
+                                    "nexthop": "20.1.3.3",
+                                    "interface": "Ethernet1",
+                                    "mplsEncap": {
+                                        "labelStack": [
+                                            "3",
+                                            "3"
+                                        ]
+                                    },
+                                    "resolvingTunnelInfo": {
+                                        "vias": [
+                                            {
+                                                "type": "ip",
+                                                "nexthop": "20.1.3.3",
+                                                "interface": "Ethernet1",
+                                                "mplsEncap": {
+                                                    "labelStack": [
+                                                        "3"
+                                                    ]
+                                                }
+                                            }
+                                        ],
+                                        "backupVias": [
+                                            {
+                                                "type": "ip",
+                                                "nexthop": "20.1.2.2",
+                                                "interface": "Ethernet47",
+                                                "mplsEncap": {
+                                                    "labelStack": [
+                                                        "900006",
+                                                        "149153",
+                                                        "900003"
+                                                    ]
+                                                }
+                                            }
+                                        ]
+                                    }
+                                }
+                            ],
+                            "backupVias": [],
+                            "endpoint": "100.0.0.3/32",
+                            "tunnelViaStatus": "notProgrammed"
+                        }
+                    }
+                },
+                "TI-LFA": {
+                    "entries": {
+                        "4": {
+                            "tunnelType": "TI-LFA",
+                            "tunnelIndex": 4,
+                            "vias": [
+                                {
+                                    "type": "ip",
+                                    "nexthop": "20.1.3.3",
+                                    "interface": "Ethernet1",
+                                    "mplsEncap": {
+                                        "labelStack": [
+                                            "900005"
+                                        ]
+                                    }
+                                }
+                            ],
+                            "backupVias": [
+                                {
+                                    "type": "ip",
+                                    "nexthop": "20.1.2.2",
+                                    "interface": "Ethernet47",
+                                    "mplsEncap": {
+                                        "labelStack": [
+                                            "900006",
+                                            "149153",
+                                            "116385"
+                                        ]
+                                    }
+                                }
+                            ],
+                            "endpoint": "::/0",
+                            "tunnelViaStatus": "usingPrimaryVias"
+                        },
+                        "3": {
+                            "tunnelType": "TI-LFA",
+                            "tunnelIndex": 3,
+                            "vias": [
+                                {
+                                    "type": "ip",
+                                    "nexthop": "20.1.3.3",
+                                    "interface": "Ethernet1",
+                                    "mplsEncap": {
+                                        "labelStack": [
+                                            "900007"
+                                        ]
+                                    }
+                                }
+                            ],
+                            "backupVias": [
+                                {
+                                    "type": "ip",
+                                    "nexthop": "20.1.2.2",
+                                    "interface": "Ethernet47",
+                                    "mplsEncap": {
+                                        "labelStack": [
+                                            "900006",
+                                            "149153"
+                                        ]
+                                    }
+                                }
+                            ],
+                            "endpoint": "::/0",
+                            "tunnelViaStatus": "usingPrimaryVias"
+                        },
+                        "2": {
+                            "tunnelType": "TI-LFA",
+                            "tunnelIndex": 2,
+                            "vias": [
+                                {
+                                    "type": "ip",
+                                    "nexthop": "20.1.2.2",
+                                    "interface": "Ethernet47",
+                                    "mplsEncap": {
+                                        "labelStack": [
+                                            "3"
+                                        ]
+                                    }
+                                }
+                            ],
+                            "backupVias": [
+                                {
+                                    "type": "ip",
+                                    "nexthop": "20.1.3.3",
+                                    "interface": "Ethernet1",
+                                    "mplsEncap": {
+                                        "labelStack": [
+                                            "900004",
+                                            "900002"
+                                        ]
+                                    }
+                                }
+                            ],
+                            "endpoint": "::/0",
+                            "tunnelViaStatus": "usingPrimaryVias"
+                        },
+                        "5": {
+                            "tunnelType": "TI-LFA",
+                            "tunnelIndex": 5,
+                            "vias": [
+                                {
+                                    "type": "ip",
+                                    "nexthop": "20.1.3.3",
+                                    "interface": "Ethernet1",
+                                    "mplsEncap": {
+                                        "labelStack": [
+                                            "3"
+                                        ]
+                                    }
+                                }
+                            ],
+                            "backupVias": [
+                                {
+                                    "type": "ip",
+                                    "nexthop": "20.1.2.2",
+                                    "interface": "Ethernet47",
+                                    "mplsEncap": {
+                                        "labelStack": [
+                                            "900006",
+                                            "149153",
+                                            "900003"
+                                        ]
+                                    }
+                                }
+                            ],
+                            "endpoint": "::/0",
+                            "tunnelViaStatus": "usingPrimaryVias"
+                        }
+                    }
+                }
+            }
+        }
+    ]
+}
