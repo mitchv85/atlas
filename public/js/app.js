@@ -15,12 +15,7 @@
   // ── DOM References ────────────────────────────────────────────────
   const $ = (sel) => document.querySelector(sel);
   const btnCollect = $('#btnCollect');
-  const btnManageDevices = $('#btnManageDevices');
   const btnEmptyAddDevice = $('#btnEmptyAddDevice');
-  const deviceModal = $('#deviceModal');
-  const btnCloseModal = $('#btnCloseModal');
-  const addDeviceForm = $('#addDeviceForm');
-  const deviceList = $('#deviceList');
   const emptyState = $('#emptyState');
   const topoToolbar = $('#topoToolbar');
   const detailPanel = $('#detailPanel');
@@ -29,6 +24,30 @@
   const btnCloseDetail = $('#btnCloseDetail');
   const statusDot = $('.status-dot');
   const statusText = $('.status-text');
+
+  // Tabs
+  const mainTabs = document.querySelectorAll('.topbar-tab');
+  const viewTopology = $('#viewTopology');
+  const viewDevices = $('#viewDevices');
+
+  // Devices page
+  const devicesTableBody = $('#devicesTableBody');
+  const devicesEmpty = $('#devicesEmpty');
+  const devicesCount = $('#devicesCount');
+  const btnRefreshDevices = $('#btnRefreshDevices');
+  const btnExportDevices = $('#btnExportDevices');
+  const btnTestAll = $('#btnTestAll');
+  const btnAddDevice = $('#btnAddDevice');
+  const addDeviceError = $('#addDeviceError');
+  const devicesDropzone = $('#devicesDropzone');
+  const devicesFileInput = $('#devicesFileInput');
+  const importStatus = $('#importStatus');
+
+  // Legacy modal (kept for backward compat)
+  const deviceModal = $('#deviceModal');
+  const btnCloseModal = $('#btnCloseModal');
+  const addDeviceForm = $('#addDeviceForm');
+  const deviceList = $('#deviceList');
 
   // Path analysis
   const pathBar = $('#pathBar');
@@ -39,6 +58,208 @@
   const pathAlgo = $('#pathAlgo');
   const btnComputePath = $('#btnComputePath');
   const btnClearPath = $('#btnClearPath');
+
+  // ── Tab Switching ───────────────────────────────────────────────
+  let activeTab = 'topology';
+  const deviceTestResults = new Map(); // id → 'ok' | 'fail' | 'testing'
+
+  function switchTab(tabName) {
+    activeTab = tabName;
+    mainTabs.forEach((t) => {
+      t.classList.toggle('active', t.dataset.tab === tabName);
+    });
+    viewTopology.classList.toggle('active', tabName === 'topology');
+    viewDevices.classList.toggle('active', tabName === 'devices');
+
+    // Show/hide path bar and collect button based on tab
+    if (pathBar) pathBar.style.display = tabName === 'topology' && topologyData ? 'flex' : 'none';
+    if (btnCollect) btnCollect.style.display = tabName === 'topology' ? '' : 'none';
+
+    if (tabName === 'devices') {
+      refreshDevicesPage();
+    }
+  }
+
+  // ── Devices Page ────────────────────────────────────────────────
+  async function refreshDevicesPage() {
+    const list = await API.getDevices();
+    devices = list;
+    btnCollect.disabled = devices.length === 0;
+    renderDevicesTable(list);
+  }
+
+  function renderDevicesTable(list) {
+    devicesCount.textContent = `${list.length} device${list.length !== 1 ? 's' : ''}`;
+
+    if (list.length === 0) {
+      devicesEmpty.classList.add('visible');
+      devicesTableBody.innerHTML = '';
+      return;
+    }
+
+    devicesEmpty.classList.remove('visible');
+
+    devicesTableBody.innerHTML = list.map((d) => {
+      const testState = deviceTestResults.get(d.id) || 'unknown';
+      const dotClass = testState === 'ok' ? 'ok' : testState === 'fail' ? 'fail' : testState === 'testing' ? 'testing' : '';
+      const statusLabel = testState === 'ok' ? 'Reachable' : testState === 'fail' ? 'Unreachable' : testState === 'testing' ? 'Testing...' : '—';
+
+      return `<tr data-id="${d.id}">
+        <td>${esc(d.name)}</td>
+        <td>${esc(d.host)}</td>
+        <td>${d.port}</td>
+        <td>${esc(d.transport)}</td>
+        <td>
+          <span class="dev-status">
+            <span class="dev-status-dot ${dotClass}"></span>
+            ${statusLabel}
+          </span>
+        </td>
+        <td>
+          <div class="dev-actions">
+            <button class="dev-action-btn dev-test-btn" data-id="${d.id}" title="Test connectivity">⚡ Test</button>
+            <button class="dev-action-btn danger dev-delete-btn" data-id="${d.id}" title="Delete device">✕</button>
+          </div>
+        </td>
+      </tr>`;
+    }).join('');
+
+    // Wire action buttons
+    devicesTableBody.querySelectorAll('.dev-test-btn').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        testSingleDevice(btn.dataset.id);
+      });
+    });
+
+    devicesTableBody.querySelectorAll('.dev-delete-btn').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        deleteDevice(btn.dataset.id);
+      });
+    });
+  }
+
+  async function testSingleDevice(id) {
+    deviceTestResults.set(id, 'testing');
+    renderDevicesTable(devices);
+    try {
+      const result = await API.testDevice(id);
+      deviceTestResults.set(id, result.success ? 'ok' : 'fail');
+    } catch {
+      deviceTestResults.set(id, 'fail');
+    }
+    renderDevicesTable(devices);
+  }
+
+  async function testAllDevices() {
+    for (const d of devices) {
+      deviceTestResults.set(d.id, 'testing');
+    }
+    renderDevicesTable(devices);
+
+    await Promise.all(devices.map(async (d) => {
+      try {
+        const result = await API.testDevice(d.id);
+        deviceTestResults.set(d.id, result.success ? 'ok' : 'fail');
+      } catch {
+        deviceTestResults.set(d.id, 'fail');
+      }
+      renderDevicesTable(devices);
+    }));
+  }
+
+  async function deleteDevice(id) {
+    const device = devices.find((d) => d.id === id);
+    if (!device || !confirm(`Delete ${device.name}?`)) return;
+    await API.deleteDevice(id);
+    deviceTestResults.delete(id);
+    await refreshDevicesPage();
+  }
+
+  async function addDeviceFromForm() {
+    addDeviceError.textContent = '';
+    const name = $('#addDevName').value.trim();
+    const host = $('#addDevHost').value.trim();
+    const username = $('#addDevUser').value.trim();
+    const password = $('#addDevPass').value;
+    const port = parseInt($('#addDevPort').value, 10) || 443;
+
+    if (!name) return addDeviceError.textContent = 'Name is required';
+    if (!host) return addDeviceError.textContent = 'Host / IP is required';
+    if (!username) return addDeviceError.textContent = 'Username is required';
+
+    const result = await API.addDevice({ name, host, username, password, port, transport: 'https' });
+    if (result.error) return addDeviceError.textContent = result.error;
+
+    // Clear form
+    $('#addDevName').value = '';
+    $('#addDevHost').value = '';
+    await refreshDevicesPage();
+  }
+
+  // ── Bulk Import ─────────────────────────────────────────────────
+  function parseCSV(text) {
+    const lines = text.split(/\r?\n/).filter((l) => l.trim());
+    if (lines.length < 2) return [];
+
+    const headers = lines[0].split(',').map((h) => h.trim().toLowerCase());
+    const devices = [];
+
+    for (let i = 1; i < lines.length; i++) {
+      const vals = lines[i].split(',').map((v) => v.trim().replace(/^["']|["']$/g, ''));
+      const obj = {};
+      headers.forEach((h, idx) => { obj[h] = vals[idx] || ''; });
+      if (obj.name && obj.host) devices.push(obj);
+    }
+
+    return devices;
+  }
+
+  async function handleBulkImport(file) {
+    importStatus.textContent = '';
+    importStatus.className = 'devices-import-status';
+
+    try {
+      const text = await file.text();
+      let incoming;
+
+      if (file.name.endsWith('.json')) {
+        const parsed = JSON.parse(text);
+        incoming = Array.isArray(parsed) ? parsed : parsed.devices || [];
+      } else {
+        incoming = parseCSV(text);
+      }
+
+      if (incoming.length === 0) {
+        importStatus.textContent = 'No valid devices found in file.';
+        importStatus.classList.add('error');
+        return;
+      }
+
+      const result = await API.bulkImportDevices(incoming);
+      importStatus.textContent = `Imported ${result.added} device(s), ${result.skipped} skipped.`;
+      importStatus.classList.add(result.added > 0 ? 'success' : 'error');
+
+      if (result.added > 0) await refreshDevicesPage();
+    } catch (err) {
+      importStatus.textContent = `Import error: ${err.message}`;
+      importStatus.classList.add('error');
+    }
+  }
+
+  function exportDevicesCSV() {
+    const headers = ['name', 'host', 'username', 'port', 'transport'];
+    const rows = devices.map((d) =>
+      [d.name, d.host, d.username || 'admin', d.port, d.transport].map((v) => `"${v || ''}"`).join(',')
+    );
+    const csv = [headers.join(','), ...rows].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `atlas-devices-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+  }
 
   // ── Init ──────────────────────────────────────────────────────────
   async function init() {
@@ -109,14 +330,21 @@
 
   // ── Event Binding ─────────────────────────────────────────────────
   function bindEvents() {
-    btnManageDevices.addEventListener('click', openDeviceModal);
-    btnEmptyAddDevice.addEventListener('click', openDeviceModal);
-    btnCloseModal.addEventListener('click', closeDeviceModal);
-    deviceModal.addEventListener('click', (e) => {
-      if (e.target === deviceModal) closeDeviceModal();
+    // Tab navigation
+    mainTabs.forEach((tab) => {
+      tab.addEventListener('click', () => switchTab(tab.dataset.tab));
     });
 
-    addDeviceForm.addEventListener('submit', handleAddDevice);
+    // "Add Your First Device" button switches to Devices tab
+    btnEmptyAddDevice.addEventListener('click', () => switchTab('devices'));
+
+    // Legacy modal handlers (still used if modal HTML exists)
+    if (btnCloseModal) btnCloseModal.addEventListener('click', closeDeviceModal);
+    if (deviceModal) deviceModal.addEventListener('click', (e) => {
+      if (e.target === deviceModal) closeDeviceModal();
+    });
+    if (addDeviceForm) addDeviceForm.addEventListener('submit', handleAddDevice);
+
     btnCollect.addEventListener('click', handleCollect);
     btnCloseDetail.addEventListener('click', closeDetail);
 
@@ -137,16 +365,57 @@
     pathFailLink.addEventListener('change', () => {
       if (pathFailLink.value) pathFailNode.value = '';
     });
+
+    // ── Devices page bindings ───────────────────────────────────
+    if (btnAddDevice) btnAddDevice.addEventListener('click', addDeviceFromForm);
+    if (btnRefreshDevices) btnRefreshDevices.addEventListener('click', refreshDevicesPage);
+    if (btnExportDevices) btnExportDevices.addEventListener('click', exportDevicesCSV);
+    if (btnTestAll) btnTestAll.addEventListener('click', testAllDevices);
+
+    // Bulk import — dropzone
+    if (devicesDropzone) {
+      devicesDropzone.addEventListener('click', () => devicesFileInput.click());
+      devicesDropzone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        devicesDropzone.classList.add('dragover');
+      });
+      devicesDropzone.addEventListener('dragleave', () => {
+        devicesDropzone.classList.remove('dragover');
+      });
+      devicesDropzone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        devicesDropzone.classList.remove('dragover');
+        const file = e.dataTransfer.files[0];
+        if (file) handleBulkImport(file);
+      });
+    }
+    if (devicesFileInput) {
+      devicesFileInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (file) handleBulkImport(file);
+        devicesFileInput.value = ''; // Reset so same file can be re-imported
+      });
+    }
+
+    // Enter key on add device form fields
+    ['addDevName', 'addDevHost', 'addDevUser', 'addDevPass', 'addDevPort'].forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); addDeviceFromForm(); }
+      });
+    });
   }
 
-  // ── Device Management ─────────────────────────────────────────────
+  // ── Device Management (legacy modal + init helper) ───────────────
   async function refreshDevices() {
     devices = await API.getDevices();
-    renderDeviceList();
     btnCollect.disabled = devices.length === 0;
+    // Also update legacy modal list if it exists
+    if (deviceList) renderDeviceList();
   }
 
   function renderDeviceList() {
+    if (!deviceList) return;
     if (devices.length === 0) {
       deviceList.innerHTML = '<p class="text-muted">No devices configured yet.</p>';
       return;

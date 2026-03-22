@@ -23,6 +23,38 @@ const API = {
     return res.json();
   },
 
+  async addDevice(device) {
+    const res = await fetch('/api/devices', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(device),
+    });
+    return res.json();
+  },
+
+  async updateDevice(id, fields) {
+    const res = await fetch(`/api/devices/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(fields),
+    });
+    return res.json();
+  },
+
+  async deleteDevice(id) {
+    const res = await fetch(`/api/devices/${id}`, { method: 'DELETE' });
+    return res.json();
+  },
+
+  async bulkImportDevices(devices) {
+    const res = await fetch('/api/devices/bulk', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ devices }),
+    });
+    return res.json();
+  },
+
   async testDevice(id) {
     const res = await fetch(`/api/devices/${id}/test`, { method: 'POST' });
     return res.json();

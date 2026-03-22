@@ -72,6 +72,48 @@ body {
   gap: 10px;
 }
 
+.topbar-tabs {
+  display: flex;
+  gap: 2px;
+  margin-left: 24px;
+  background: var(--bg-elevated);
+  border-radius: var(--radius-sm);
+  padding: 2px;
+}
+
+.topbar-tab {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  padding: 5px 14px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.topbar-tab:hover {
+  color: var(--text-secondary);
+}
+
+.topbar-tab.active {
+  background: var(--accent-dim);
+  color: var(--text-primary);
+}
+
+/* Tab views */
+.tab-view {
+  display: none;
+  width: 100%;
+  height: 100%;
+}
+
+.tab-view.active {
+  display: flex;
+}
+
 .topbar-logo {
   width: 28px;
   height: 28px;
@@ -1115,3 +1157,250 @@ body {
   justify-content: flex-end;
   margin-bottom: 4px;
 }
+
+/* ── Devices Page ──────────────────────────────────────────────────── */
+.devices-page {
+  width: 100%;
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 24px 20px;
+  overflow-y: auto;
+  height: 100%;
+}
+
+.devices-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.devices-toolbar-left {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.devices-heading {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.devices-count {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.devices-toolbar-right {
+  display: flex;
+  gap: 6px;
+}
+
+/* Device Table */
+.devices-table-wrap {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  margin-bottom: 20px;
+}
+
+.devices-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+}
+
+.devices-table thead th {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  text-align: left;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-elevated);
+  white-space: nowrap;
+}
+
+.devices-table tbody td {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.78rem;
+}
+
+.devices-table tbody tr:hover {
+  background: var(--bg-elevated);
+}
+
+.devices-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.devices-empty {
+  display: none;
+  text-align: center;
+  padding: 32px;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+}
+
+.devices-empty.visible {
+  display: block;
+}
+
+/* Status badges in table */
+.dev-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.72rem;
+}
+
+.dev-status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-muted);
+}
+
+.dev-status-dot.ok { background: var(--green); box-shadow: 0 0 5px var(--green); }
+.dev-status-dot.fail { background: var(--red); }
+.dev-status-dot.testing { background: var(--amber); animation: pulse 1s infinite; }
+
+/* Action buttons in table */
+.dev-actions {
+  display: flex;
+  gap: 5px;
+}
+
+.dev-action-btn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text-muted);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.65rem;
+  padding: 3px 8px;
+  cursor: pointer;
+  transition: all 0.1s;
+}
+
+.dev-action-btn:hover {
+  border-color: var(--border-light);
+  color: var(--text-primary);
+}
+
+.dev-action-btn.danger:hover {
+  border-color: var(--red);
+  color: var(--red);
+}
+
+/* Add Device Form */
+.devices-add-section,
+.devices-import-section {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+  margin-bottom: 16px;
+}
+
+.devices-add-section h3,
+.devices-import-section h3 {
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin: 0 0 12px 0;
+  color: var(--text-primary);
+}
+
+.devices-add-form {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+
+.devices-add-form .form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.devices-add-form .form-group label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.62rem;
+  color: var(--text-muted);
+  letter-spacing: 0.06em;
+}
+
+.devices-add-form .form-group input {
+  background: var(--bg-deep);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 6px 8px;
+  color: var(--text-primary);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.78rem;
+  outline: none;
+  width: 130px;
+}
+
+.devices-add-form .form-group.form-group-sm input {
+  width: 65px;
+}
+
+.devices-add-form .form-group input:focus {
+  border-color: var(--accent-dim);
+}
+
+.devices-add-error {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.72rem;
+  color: var(--red);
+  margin-top: 8px;
+}
+
+/* Bulk Import Dropzone */
+.devices-dropzone {
+  border: 2px dashed var(--border);
+  border-radius: var(--radius);
+  padding: 24px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.devices-dropzone:hover,
+.devices-dropzone.dragover {
+  border-color: var(--accent);
+  background: var(--accent-glow);
+}
+
+.dropzone-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.dropzone-browse {
+  color: var(--accent);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.devices-import-status {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.72rem;
+  margin-top: 8px;
+}
+
+.devices-import-status.success { color: var(--green); }
+.devices-import-status.error { color: var(--red); }

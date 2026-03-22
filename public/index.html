@@ -26,6 +26,11 @@
       </svg>
       <h1 class="topbar-title">ATLAS</h1>
       <span class="topbar-subtitle">Topology Engine</span>
+
+      <nav class="topbar-tabs" id="mainTabs">
+        <button class="topbar-tab active" data-tab="topology">Topology</button>
+        <button class="topbar-tab" data-tab="devices">Devices</button>
+      </nav>
     </div>
 
     <div class="topbar-actions">
@@ -38,12 +43,6 @@
           <path d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z"/>
         </svg>
         Collect Topology
-      </button>
-      <button class="btn btn-ghost" id="btnManageDevices">
-        <svg viewBox="0 0 20 20" fill="currentColor" class="btn-icon">
-          <path fill-rule="evenodd" d="M2 5a2 2 0 012-2h12a2 2 0 012 2v2a2 2 0 01-2 2H4a2 2 0 01-2-2V5zm14 1a1 1 0 11-2 0 1 1 0 012 0zM2 13a2 2 0 012-2h12a2 2 0 012 2v2a2 2 0 01-2 2H4a2 2 0 01-2-2v-2zm14 1a1 1 0 11-2 0 1 1 0 012 0z" clip-rule="evenodd"/>
-        </svg>
-        Devices
       </button>
     </div>
   </header>
@@ -101,53 +100,142 @@
   <!-- Main Content Area                                                   -->
   <!-- ================================================================== -->
   <main class="main-content">
-    <!-- Topology Canvas -->
-    <div class="topology-container" id="topologyContainer">
-      <div class="topology-canvas" id="cy"></div>
+    <!-- ============================================================= -->
+    <!-- Tab: Topology                                                  -->
+    <!-- ============================================================= -->
+    <div class="tab-view active" id="viewTopology">
+      <!-- Topology Canvas -->
+      <div class="topology-container" id="topologyContainer">
+        <div class="topology-canvas" id="cy"></div>
 
-      <!-- Empty state -->
-      <div class="empty-state" id="emptyState">
-        <svg class="empty-icon" viewBox="0 0 80 80" fill="none">
-          <circle cx="20" cy="20" r="6" stroke="var(--text-muted)" stroke-width="1.5"/>
-          <circle cx="60" cy="20" r="6" stroke="var(--text-muted)" stroke-width="1.5"/>
-          <circle cx="40" cy="55" r="6" stroke="var(--text-muted)" stroke-width="1.5"/>
-          <line x1="25" y1="23" x2="35" y2="52" stroke="var(--text-muted)" stroke-width="1" stroke-dasharray="4 3"/>
-          <line x1="55" y1="23" x2="45" y2="52" stroke="var(--text-muted)" stroke-width="1" stroke-dasharray="4 3"/>
-          <line x1="26" y1="20" x2="54" y2="20" stroke="var(--text-muted)" stroke-width="1" stroke-dasharray="4 3"/>
-        </svg>
-        <h2>No Topology Loaded</h2>
-        <p>Add a device and collect the IS-IS LSDB to visualize your network.</p>
-        <button class="btn btn-primary" id="btnEmptyAddDevice">Add Your First Device</button>
+        <!-- Empty state -->
+        <div class="empty-state" id="emptyState">
+          <svg class="empty-icon" viewBox="0 0 80 80" fill="none">
+            <circle cx="20" cy="20" r="6" stroke="var(--text-muted)" stroke-width="1.5"/>
+            <circle cx="60" cy="20" r="6" stroke="var(--text-muted)" stroke-width="1.5"/>
+            <circle cx="40" cy="55" r="6" stroke="var(--text-muted)" stroke-width="1.5"/>
+            <line x1="25" y1="23" x2="35" y2="52" stroke="var(--text-muted)" stroke-width="1" stroke-dasharray="4 3"/>
+            <line x1="55" y1="23" x2="45" y2="52" stroke="var(--text-muted)" stroke-width="1" stroke-dasharray="4 3"/>
+            <line x1="26" y1="20" x2="54" y2="20" stroke="var(--text-muted)" stroke-width="1" stroke-dasharray="4 3"/>
+          </svg>
+          <h2>No Topology Loaded</h2>
+          <p>Add a device and collect the IS-IS LSDB to visualize your network.</p>
+          <button class="btn btn-primary" id="btnEmptyAddDevice">Add Your First Device</button>
+        </div>
+
+        <!-- Topology toolbar (zoom, layout, fit) -->
+        <div class="topo-toolbar" id="topoToolbar" style="display:none;">
+          <button class="topo-btn" id="btnFit" title="Fit to screen">
+            <svg viewBox="0 0 20 20" fill="currentColor"><path d="M3 4a1 1 0 011-1h4a1 1 0 010 2H5v3a1 1 0 01-2 0V4zm12-1a1 1 0 110 2h-3a1 1 0 110-2h3zM4 16a1 1 0 001 1h4a1 1 0 000-2H6v-3a1 1 0 00-2 0v4zm12-1v-3a1 1 0 00-2 0v3h-3a1 1 0 000 2h4a1 1 0 001-1z"/></svg>
+          </button>
+          <button class="topo-btn" id="btnZoomIn" title="Zoom in">
+            <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clip-rule="evenodd"/></svg>
+          </button>
+          <button class="topo-btn" id="btnZoomOut" title="Zoom out">
+            <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5 10a1 1 0 011-1h8a1 1 0 110 2H6a1 1 0 01-1-1z" clip-rule="evenodd"/></svg>
+          </button>
+          <div class="topo-divider"></div>
+          <button class="topo-btn" id="btnLayoutCose" title="Force-directed layout">
+            <svg viewBox="0 0 20 20" fill="currentColor"><path d="M5 3a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2V5a2 2 0 00-2-2H5zm0 8a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2v-2a2 2 0 00-2-2H5zm6-6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V5zm2 6a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2v-2a2 2 0 00-2-2h-2z"/></svg>
+          </button>
+        </div>
       </div>
 
-      <!-- Topology toolbar (zoom, layout, fit) -->
-      <div class="topo-toolbar" id="topoToolbar" style="display:none;">
-        <button class="topo-btn" id="btnFit" title="Fit to screen">
-          <svg viewBox="0 0 20 20" fill="currentColor"><path d="M3 4a1 1 0 011-1h4a1 1 0 010 2H5v3a1 1 0 01-2 0V4zm12-1a1 1 0 110 2h-3a1 1 0 110-2h3zM4 16a1 1 0 001 1h4a1 1 0 000-2H6v-3a1 1 0 00-2 0v4zm12-1v-3a1 1 0 00-2 0v3h-3a1 1 0 000 2h4a1 1 0 001-1z"/></svg>
-        </button>
-        <button class="topo-btn" id="btnZoomIn" title="Zoom in">
-          <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clip-rule="evenodd"/></svg>
-        </button>
-        <button class="topo-btn" id="btnZoomOut" title="Zoom out">
-          <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5 10a1 1 0 011-1h8a1 1 0 110 2H6a1 1 0 01-1-1z" clip-rule="evenodd"/></svg>
-        </button>
-        <div class="topo-divider"></div>
-        <button class="topo-btn" id="btnLayoutCose" title="Force-directed layout">
-          <svg viewBox="0 0 20 20" fill="currentColor"><path d="M5 3a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2V5a2 2 0 00-2-2H5zm0 8a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2v-2a2 2 0 00-2-2H5zm6-6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V5zm2 6a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2v-2a2 2 0 00-2-2h-2z"/></svg>
-        </button>
-      </div>
+      <!-- Detail Panel (slides in from right) -->
+      <aside class="detail-panel" id="detailPanel">
+        <div class="detail-header">
+          <h2 class="detail-title" id="detailTitle">Details</h2>
+          <button class="btn-close" id="btnCloseDetail">&times;</button>
+        </div>
+        <div class="detail-body" id="detailBody">
+          <!-- Populated dynamically -->
+        </div>
+      </aside>
     </div>
 
-    <!-- Detail Panel (slides in from right) -->
-    <aside class="detail-panel" id="detailPanel">
-      <div class="detail-header">
-        <h2 class="detail-title" id="detailTitle">Details</h2>
-        <button class="btn-close" id="btnCloseDetail">&times;</button>
+    <!-- ============================================================= -->
+    <!-- Tab: Devices                                                   -->
+    <!-- ============================================================= -->
+    <div class="tab-view" id="viewDevices">
+      <div class="devices-page">
+        <!-- Toolbar -->
+        <div class="devices-toolbar">
+          <div class="devices-toolbar-left">
+            <h2 class="devices-heading">Device Inventory</h2>
+            <span class="devices-count" id="devicesCount">0 devices</span>
+          </div>
+          <div class="devices-toolbar-right">
+            <button class="btn btn-ghost btn-sm" id="btnRefreshDevices">⟳ Refresh</button>
+            <button class="btn btn-ghost btn-sm" id="btnExportDevices">↓ Export CSV</button>
+            <button class="btn btn-ghost btn-sm" id="btnTestAll">⚡ Test All</button>
+          </div>
+        </div>
+
+        <!-- Device Table -->
+        <div class="devices-table-wrap">
+          <table class="devices-table" id="devicesTable">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Host / IP</th>
+                <th>Port</th>
+                <th>Transport</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="devicesTableBody">
+              <!-- Populated dynamically -->
+            </tbody>
+          </table>
+          <div class="devices-empty" id="devicesEmpty">
+            No devices configured. Add one below or import from CSV/JSON.
+          </div>
+        </div>
+
+        <!-- Add Device Form -->
+        <div class="devices-add-section">
+          <h3>Add Device</h3>
+          <div class="devices-add-form" id="addDeviceFormNew">
+            <div class="form-group">
+              <label>Name</label>
+              <input type="text" id="addDevName" placeholder="e.g. PE-1" />
+            </div>
+            <div class="form-group">
+              <label>Host / IP</label>
+              <input type="text" id="addDevHost" placeholder="e.g. 10.0.0.1" />
+            </div>
+            <div class="form-group">
+              <label>Username</label>
+              <input type="text" id="addDevUser" placeholder="admin" value="admin" />
+            </div>
+            <div class="form-group">
+              <label>Password</label>
+              <input type="password" id="addDevPass" placeholder="password" value="admin" />
+            </div>
+            <div class="form-group form-group-sm">
+              <label>Port</label>
+              <input type="number" id="addDevPort" value="443" />
+            </div>
+            <button class="btn btn-primary btn-sm" id="btnAddDevice">+ Add</button>
+          </div>
+          <div class="devices-add-error" id="addDeviceError"></div>
+        </div>
+
+        <!-- Bulk Import -->
+        <div class="devices-import-section">
+          <h3>Bulk Import</h3>
+          <p class="text-muted" style="font-size:0.78rem;margin-bottom:10px;">
+            Drop a CSV or JSON file, or click to browse. CSV columns: name, host, username, password, port, transport
+          </p>
+          <div class="devices-dropzone" id="devicesDropzone">
+            <input type="file" id="devicesFileInput" accept=".csv,.json" style="display:none;" />
+            <div class="dropzone-label">Drop CSV or JSON file here, or <span class="dropzone-browse">browse</span></div>
+          </div>
+          <div class="devices-import-status" id="importStatus"></div>
+        </div>
       </div>
-      <div class="detail-body" id="detailBody">
-        <!-- Populated dynamically -->
-      </div>
-    </aside>
+    </div>
   </main>
 
   <!-- ================================================================== -->
