@@ -527,8 +527,13 @@
             ${labels.length > 0 ? `<span style="font-family:'JetBrains Mono',monospace;font-size:0.65rem;color:var(--text-muted);">[ ${labels.join(' ')} ]</span>` : ''}
           </div>`;
 
+      // Build a set of labels actually in the stack for filtering
+      const labelSet = new Set(labels.map(l => String(l)));
+
       for (const hop of path.hops) {
-        const adjSidStr = hop.adjSids?.length > 0 ? hop.adjSids.map(s => s.sid).join(', ') : '';
+        // Only show Adj-SIDs that are actually in the pushed label stack
+        const activeAdjSids = (hop.adjSids || []).filter(s => labelSet.has(String(s.sid)));
+        const adjSidStr = activeAdjSids.length > 0 ? activeAdjSids.map(s => s.sid).join(', ') : '';
         html += `
           <div style="font-size:0.72rem;color:var(--text-secondary);padding:2px 0 2px 14px;border-left:2px solid ${color}22;">
             ${esc(hop.fromHostname)} → ${esc(hop.toHostname)}
@@ -796,6 +801,22 @@
       return '<p class="text-muted">No path data</p>';
     }
 
+    // Build a set of labels actually in the pushed stack for filtering
+    const labelSet = new Set();
+    if (pathData.labelStack) {
+      for (const entry of pathData.labelStack) {
+        // Tunnel FIB format: { labels: [...] }
+        if (entry.labels) {
+          entry.labels.forEach(l => labelSet.add(String(l)));
+        }
+        // SPF-computed format: { label: N }
+        if (entry.label != null) {
+          const srgbBase = 900000;
+          labelSet.add(String(srgbBase + entry.label));
+        }
+      }
+    }
+
     let html = '<ul class="path-hops">';
 
     // Source node
@@ -813,9 +834,10 @@
       const hop = pathData.hops[i];
       const isLast = i === pathData.hops.length - 1;
 
-      // Link info between hops
-      const adjSidLabel = hop.adjSids?.length > 0
-        ? hop.adjSids.map((s) => s.sid).join(', ')
+      // Only show Adj-SIDs that are actually in the pushed label stack
+      const activeAdjSids = (hop.adjSids || []).filter(s => labelSet.has(String(s.sid)));
+      const adjSidLabel = activeAdjSids.length > 0
+        ? activeAdjSids.map((s) => s.sid).join(', ')
         : '';
 
       html += `
