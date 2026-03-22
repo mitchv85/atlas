@@ -6,7 +6,7 @@
   "devices": [
     {
       "id": "1e75c296-0458-4fe4-9361-fcd4b336de06",
-      "name": "PE2",
+      "name": "PE-2",
       "host": "172.31.0.28",
       "port": 443,
       "username": "admin",
@@ -15,7 +15,7 @@
     },
     {
       "id": "622f7d8e-a7de-407e-9943-abbd9869288d",
-      "name": "PE3",
+      "name": "PE-3",
       "host": "172.31.0.29",
       "port": 443,
       "username": "admin",
@@ -24,7 +24,7 @@
     },
     {
       "id": "7c287f2d-5cd7-406a-b4a1-4b162c729175",
-      "name": "PE4",
+      "name": "PE-4",
       "host": "172.31.0.19",
       "port": 443,
       "username": "admin",
@@ -33,7 +33,7 @@
     },
     {
       "id": "425284b2-7fd3-40c0-a291-98a43f36f43a",
-      "name": "PE5",
+      "name": "PE-5",
       "host": "172.31.0.39",
       "port": 443,
       "username": "admin",
@@ -42,7 +42,7 @@
     },
     {
       "id": "8816670f-cf71-402d-9604-9b627bd46bbe",
-      "name": "PE6",
+      "name": "PE-6",
       "host": "172.31.0.40",
       "port": 443,
       "username": "admin",
@@ -51,7 +51,7 @@
     },
     {
       "id": "ced43e06-5d7f-474c-b1cb-55d0ea32d2c3",
-      "name": "PE7",
+      "name": "PE-7",
       "host": "172.31.0.41",
       "port": 443,
       "username": "admin",
@@ -59,57 +59,9 @@
       "transport": "https"
     },
     {
-      "id": "1d2e0bab-20c4-456d-9a82-49747dee79bb",
-      "name": "PE1",
+      "id": "0d9a433a-7fd0-49e8-9f8b-4bdbc2aa4edb",
+      "name": "PE-1",
       "host": "172.31.0.27",
-      "port": 443,
-      "username": "admin",
-      "password": "admin",
-      "transport": "https"
-    },
-    {
-      "name": "PE-2",
-      "host": "10.0.0.2",
-      "port": 443,
-      "username": "admin",
-      "password": "admin",
-      "transport": "https"
-    },
-    {
-      "name": "PE-3",
-      "host": "10.0.0.3",
-      "port": 443,
-      "username": "admin",
-      "password": "admin",
-      "transport": "https"
-    },
-    {
-      "name": "PE-4",
-      "host": "10.0.0.4",
-      "port": 443,
-      "username": "admin",
-      "password": "admin",
-      "transport": "https"
-    },
-    {
-      "name": "PE-5",
-      "host": "10.0.0.5",
-      "port": 443,
-      "username": "admin",
-      "password": "admin",
-      "transport": "https"
-    },
-    {
-      "name": "PE-6",
-      "host": "10.0.0.6",
-      "port": 443,
-      "username": "admin",
-      "password": "admin",
-      "transport": "https"
-    },
-    {
-      "name": "PE-7",
-      "host": "10.0.0.7",
       "port": 443,
       "username": "admin",
       "password": "admin",
