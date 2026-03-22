@@ -54,19 +54,44 @@ function parseTunnelFib(raw) {
 
     for (const via of (entry.vias || [])) {
       const rti = via.resolvingTunnelInfo;
+      const outerNexthop = via.nexthop || '';
+      const outerLabels = (via.mplsEncap?.labelStack || []).map(String);
+      const outerInterface = via.interface || '';
 
       if (rti) {
-        // This tunnel resolves through a TI-LFA tunnel
-        // Primary vias are in resolvingTunnelInfo.vias
-        for (const pv of (rti.vias || [])) {
+        // This tunnel resolves through a TI-LFA tunnel.
+        //
+        // Two patterns exist depending on EOS version / config:
+        //
+        // Pattern A (nexthop = 0.0.0.0, DynamicTunnel interface):
+        //   Outer labelStack is just a service label placeholder.
+        //   Real primary labels + nexthop are in resolvingTunnelInfo.vias.
+        //
+        // Pattern B (nexthop = real IP):
+        //   Outer labelStack is the FULL combined forwarding stack.
+        //   resolvingTunnelInfo.vias has only the transport tunnel label.
+        //
+        // Detection: nexthop === '0.0.0.0' → Pattern A, else → Pattern B.
+
+        if (outerNexthop === '0.0.0.0') {
+          // Pattern A: use resolvingTunnelInfo.vias for primary
+          for (const pv of (rti.vias || [])) {
+            tunnel.primaryPaths.push({
+              nexthop: pv.nexthop || '',
+              interface: pv.interface || '',
+              labelStack: (pv.mplsEncap?.labelStack || []).map(String),
+            });
+          }
+        } else {
+          // Pattern B: use outer via's full label stack for primary
           tunnel.primaryPaths.push({
-            nexthop: pv.nexthop || '',
-            interface: pv.interface || '',
-            labelStack: (pv.mplsEncap?.labelStack || []).map(String),
+            nexthop: outerNexthop,
+            interface: outerInterface,
+            labelStack: outerLabels,
           });
         }
 
-        // Backup vias are in resolvingTunnelInfo.backupVias
+        // Backup vias always come from resolvingTunnelInfo.backupVias
         for (const bv of (rti.backupVias || [])) {
           tunnel.backupPaths.push({
             nexthop: bv.nexthop || '',
@@ -76,12 +101,11 @@ function parseTunnelFib(raw) {
         }
       } else {
         // Direct tunnel (no TI-LFA resolving) — e.g., ECMP paths
-        const labels = (via.mplsEncap?.labelStack || []).map(String);
-        if (via.nexthop && via.nexthop !== '0.0.0.0') {
+        if (outerNexthop && outerNexthop !== '0.0.0.0') {
           tunnel.primaryPaths.push({
-            nexthop: via.nexthop,
-            interface: via.interface || '',
-            labelStack: labels,
+            nexthop: outerNexthop,
+            interface: outerInterface,
+            labelStack: outerLabels,
           });
         }
       }
