@@ -1394,8 +1394,8 @@
 
     // Adjacency Health — both directions
     const healthSides = [
-      { label: `${d.sourceLabel} → ${d.targetLabel}`, health: d.forwardHealth },
-      { label: `${d.targetLabel} → ${d.sourceLabel}`, health: d.reverseHealth },
+      { label: d.sourceLabel, health: d.forwardHealth },
+      { label: d.targetLabel, health: d.reverseHealth },
     ].filter(s => s.health);
 
     if (healthSides.length > 0) {
