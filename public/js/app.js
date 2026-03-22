@@ -727,10 +727,12 @@
 
     function parseDirOutput(text) {
       const entries = [];
-      for (const line of text.split('\n')) {
-        // Match lines like: -rwx  145637376  May 11 2025 17:25:34  EOS-4.33.2F-DPE.swi
-        // Or: drwx      4096  Mar 20 2025 17:22:08  .boot-config
-        const m = line.match(/^\s*([d-][rwx-]{3})\s+(\d+)\s+(\w+\s+\d+\s+\d+\s+[\d:]+)\s+(.+)$/);
+      for (const line of text.replace(/\r/g, '').split('\n')) {
+        // EOS dir output formats:
+        //   -rw-       10164           Feb 19 16:22  AsuFastPktTransmit.log
+        //   drwx        4096           Nov 26  2025  Fossil
+        // Date is 3 segments: "month day time" or "month day year"
+        const m = line.match(/^\s*([d-][rwx-]{3})\s+(\d+)\s+(\w+\s+\d+\s+[\d:]+)\s+(.+)$/);
         if (m) {
           const isDir = m[1].startsWith('d');
           const name = m[4].trim();
