@@ -319,6 +319,7 @@
       { id: 'overview', label: 'Overview' },
       { id: 'commands', label: 'Quick Commands' },
       { id: 'flash', label: 'Flash' },
+      { id: 'ssh', label: 'SSH' },
     ];
 
     const infoFields = [
@@ -356,6 +357,9 @@
 
     // Wire back button
     devicesDetailView.querySelector('#btnDevDetailBack').addEventListener('click', () => {
+      // Clean up SSH if active
+      const content = devicesDetailView.querySelector('#deviceDetailContent');
+      if (content?._sshCleanup) { content._sshCleanup(); content._sshCleanup = null; }
       selectedDeviceId = null;
       deviceDetailTab = 'overview';
       devicesDetailView.style.display = 'none';
@@ -373,12 +377,20 @@
 
     const content = devicesDetailView.querySelector('#deviceDetailContent');
 
+    // Clean up previous SSH session if switching away
+    if (content._sshCleanup) {
+      content._sshCleanup();
+      content._sshCleanup = null;
+    }
+
     if (deviceDetailTab === 'overview') {
       renderDeviceOverview(content, device, infoFields);
     } else if (deviceDetailTab === 'commands') {
       renderDeviceCommands(content, device);
     } else if (deviceDetailTab === 'flash') {
       renderDeviceFlash(content, device);
+    } else if (deviceDetailTab === 'ssh') {
+      renderDeviceSSH(content, device);
     }
   }
 
@@ -824,6 +836,153 @@
 
     // Initial load
     loadDir('');
+  }
+
+  // ── SSH Tab ──────────────────────────────────────────────────────
+  function renderDeviceSSH(container, device) {
+    container.innerHTML = `
+      <div class="ssh-wrapper">
+        <div class="ssh-toolbar">
+          <div class="ssh-status">
+            <span class="dev-status-dot" id="sshDot"></span>
+            <span id="sshStatusText" style="font-family:'JetBrains Mono',monospace;font-size:0.72rem;color:var(--text-muted);">
+              SSH — ${esc(device.name)} (${esc(device.host)})
+            </span>
+            <span id="sshError" style="font-family:'JetBrains Mono',monospace;font-size:0.72rem;color:var(--red);"></span>
+          </div>
+          <div style="display:flex;gap:6px;">
+            <button class="btn btn-ghost btn-sm" id="sshClear">Clear</button>
+            <button class="btn btn-ghost btn-sm" id="sshReconnect">⟳ Reconnect</button>
+          </div>
+        </div>
+        <div id="sshTerminal" class="ssh-terminal"></div>
+      </div>
+    `;
+
+    initSSHSession(container, device);
+  }
+
+  function initSSHSession(container, device) {
+    const termEl = container.querySelector('#sshTerminal');
+    const sshDot = container.querySelector('#sshDot');
+    const sshError = container.querySelector('#sshError');
+
+    if (!termEl || typeof Terminal === 'undefined') {
+      termEl.innerHTML = '<div class="cli-output-error">xterm.js not loaded. Check network connectivity to CDN.</div>';
+      return;
+    }
+
+    const term = new Terminal({
+      theme: {
+        background: '#05070d',
+        foreground: '#e2e8f0',
+        cursor: '#22d3ee',
+        black: '#0f172a', brightBlack: '#475569',
+        red: '#f87171', brightRed: '#ef4444',
+        green: '#4ade80', brightGreen: '#86efac',
+        yellow: '#fbbf24', brightYellow: '#fde68a',
+        blue: '#22d3ee', brightBlue: '#93c5fd',
+        magenta: '#c084fc', brightMagenta: '#e879f9',
+        cyan: '#22d3ee', brightCyan: '#67e8f9',
+        white: '#cbd5e1', brightWhite: '#f1f5f9',
+      },
+      fontFamily: "'JetBrains Mono', 'Fira Code', Consolas, monospace",
+      fontSize: 13,
+      lineHeight: 1.2,
+      cursorBlink: true,
+      scrollback: 5000,
+      convertEol: true,
+    });
+
+    const fitAddon = new FitAddon.FitAddon();
+    term.loadAddon(fitAddon);
+    term.open(termEl);
+
+    // Small delay to let the DOM settle before fitting
+    setTimeout(() => fitAddon.fit(), 50);
+
+    // Observe resize
+    const ro = new ResizeObserver(() => {
+      try { fitAddon.fit(); sendResize(); } catch {}
+    });
+    ro.observe(termEl);
+
+    // WebSocket connection
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${window.location.host}/ssh?device=${encodeURIComponent(device.name)}`;
+    const ws = new WebSocket(wsUrl);
+
+    term.write(`\r\n\x1b[33mConnecting to ${device.name} (${device.host})...\x1b[0m\r\n`);
+    sshDot.className = 'dev-status-dot testing';
+
+    function sendResize() {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'resize', rows: term.rows, cols: term.cols }));
+      }
+    }
+
+    ws.onopen = () => {};
+
+    ws.onmessage = (e) => {
+      try {
+        const msg = JSON.parse(e.data);
+        if (msg.type === 'data') {
+          const bin = atob(msg.data);
+          const arr = new Uint8Array(bin.length);
+          for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+          term.write(arr);
+        } else if (msg.type === 'status') {
+          if (msg.data === 'connected') {
+            sshDot.className = 'dev-status-dot ok';
+            sendResize();
+          }
+          if (msg.data === 'disconnected') {
+            sshDot.className = 'dev-status-dot fail';
+            term.write('\r\n\x1b[31m[Session closed]\x1b[0m\r\n');
+          }
+        } else if (msg.type === 'error') {
+          sshDot.className = 'dev-status-dot fail';
+          sshError.textContent = msg.data;
+          term.write(`\r\n\x1b[31m${msg.data}\x1b[0m\r\n`);
+        }
+      } catch {}
+    };
+
+    ws.onerror = () => {
+      sshDot.className = 'dev-status-dot fail';
+      sshError.textContent = 'WebSocket connection failed';
+    };
+
+    ws.onclose = () => {
+      if (sshDot.classList.contains('testing')) {
+        sshDot.className = 'dev-status-dot fail';
+      }
+    };
+
+    // Terminal input → SSH
+    term.onData((data) => {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'data', data: btoa(unescape(encodeURIComponent(data))) }));
+      }
+    });
+
+    term.onResize(() => sendResize());
+
+    // Toolbar buttons
+    container.querySelector('#sshClear').addEventListener('click', () => term.clear());
+    container.querySelector('#sshReconnect').addEventListener('click', () => {
+      ws.close();
+      term.dispose();
+      ro.disconnect();
+      renderDeviceSSH(container, device);
+    });
+
+    // Cleanup when switching tabs — store disposer on the container
+    container._sshCleanup = () => {
+      ro.disconnect();
+      ws.close();
+      term.dispose();
+    };
   }
 
   // ── Init ──────────────────────────────────────────────────────────

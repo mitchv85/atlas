@@ -113,6 +113,90 @@ poller.on('status:updated', () => {
 });
 
 // ---------------------------------------------------------------------------
+// WebSocket SSH Proxy — /ssh?device=<name>
+// ---------------------------------------------------------------------------
+const { Client: SshClient } = require('ssh2');
+const deviceStore = require('./src/store/devices');
+
+const sshWss = new WebSocketServer({ server, path: '/ssh' });
+
+sshWss.on('connection', (ws, req) => {
+  const params = new URL(req.url, 'http://localhost').searchParams;
+  const deviceName = params.get('device');
+  const allDevices = deviceStore.getAllRaw();
+  const device = allDevices.find(
+    (d) => d.name.toLowerCase() === (deviceName || '').toLowerCase()
+  );
+
+  if (!device) {
+    ws.send(JSON.stringify({ type: 'error', data: `Unknown device: ${deviceName}\r\n` }));
+    return ws.close();
+  }
+
+  console.log(`  [SSH] New session → ${device.name} (${device.host})`);
+  const ssh = new SshClient();
+
+  ssh.on('ready', () => {
+    ws.send(JSON.stringify({ type: 'status', data: 'connected' }));
+    ssh.shell({ term: 'xterm-256color', rows: 24, cols: 120 }, (err, stream) => {
+      if (err) {
+        ws.send(JSON.stringify({ type: 'error', data: `Shell error: ${err.message}\r\n` }));
+        return ws.close();
+      }
+
+      // SSH → WebSocket
+      stream.on('data', (data) => {
+        if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'data', data: data.toString('base64') }));
+      });
+      stream.stderr.on('data', (data) => {
+        if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'data', data: data.toString('base64') }));
+      });
+      stream.on('close', () => {
+        ws.send(JSON.stringify({ type: 'status', data: 'disconnected' }));
+        ws.close();
+      });
+
+      // WebSocket → SSH
+      ws.on('message', (raw) => {
+        try {
+          const msg = JSON.parse(raw);
+          if (msg.type === 'data') stream.write(Buffer.from(msg.data, 'base64'));
+          if (msg.type === 'resize') stream.setWindow(msg.rows, msg.cols, 0, 0);
+        } catch (e) {
+          console.error('  [SSH] ws message error:', e.message);
+        }
+      });
+
+      ws.on('close', () => { try { stream.close(); ssh.end(); } catch {} });
+    });
+  });
+
+  ssh.on('error', (err) => {
+    console.error(`  [SSH] Error ${device.name}:`, err.message);
+    if (ws.readyState === 1) {
+      ws.send(JSON.stringify({ type: 'error', data: `\r\nSSH Error: ${err.message}\r\n` }));
+    }
+    ws.close();
+  });
+
+  ssh.on('keyboard-interactive', (_name, _instr, _lang, _prompts, finish) => {
+    finish([device.password]);
+  });
+
+  ssh.connect({
+    host: device.host,
+    port: 22,
+    username: device.username,
+    password: device.password,
+    readyTimeout: 20000,
+    hostVerifier: () => true,
+    tryKeyboard: true,
+  });
+
+  ws.on('close', () => { try { ssh.end(); } catch {} });
+});
+
+// ---------------------------------------------------------------------------
 // Start
 // ---------------------------------------------------------------------------
 server.listen(PORT, () => {

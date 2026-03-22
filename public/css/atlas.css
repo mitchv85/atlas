@@ -1580,3 +1580,40 @@ body {
 .flash-dir-row td {
   color: var(--accent) !important;
 }
+
+/* ── SSH Terminal ──────────────────────────────────────────────────── */
+.ssh-wrapper {
+  display: flex;
+  flex-direction: column;
+  height: 70vh;
+}
+
+.ssh-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius) var(--radius) 0 0;
+}
+
+.ssh-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ssh-terminal {
+  flex: 1;
+  background: #05070d;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-top: none;
+  border-radius: 0 0 var(--radius) var(--radius);
+  overflow: hidden;
+}
+
+.ssh-terminal .xterm {
+  height: 100%;
+}
