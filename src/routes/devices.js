@@ -42,4 +42,68 @@ router.post('/:id/test', async (req, res) => {
   res.json(result);
 });
 
+// POST /api/devices/:id/command — Execute a show command on a device
+// Body: { cmd: "show ...", format: "text" | "json" }
+router.post('/:id/command', async (req, res) => {
+  const device = deviceStore.getRaw(req.params.id);
+  if (!device) return res.status(404).json({ error: 'Device not found' });
+
+  const { cmd, format = 'text' } = req.body;
+  if (!cmd) return res.status(400).json({ error: 'cmd is required' });
+
+  // Safety: only allow show commands
+  const trimmed = cmd.trim().toLowerCase();
+  if (!trimmed.startsWith('show ')) {
+    return res.status(400).json({ error: 'Only show commands are permitted.' });
+  }
+
+  try {
+    const results = await eapi.execute(device, ['enable', cmd.trim()], format);
+
+    // eAPI returns result array — index 0 is 'enable', index 1 is the command output
+    const output = format === 'json'
+      ? JSON.stringify(results[1], null, 2)
+      : results[1]?.output || '(no output)';
+
+    res.json({ output, error: null });
+  } catch (err) {
+    res.json({ output: null, error: err.message });
+  }
+});
+
+// POST /api/devices/by-hostname/:hostname/command — Execute command by hostname
+// Looks up device by matching hostname (case-insensitive)
+router.post('/by-hostname/:hostname/command', async (req, res) => {
+  const hostname = req.params.hostname;
+  const allDevices = deviceStore.getAllRaw();
+  const device = allDevices.find(
+    (d) => d.name.toLowerCase() === hostname.toLowerCase()
+  );
+
+  if (!device) {
+    return res.status(404).json({
+      error: `No configured device matches hostname "${hostname}". Add it to atlas.config.json.`,
+    });
+  }
+
+  const { cmd, format = 'text' } = req.body;
+  if (!cmd) return res.status(400).json({ error: 'cmd is required' });
+
+  const trimmed = cmd.trim().toLowerCase();
+  if (!trimmed.startsWith('show ')) {
+    return res.status(400).json({ error: 'Only show commands are permitted.' });
+  }
+
+  try {
+    const results = await eapi.execute(device, ['enable', cmd.trim()], format);
+    const output = format === 'json'
+      ? JSON.stringify(results[1], null, 2)
+      : results[1]?.output || '(no output)';
+
+    res.json({ output, error: null, device: device.name });
+  } catch (err) {
+    res.json({ output: null, error: err.message });
+  }
+});
+
 module.exports = router;

@@ -28,6 +28,15 @@ const API = {
     return res.json();
   },
 
+  async runCommand(hostname, cmd, format = 'text') {
+    const res = await fetch(`/api/devices/by-hostname/${encodeURIComponent(hostname)}/command`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cmd, format }),
+    });
+    return res.json();
+  },
+
   // ── Topology ─────────────────────────────────────────────────────────
   async getTopology() {
     const res = await fetch('/api/topology');

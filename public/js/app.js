@@ -878,6 +878,84 @@
         reachContainer.innerHTML = '<p class="text-muted">Error loading reachability.</p>';
       }
     }
+
+    // Wire CLI panel
+    wireCLIPanel(nodeData.hostname);
+  }
+
+  /**
+   * Wire up the CLI panel event handlers.
+   */
+  function wireCLIPanel(hostname) {
+    const cliInput = detailBody.querySelector('#cliInput');
+    const cliFormat = detailBody.querySelector('#cliFormat');
+    const cliRunBtn = detailBody.querySelector('#cliRunBtn');
+    const cliOutput = detailBody.querySelector('#cliOutput');
+
+    if (!cliInput || !cliRunBtn || !cliOutput) return;
+
+    // Command history
+    const history = [];
+    let histIdx = -1;
+
+    const runCommand = async (cmd, fmt) => {
+      cmd = cmd || cliInput.value;
+      fmt = fmt || cliFormat.value;
+      if (!cmd.trim()) return;
+
+      // Add to history
+      const idx = history.indexOf(cmd);
+      if (idx > -1) history.splice(idx, 1);
+      history.unshift(cmd);
+      histIdx = -1;
+
+      cliRunBtn.disabled = true;
+      cliRunBtn.textContent = '...';
+      cliOutput.innerHTML = '<div class="cli-output-empty">Running...</div>';
+
+      try {
+        const result = await API.runCommand(hostname, cmd.trim(), fmt);
+        if (result.error) {
+          cliOutput.innerHTML = `<div class="cli-output-error">ERROR: ${esc(result.error)}</div>`;
+        } else {
+          cliOutput.innerHTML = `<pre>${esc(result.output || '(no output)')}</pre>`;
+        }
+      } catch (err) {
+        cliOutput.innerHTML = `<div class="cli-output-error">ERROR: ${esc(err.message)}</div>`;
+      }
+
+      cliRunBtn.disabled = false;
+      cliRunBtn.textContent = '▶ RUN';
+    };
+
+    // Run button
+    cliRunBtn.addEventListener('click', () => runCommand());
+
+    // Enter key + history navigation
+    cliInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        runCommand();
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        histIdx = Math.min(histIdx + 1, history.length - 1);
+        cliInput.value = history[histIdx] || '';
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        histIdx = Math.max(histIdx - 1, -1);
+        cliInput.value = histIdx === -1 ? '' : history[histIdx];
+      }
+    });
+
+    // Quick pick buttons
+    detailBody.querySelectorAll('.cli-quick-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const cmd = btn.dataset.cmd;
+        const fmt = btn.dataset.fmt;
+        cliInput.value = cmd;
+        cliFormat.value = fmt;
+        runCommand(cmd, fmt);
+      });
+    });
   }
 
   function showEdgeDetail(edgeData) {
@@ -1014,7 +1092,53 @@
         </div>
       </div>`;
 
+    // CLI Panel
+    html += buildCLIPanelHTML(d.hostname);
+
     return html;
+  }
+
+  /**
+   * Build the CLI panel HTML for a given device hostname.
+   */
+  function buildCLIPanelHTML(hostname) {
+    const quickPicks = [
+      { label: 'show isis neighbors',              fmt: 'text' },
+      { label: 'show isis database detail',         fmt: 'text' },
+      { label: 'show isis segment-routing tunnel',  fmt: 'text' },
+      { label: 'show tunnel fib',                   fmt: 'text' },
+      { label: 'show isis ti-lfa path detail',      fmt: 'text' },
+      { label: 'show mpls lfib route',              fmt: 'text' },
+      { label: 'show interfaces status',            fmt: 'text' },
+      { label: 'show interfaces counters errors',   fmt: 'text' },
+      { label: 'show ip interface brief',           fmt: 'text' },
+      { label: 'show ip route summary',             fmt: 'text' },
+      { label: 'show version',                      fmt: 'text' },
+      { label: 'show log last 50',                  fmt: 'text' },
+    ];
+
+    return `
+      <div class="cli-section">
+        <h4>CLI — ${esc(hostname)}</h4>
+        <div class="cli-input-row">
+          <input type="text" class="cli-input" id="cliInput" placeholder="show ... (↑↓ for history)" />
+          <select class="cli-format-select" id="cliFormat">
+            <option value="text">text</option>
+            <option value="json">json</option>
+          </select>
+          <button class="cli-run-btn" id="cliRunBtn" data-hostname="${esc(hostname)}">▶ RUN</button>
+        </div>
+        <div class="cli-quick-picks">
+          <span class="cli-quick-label">QUICK:</span>
+          ${quickPicks.map(
+            (qp) =>
+              `<button class="cli-quick-btn" data-cmd="${esc(qp.label)}" data-fmt="${qp.fmt}">${esc(qp.label)}</button>`
+          ).join('')}
+        </div>
+        <div class="cli-output" id="cliOutput">
+          <div class="cli-output-empty">ENTER A COMMAND OR CLICK A QUICK PICK</div>
+        </div>
+      </div>`;
   }
 
   /**
