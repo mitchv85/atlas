@@ -107,7 +107,7 @@ poller.on('topology:updated', (topology) => {
 // ---------------------------------------------------------------------------
 server.listen(PORT, () => {
   console.log(`\n  ╔══════════════════════════════════════╗`);
-  console.log(`  ║          A T L A S   v0.2.0          ║`);
+  console.log(`  ║          A T L A S   v0.2.1          ║`);
   console.log(`  ║   Topology Visualization Engine       ║`);
   console.log(`  ╠══════════════════════════════════════╣`);
   console.log(`  ║  http://localhost:${PORT}               ║`);

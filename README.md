@@ -39,16 +39,56 @@ ATLAS reads the IS-IS link-state database from your network devices, builds an i
 
 ### Prerequisites
 - Node.js 18+
+- PM2 (`npm install -g pm2`)
 - An Arista EOS device with eAPI enabled and IS-IS running
 
-### Install & Run
+### Install
 
 ```bash
 git clone https://github.com/mitchv85/atlas.git
 cd atlas
 npm install
-cp .env.example .env   # edit as needed
-npm run dev
+```
+
+### Configure Devices
+
+Edit `atlas.config.json` with your device inventory:
+
+```json
+{
+  "polling": {
+    "enabled": true,
+    "intervalSeconds": 15
+  },
+  "devices": [
+    {
+      "name": "PE-1",
+      "host": "10.0.0.1",
+      "port": 443,
+      "username": "admin",
+      "password": "admin",
+      "transport": "https"
+    }
+  ]
+}
+```
+
+### Run (Production — PM2)
+
+```bash
+npm start          # Start ATLAS as a PM2 service
+npm run status     # Check service status
+npm run logs       # Tail the last 50 log lines
+npm run restart    # Restart the service
+npm run stop       # Stop the service
+```
+
+ATLAS will auto-restart on crash and survive terminal disconnects.
+
+### Run (Development)
+
+```bash
+npm run dev        # Starts with --watch for auto-reload on file changes
 ```
 
 Open [http://localhost:3000](http://localhost:3000) in your browser.

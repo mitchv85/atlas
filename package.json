@@ -1,10 +1,14 @@
 {
   "name": "atlas",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Protocol-aware network topology visualization and path analysis engine",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
+    "start": "pm2 start ecosystem.config.js",
+    "stop": "pm2 stop atlas",
+    "restart": "pm2 restart atlas",
+    "status": "pm2 status atlas",
+    "logs": "pm2 logs atlas --lines 50",
     "dev": "node --watch server.js"
   },
   "author": "Mitch Vaughan",
