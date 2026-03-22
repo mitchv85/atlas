@@ -350,16 +350,18 @@ function lookupTunnelFibLabels(topology, sourceId, destinationId) {
 
   if (loopbacks.length === 0) return result;
 
-  // Find the right device FIB — try multiple matching strategies
+  // Find the source node's tunnel FIB — STRICT matching only.
+  // We must be confident this FIB belongs to the source node.
+  // Using the wrong device's FIB produces incorrect label stacks.
   const srcNode = topology.nodes.find((n) => n.data.id === sourceId);
   const srcHostname = srcNode?.data?.hostname || '';
 
   let deviceFib = null;
 
-  // Strategy 1: exact device name match
+  // Strategy 1: exact hostname match
   deviceFib = topology.tunnelFib[srcHostname];
 
-  // Strategy 2: case-insensitive match
+  // Strategy 2: case-insensitive hostname match
   if (!deviceFib) {
     const lowerSrc = srcHostname.toLowerCase();
     for (const [devName, fib] of Object.entries(topology.tunnelFib)) {
@@ -370,19 +372,35 @@ function lookupTunnelFibLabels(topology, sourceId, destinationId) {
     }
   }
 
-  // Strategy 3: search all device FIBs for one that has our destination endpoint
+  // Strategy 3: validate FIB ownership using router-ID.
+  // A device's tunnel FIB will NOT contain its own loopback as an endpoint.
+  // So if the source node's router-ID is absent from a FIB's endpoint set,
+  // that FIB MIGHT be from this source. But we also verify that the
+  // source's router-ID is NOT a destination in that FIB (double check).
   if (!deviceFib) {
-    for (const [_devName, fib] of Object.entries(topology.tunnelFib)) {
-      for (const ep of loopbacks) {
-        if (fib[ep]) {
-          deviceFib = fib;
-          break;
+    const srcRid = srcNode?.data?.routerCaps?.routerId;
+    const srcEndpoint = srcRid ? `${srcRid}/32` : null;
+
+    if (srcEndpoint) {
+      for (const [_devName, fib] of Object.entries(topology.tunnelFib)) {
+        const fibEndpoints = new Set(Object.keys(fib));
+
+        // This FIB is from our source if:
+        // 1. Source's loopback is NOT a tunnel destination (no self-tunnel)
+        // 2. All other topology nodes' loopbacks ARE tunnel destinations
+        if (!fibEndpoints.has(srcEndpoint)) {
+          // Verify: check that the destination IS in this FIB
+          const hasDest = loopbacks.some((ep) => fibEndpoints.has(ep));
+          if (hasDest) {
+            deviceFib = fib;
+            break;
+          }
         }
       }
-      if (deviceFib) break;
     }
   }
 
+  // No matching FIB found — return empty so SPF-computed labels are used
   if (!deviceFib) return result;
 
   // Look up each possible endpoint

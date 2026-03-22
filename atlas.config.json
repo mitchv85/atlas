@@ -11,6 +11,54 @@
       "username": "admin",
       "password": "admin",
       "transport": "https"
+    },
+    {
+      "name": "PE-2",
+      "host": "10.0.0.2",
+      "port": 443,
+      "username": "admin",
+      "password": "admin",
+      "transport": "https"
+    },
+    {
+      "name": "PE-3",
+      "host": "10.0.0.3",
+      "port": 443,
+      "username": "admin",
+      "password": "admin",
+      "transport": "https"
+    },
+    {
+      "name": "PE-4",
+      "host": "10.0.0.4",
+      "port": 443,
+      "username": "admin",
+      "password": "admin",
+      "transport": "https"
+    },
+    {
+      "name": "PE-5",
+      "host": "10.0.0.5",
+      "port": 443,
+      "username": "admin",
+      "password": "admin",
+      "transport": "https"
+    },
+    {
+      "name": "PE-6",
+      "host": "10.0.0.6",
+      "port": 443,
+      "username": "admin",
+      "password": "admin",
+      "transport": "https"
+    },
+    {
+      "name": "PE-7",
+      "host": "10.0.0.7",
+      "port": 443,
+      "username": "admin",
+      "password": "admin",
+      "transport": "https"
     }
   ]
 }
