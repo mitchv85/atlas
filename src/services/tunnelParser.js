@@ -82,6 +82,15 @@ function parseTunnelFib(raw) {
               labelStack: (pv.mplsEncap?.labelStack || []).map(String),
             });
           }
+
+          // Pattern A: RTI backupVias contain the FULL backup forwarding stack
+          for (const bv of (rti.backupVias || [])) {
+            tunnel.backupPaths.push({
+              nexthop: bv.nexthop || '',
+              interface: bv.interface || '',
+              labelStack: (bv.mplsEncap?.labelStack || []).map(String),
+            });
+          }
         } else {
           // Pattern B: use outer via's full label stack for primary
           tunnel.primaryPaths.push({
@@ -89,15 +98,26 @@ function parseTunnelFib(raw) {
             interface: outerInterface,
             labelStack: outerLabels,
           });
-        }
 
-        // Backup vias always come from resolvingTunnelInfo.backupVias
-        for (const bv of (rti.backupVias || [])) {
-          tunnel.backupPaths.push({
-            nexthop: bv.nexthop || '',
-            interface: bv.interface || '',
-            labelStack: (bv.mplsEncap?.labelStack || []).map(String),
-          });
+          // Pattern B: RTI backupVias contain ONLY the backup transport labels.
+          // The outer labelStack = transport + service labels.
+          // RTI primary vias = just transport labels.
+          // Service labels = outer[transport_length:] (the tail beyond transport).
+          // Real backup = RTI_backup_transport + service_labels.
+          const primaryTransport = (rti.vias || []).length > 0
+            ? (rti.vias[0].mplsEncap?.labelStack || []).map(String)
+            : [];
+          const transportLength = primaryTransport.length;
+          const serviceLabels = outerLabels.slice(transportLength);
+
+          for (const bv of (rti.backupVias || [])) {
+            const backupTransport = (bv.mplsEncap?.labelStack || []).map(String);
+            tunnel.backupPaths.push({
+              nexthop: bv.nexthop || '',
+              interface: bv.interface || '',
+              labelStack: [...backupTransport, ...serviceLabels],
+            });
+          }
         }
       } else {
         // Direct tunnel (no TI-LFA resolving) — e.g., ECMP paths
