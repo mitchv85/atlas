@@ -45,7 +45,26 @@ app.get('*', (_req, res) => {
 // ---------------------------------------------------------------------------
 const server = http.createServer(app);
 
-const wss = new WebSocketServer({ server, path: '/ws' });
+// Both WebSocket servers use noServer mode — we route upgrades manually
+const wss = new WebSocketServer({ noServer: true });
+const sshWss = new WebSocketServer({ noServer: true });
+
+// Route WebSocket upgrades by path
+server.on('upgrade', (request, socket, head) => {
+  const pathname = new URL(request.url, 'http://localhost').pathname;
+
+  if (pathname === '/ws') {
+    wss.handleUpgrade(request, socket, head, (ws) => {
+      wss.emit('connection', ws, request);
+    });
+  } else if (pathname === '/ssh') {
+    sshWss.handleUpgrade(request, socket, head, (ws) => {
+      sshWss.emit('connection', ws, request);
+    });
+  } else {
+    socket.destroy();
+  }
+});
 
 // Track connected clients
 const clients = new Set();
@@ -117,8 +136,6 @@ poller.on('status:updated', () => {
 // ---------------------------------------------------------------------------
 const { Client: SshClient } = require('ssh2');
 const deviceStore = require('./src/store/devices');
-
-const sshWss = new WebSocketServer({ server, path: '/ssh' });
 
 sshWss.on('connection', (ws, req) => {
   const params = new URL(req.url, 'http://localhost').searchParams;
