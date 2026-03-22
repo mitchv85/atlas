@@ -12,6 +12,7 @@ const eapi = require('../services/eapi');
 const { parseLSDB } = require('../services/isisParser');
 const { buildGraph } = require('../services/topologyBuilder');
 const { parseTunnelFib } = require('../services/tunnelParser');
+const { parseNeighborDetail, formatUptime } = require('../services/neighborParser');
 
 class TopologyPoller extends EventEmitter {
   constructor() {
@@ -99,12 +100,13 @@ class TopologyPoller extends EventEmitter {
       const allAdjacencies = [];
       const sourceDevices = [];
       const perDeviceTunnels = new Map(); // device name -> tunnel map
+      const allNeighborRecords = [];      // adjacency health records
 
       for (const device of allDevices) {
         try {
           const results = await eapi.execute(
             device,
-            ['show isis database detail', 'show tunnel fib'],
+            ['show isis database detail', 'show tunnel fib', 'show isis neighbors detail'],
             'json'
           );
 
@@ -124,6 +126,15 @@ class TopologyPoller extends EventEmitter {
           const tunnelFibRaw = results[1];
           const tunnelMap = parseTunnelFib(tunnelFibRaw);
           perDeviceTunnels.set(device.name, tunnelMap);
+
+          // Parse Neighbor Health
+          const neighborRaw = results[2];
+          const nbrRecords = parseNeighborDetail(neighborRaw);
+          // Tag each record with the source device name
+          for (const rec of nbrRecords) {
+            rec.sourceDevice = device.name;
+          }
+          allNeighborRecords.push(...nbrRecords);
 
         } catch (deviceErr) {
           // Log but continue — one device failing shouldn't stop the whole poll
@@ -171,6 +182,118 @@ class TopologyPoller extends EventEmitter {
             break;
           }
         }
+      }
+
+      // ── Adjacency Health Enrichment ──
+      // Build a lookup: "sourceDevice|neighborHostname|localInterface" → record
+      // Then enrich each edge with health data from both directions.
+      topology.adjacencyHealth = allNeighborRecords;
+
+      // Build lookup maps
+      const healthByKey = new Map();
+      for (const rec of allNeighborRecords) {
+        // Key by sourceDevice + neighbor hostname + interface
+        const key = `${rec.sourceDevice}|${rec.hostname}|${rec.interfaceName}`;
+        healthByKey.set(key, rec);
+        // Also key by sourceDevice + neighbor IP
+        if (rec.neighborAddress) {
+          healthByKey.set(`${rec.sourceDevice}|${rec.neighborAddress}`, rec);
+        }
+      }
+
+      for (const edge of topology.edges) {
+        const d = edge.data;
+        const srcLabel = d.sourceLabel;
+        const tgtLabel = d.targetLabel;
+
+        // Forward: source → target
+        // Look up by source device + target hostname + interface
+        let fwdHealth = null;
+        // Try matching by neighbor address (most specific)
+        if (d.neighborAddr) {
+          fwdHealth = healthByKey.get(`${srcLabel}|${d.neighborAddr}`);
+        }
+        if (!fwdHealth) {
+          fwdHealth = healthByKey.get(`${srcLabel}|${tgtLabel}|${d.localAddr ? '' : ''}`);
+        }
+        // Broader: try just source + target hostname
+        if (!fwdHealth) {
+          for (const rec of allNeighborRecords) {
+            if (rec.sourceDevice === srcLabel && rec.hostname === tgtLabel) {
+              // Match by neighbor IP if available
+              if (d.neighborAddr && rec.neighborAddress === d.neighborAddr) {
+                fwdHealth = rec;
+                break;
+              }
+            }
+          }
+        }
+        if (!fwdHealth) {
+          for (const rec of allNeighborRecords) {
+            if (rec.sourceDevice === srcLabel && rec.hostname === tgtLabel) {
+              fwdHealth = rec;
+              break;
+            }
+          }
+        }
+
+        // Reverse: target → source
+        let revHealth = null;
+        if (d.reverseNeighborAddr) {
+          revHealth = healthByKey.get(`${tgtLabel}|${d.reverseNeighborAddr}`);
+        }
+        if (!revHealth) {
+          for (const rec of allNeighborRecords) {
+            if (rec.sourceDevice === tgtLabel && rec.hostname === srcLabel) {
+              if (d.reverseNeighborAddr && rec.neighborAddress === d.reverseNeighborAddr) {
+                revHealth = rec;
+                break;
+              }
+            }
+          }
+        }
+        if (!revHealth) {
+          for (const rec of allNeighborRecords) {
+            if (rec.sourceDevice === tgtLabel && rec.hostname === srcLabel) {
+              revHealth = rec;
+              break;
+            }
+          }
+        }
+
+        // Determine overall link health from both sides
+        const fwdState = fwdHealth?.state || 'unknown';
+        const revState = revHealth?.state || 'unknown';
+
+        let linkHealth = 'unknown';
+        if (fwdState === 'up' && revState === 'up') linkHealth = 'healthy';
+        else if (fwdState === 'up' || revState === 'up') linkHealth = 'degraded';
+        else if (fwdState === 'down' || revState === 'down') linkHealth = 'down';
+
+        // Attach health data to edge
+        d.linkHealth = linkHealth;
+        d.forwardHealth = fwdHealth ? {
+          state: fwdHealth.state,
+          localInterface: fwdHealth.interfaceName,
+          uptime: fwdHealth.uptimeSeconds,
+          uptimeFormatted: formatUptime(fwdHealth.uptimeSeconds),
+          holdTime: fwdHealth.advertisedHoldTime,
+          holdRemaining: fwdHealth.holdRemaining,
+          bfdState: fwdHealth.bfdIpv4State,
+          srEnabled: fwdHealth.srEnabled,
+          grSupported: fwdHealth.grSupported,
+        } : null;
+        d.reverseHealth = revHealth ? {
+          state: revHealth.state,
+          localInterface: revHealth.interfaceName,
+          uptime: revHealth.uptimeSeconds,
+          uptimeFormatted: formatUptime(revHealth.uptimeSeconds),
+          holdTime: revHealth.advertisedHoldTime,
+          holdRemaining: revHealth.holdRemaining,
+          bfdState: revHealth.bfdIpv4State,
+          srEnabled: revHealth.srEnabled,
+          grSupported: revHealth.grSupported,
+        } : null;
       }
 
       // Check if topology changed (simple hash: node count + edge count + node ids)

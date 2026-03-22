@@ -1385,7 +1385,61 @@
           <span class="detail-label">IS-IS Level</span>
           <span class="detail-badge cyan">L${d.level}</span>
         </div>
+        ${d.linkHealth ? `
+          <div class="detail-row">
+            <span class="detail-label">Link Health</span>
+            <span class="detail-badge ${d.linkHealth === 'healthy' ? 'green' : d.linkHealth === 'degraded' ? 'amber' : d.linkHealth === 'down' ? 'red' : 'cyan'}">${d.linkHealth}</span>
+          </div>` : ''}
       </div>`;
+
+    // Adjacency Health — both directions
+    const healthSides = [
+      { label: `${d.sourceLabel} → ${d.targetLabel}`, health: d.forwardHealth },
+      { label: `${d.targetLabel} → ${d.sourceLabel}`, health: d.reverseHealth },
+    ].filter(s => s.health);
+
+    if (healthSides.length > 0) {
+      html += `<div class="detail-section"><h4>Adjacency Health</h4>`;
+
+      for (const side of healthSides) {
+        const h = side.health;
+        const stateColor = h.state === 'up' ? 'green' : h.state === 'down' ? 'red' : 'amber';
+        html += `
+          <div style="margin-bottom:12px;">
+            <div style="font-size:0.75rem;font-weight:600;color:var(--text-secondary);margin-bottom:6px;">${esc(side.label)}</div>
+            <div class="detail-row">
+              <span class="detail-label">State</span>
+              <span class="detail-badge ${stateColor}">${esc(h.state)}</span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">Interface</span>
+              <span class="detail-value">${esc(h.localInterface)}</span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">Uptime</span>
+              <span class="detail-value">${esc(h.uptimeFormatted)}</span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">Hold Timer</span>
+              <span class="detail-value">${h.holdRemaining}s / ${h.holdTime}s</span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">BFD (IPv4)</span>
+              <span class="detail-badge ${h.bfdState === 'up' ? 'green' : h.bfdState === 'adminDown' ? 'cyan' : 'amber'}">${esc(h.bfdState)}</span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">SR Enabled</span>
+              <span class="detail-badge ${h.srEnabled ? 'green' : 'amber'}">${h.srEnabled ? 'yes' : 'no'}</span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">Graceful Restart</span>
+              <span class="detail-value">${esc(h.grSupported)}</span>
+            </div>
+          </div>`;
+      }
+
+      html += `</div>`;
+    }
 
     return html;
   }
