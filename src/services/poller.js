@@ -106,7 +106,7 @@ class TopologyPoller extends EventEmitter {
         try {
           const results = await eapi.execute(
             device,
-            ['show isis database detail', 'show tunnel fib', 'show isis neighbors detail'],
+            ['show isis database detail', 'show tunnel fib', 'show isis neighbors detail', 'show interfaces status'],
             'json'
           );
 
@@ -130,9 +130,16 @@ class TopologyPoller extends EventEmitter {
           // Parse Neighbor Health
           const neighborRaw = results[2];
           const nbrRecords = parseNeighborDetail(neighborRaw);
-          // Tag each record with the source device name
+
+          // Parse interface MTU from show interfaces status
+          const intfStatusRaw = results[3];
+          const intfStatuses = intfStatusRaw.interfaceStatuses || {};
+
+          // Tag each record with source device and enrich with MTU
           for (const rec of nbrRecords) {
             rec.sourceDevice = device.name;
+            const intfData = intfStatuses[rec.interfaceName];
+            rec.mtu = intfData?.mtu || null;
           }
           allNeighborRecords.push(...nbrRecords);
 
@@ -275,6 +282,7 @@ class TopologyPoller extends EventEmitter {
         d.forwardHealth = fwdHealth ? {
           state: fwdHealth.state,
           localInterface: fwdHealth.interfaceName,
+          mtu: fwdHealth.mtu,
           uptime: fwdHealth.uptimeSeconds,
           uptimeFormatted: formatUptime(fwdHealth.uptimeSeconds),
           holdTime: fwdHealth.advertisedHoldTime,
@@ -286,6 +294,7 @@ class TopologyPoller extends EventEmitter {
         d.reverseHealth = revHealth ? {
           state: revHealth.state,
           localInterface: revHealth.interfaceName,
+          mtu: revHealth.mtu,
           uptime: revHealth.uptimeSeconds,
           uptimeFormatted: formatUptime(revHealth.uptimeSeconds),
           holdTime: revHealth.advertisedHoldTime,

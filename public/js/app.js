@@ -1415,6 +1415,10 @@
               <span class="detail-label">Interface</span>
               <span class="detail-value">${esc(h.localInterface)}</span>
             </div>
+            ${h.mtu ? `<div class="detail-row">
+              <span class="detail-label">MTU</span>
+              <span class="detail-value">${h.mtu}</span>
+            </div>` : ''}
             <div class="detail-row">
               <span class="detail-label">Uptime</span>
               <span class="detail-value">${esc(h.uptimeFormatted)}</span>
