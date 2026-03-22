@@ -993,6 +993,11 @@
     topo.onNodeClick = showNodeDetail;
     topo.onEdgeClick = showEdgeDetail;
 
+    // Context menu (right-click) handlers
+    topo.onNodeContext = showNodeContextMenu;
+    topo.onEdgeContext = showEdgeContextMenu;
+    topo.onDismissContext = hideContextMenus;
+
     // Save positions to server when nodes are dragged
     topo.onNodeDragEnd = (positions) => {
       API.savePositions(positions);
@@ -1085,11 +1090,16 @@
     btnClearPath.addEventListener('click', handleClearPath);
 
     // Mutual exclusion: selecting a node failure clears link failure and vice versa
+    // All dropdown changes update selection markers on topology
+    pathSource.addEventListener('change', () => updateSelectionMarkers());
+    pathDest.addEventListener('change', () => updateSelectionMarkers());
     pathFailNode.addEventListener('change', () => {
       if (pathFailNode.value) pathFailLink.value = '';
+      updateSelectionMarkers();
     });
     pathFailLink.addEventListener('change', () => {
       if (pathFailLink.value) pathFailNode.value = '';
+      updateSelectionMarkers();
     });
 
     // ── Devices page bindings ───────────────────────────────────
@@ -1426,8 +1436,145 @@
     currentPathResult = null;
     btnClearPath.style.display = 'none';
     closeDetail();
+    // Clear selection markers too
+    topo.updateSelectionMarkers({ source: null, dest: null, failNode: null, failEdge: null });
     if (topologyData) {
       setStatus('live', `${topologyData.metadata.nodeCount} nodes, ${topologyData.metadata.edgeCount} links`);
+    }
+  }
+
+  // ── Context Menu ────────────────────────────────────────────────
+  const ctxMenuNode = $('#ctxMenuNode');
+  const ctxMenuEdge = $('#ctxMenuEdge');
+  let ctxTargetData = null; // Data of the right-clicked element
+
+  function showNodeContextMenu(nodeData, mouseEvent) {
+    hideContextMenus();
+    ctxTargetData = nodeData;
+
+    // Update header
+    document.getElementById('ctxMenuNodeTitle').textContent = nodeData.hostname || nodeData.id;
+
+    // Position and show
+    positionContextMenu(ctxMenuNode, mouseEvent);
+  }
+
+  function showEdgeContextMenu(edgeData, mouseEvent) {
+    hideContextMenus();
+    ctxTargetData = edgeData;
+
+    // Update header
+    document.getElementById('ctxMenuEdgeTitle').textContent =
+      `${edgeData.sourceLabel} ↔ ${edgeData.targetLabel}`;
+
+    positionContextMenu(ctxMenuEdge, mouseEvent);
+  }
+
+  function positionContextMenu(menu, mouseEvent) {
+    menu.style.display = 'block';
+
+    // Position at cursor, keep within viewport
+    let x = mouseEvent.clientX;
+    let y = mouseEvent.clientY;
+    const rect = menu.getBoundingClientRect();
+
+    if (x + rect.width > window.innerWidth) x = window.innerWidth - rect.width - 8;
+    if (y + rect.height > window.innerHeight) y = window.innerHeight - rect.height - 8;
+
+    menu.style.left = x + 'px';
+    menu.style.top = y + 'px';
+  }
+
+  function hideContextMenus() {
+    ctxMenuNode.style.display = 'none';
+    ctxMenuEdge.style.display = 'none';
+    ctxTargetData = null;
+  }
+
+  // Dismiss on click anywhere outside
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.ctx-menu')) hideContextMenus();
+  });
+  document.addEventListener('contextmenu', (e) => {
+    if (!e.target.closest('.ctx-menu') && !e.target.closest('.topology-canvas')) {
+      hideContextMenus();
+    }
+  });
+
+  // Wire context menu item clicks
+  document.querySelectorAll('.ctx-menu-item').forEach((item) => {
+    item.addEventListener('click', () => {
+      const action = item.dataset.action;
+      if (!ctxTargetData) return;
+
+      switch (action) {
+        case 'set-source':
+          pathSource.value = ctxTargetData.id;
+          updateSelectionMarkers();
+          autoComputeIfReady();
+          break;
+
+        case 'set-dest':
+          pathDest.value = ctxTargetData.id;
+          updateSelectionMarkers();
+          autoComputeIfReady();
+          break;
+
+        case 'fail-node':
+          pathFailNode.value = ctxTargetData.id;
+          pathFailLink.value = ''; // Mutual exclusion
+          updateSelectionMarkers();
+          autoComputeIfReady();
+          break;
+
+        case 'clear-node-fail':
+          pathFailNode.value = '';
+          updateSelectionMarkers();
+          break;
+
+        case 'fail-link':
+          pathFailLink.value = ctxTargetData.id;
+          pathFailNode.value = ''; // Mutual exclusion
+          updateSelectionMarkers();
+          autoComputeIfReady();
+          break;
+
+        case 'clear-link-fail':
+          pathFailLink.value = '';
+          updateSelectionMarkers();
+          break;
+
+        case 'view-node':
+          showNodeDetail(ctxTargetData);
+          break;
+
+        case 'view-link':
+          showEdgeDetail(ctxTargetData);
+          break;
+      }
+
+      hideContextMenus();
+    });
+  });
+
+  /**
+   * Update selection markers on the topology to reflect current dropdown state.
+   */
+  function updateSelectionMarkers() {
+    topo.updateSelectionMarkers({
+      source: pathSource.value || null,
+      dest: pathDest.value || null,
+      failNode: pathFailNode.value || null,
+      failEdge: pathFailLink.value || null,
+    });
+  }
+
+  /**
+   * Auto-compute path when both source and destination are set.
+   */
+  function autoComputeIfReady() {
+    if (pathSource.value && pathDest.value && pathSource.value !== pathDest.value) {
+      handleComputePath();
     }
   }
 

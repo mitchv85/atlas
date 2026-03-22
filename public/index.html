@@ -299,6 +299,44 @@
   </div>
 
   <!-- ================================================================== -->
+  <!-- Context Menus (right-click on topology)                             -->
+  <!-- ================================================================== -->
+  <div class="ctx-menu" id="ctxMenuNode" style="display:none;">
+    <div class="ctx-menu-header" id="ctxMenuNodeTitle">Node</div>
+    <button class="ctx-menu-item" data-action="set-source">
+      <span class="ctx-icon" style="color:var(--accent);">◉</span> Set as Source
+    </button>
+    <button class="ctx-menu-item" data-action="set-dest">
+      <span class="ctx-icon" style="color:var(--green);">◉</span> Set as Destination
+    </button>
+    <div class="ctx-menu-divider"></div>
+    <button class="ctx-menu-item" data-action="fail-node">
+      <span class="ctx-icon" style="color:var(--red);">✕</span> Fail this Node
+    </button>
+    <button class="ctx-menu-item" data-action="clear-node-fail">
+      <span class="ctx-icon" style="color:var(--green);">↺</span> Clear Node Failure
+    </button>
+    <div class="ctx-menu-divider"></div>
+    <button class="ctx-menu-item" data-action="view-node">
+      <span class="ctx-icon" style="color:var(--text-muted);">⋯</span> View Details
+    </button>
+  </div>
+
+  <div class="ctx-menu" id="ctxMenuEdge" style="display:none;">
+    <div class="ctx-menu-header" id="ctxMenuEdgeTitle">Link</div>
+    <button class="ctx-menu-item" data-action="fail-link">
+      <span class="ctx-icon" style="color:var(--red);">✕</span> Fail this Link
+    </button>
+    <button class="ctx-menu-item" data-action="clear-link-fail">
+      <span class="ctx-icon" style="color:var(--green);">↺</span> Clear Link Failure
+    </button>
+    <div class="ctx-menu-divider"></div>
+    <button class="ctx-menu-item" data-action="view-link">
+      <span class="ctx-icon" style="color:var(--text-muted);">⋯</span> View Details
+    </button>
+  </div>
+
+  <!-- ================================================================== -->
   <!-- Scripts                                                             -->
   <!-- ================================================================== -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.min.css" />

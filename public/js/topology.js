@@ -56,7 +56,55 @@ class TopologyRenderer {
       this._debounceSavePositions();
     });
 
+    // Right-click (context tap) handlers
+    this.cy.on('cxttap', 'node', (evt) => {
+      evt.originalEvent.preventDefault();
+      if (this.onNodeContext) this.onNodeContext(evt.target.data(), evt.originalEvent);
+    });
+
+    this.cy.on('cxttap', 'edge', (evt) => {
+      evt.originalEvent.preventDefault();
+      if (this.onEdgeContext) this.onEdgeContext(evt.target.data(), evt.originalEvent);
+    });
+
+    // Dismiss context menu on left-click anywhere
+    this.cy.on('tap', () => {
+      if (this.onDismissContext) this.onDismissContext();
+    });
+
+    // Prevent browser context menu on the canvas
+    document.getElementById(this.containerId).addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+    });
+
     return this;
+  }
+
+  /**
+   * Update selection markers on the topology.
+   * @param {Object} selections - { source, dest, failNode, failEdge }
+   */
+  updateSelectionMarkers(selections) {
+    // Clear all selection markers
+    this.cy.nodes().removeClass('selected-source selected-dest selected-fail');
+    this.cy.edges().removeClass('selected-fail');
+
+    if (selections.source) {
+      const node = this.cy.getElementById(selections.source);
+      if (node.length) node.addClass('selected-source');
+    }
+    if (selections.dest) {
+      const node = this.cy.getElementById(selections.dest);
+      if (node.length) node.addClass('selected-dest');
+    }
+    if (selections.failNode) {
+      const node = this.cy.getElementById(selections.failNode);
+      if (node.length) node.addClass('selected-fail');
+    }
+    if (selections.failEdge) {
+      const edge = this.cy.getElementById(selections.failEdge);
+      if (edge.length) edge.addClass('selected-fail');
+    }
   }
 
   /**
@@ -491,6 +539,43 @@ class TopologyRenderer {
           color: '#e8edf5',
           'font-weight': 600,
           opacity: 1,
+          'z-index': 20,
+        },
+      },
+      // ── Selection Markers (pre-compute) ──
+      {
+        selector: 'node.selected-source',
+        style: {
+          'border-color': '#22d3ee',
+          'border-width': 3,
+          'border-style': 'double',
+          'z-index': 20,
+        },
+      },
+      {
+        selector: 'node.selected-dest',
+        style: {
+          'border-color': '#34d399',
+          'border-width': 3,
+          'border-style': 'double',
+          'z-index': 20,
+        },
+      },
+      {
+        selector: 'node.selected-fail',
+        style: {
+          'border-color': '#f87171',
+          'border-width': 3,
+          'border-style': 'dashed',
+          'z-index': 20,
+        },
+      },
+      {
+        selector: 'edge.selected-fail',
+        style: {
+          'line-color': '#f87171',
+          'line-style': 'dashed',
+          'opacity': 0.7,
           'z-index': 20,
         },
       },
