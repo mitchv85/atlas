@@ -106,7 +106,7 @@ class TopologyPoller extends EventEmitter {
         try {
           const results = await eapi.execute(
             device,
-            ['show isis database detail', 'show tunnel fib', 'show isis neighbors detail', 'show interfaces status'],
+            ['show isis database detail', 'show tunnel fib', 'show isis neighbors detail', 'show interfaces'],
             'json'
           );
 
@@ -131,15 +131,15 @@ class TopologyPoller extends EventEmitter {
           const neighborRaw = results[2];
           const nbrRecords = parseNeighborDetail(neighborRaw);
 
-          // Parse interface MTU from show interfaces status
-          const intfStatusRaw = results[3];
-          const intfStatuses = intfStatusRaw.interfaceStatuses || {};
+          // Parse interface data from show interfaces (has MTU, counters, etc.)
+          const intfRaw = results[3];
+          const intfData = intfRaw.interfaces || {};
 
           // Tag each record with source device and enrich with MTU
           for (const rec of nbrRecords) {
             rec.sourceDevice = device.name;
-            const intfData = intfStatuses[rec.interfaceName];
-            rec.mtu = intfData?.mtu || null;
+            const intf = intfData[rec.interfaceName];
+            rec.mtu = intf?.mtu || null;
           }
           allNeighborRecords.push(...nbrRecords);
 
