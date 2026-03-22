@@ -1103,3 +1103,9 @@ body {
   font-size: 0.72rem;
   color: var(--red);
 }
+
+.cli-output-header {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 4px;
+}

@@ -891,8 +891,13 @@
     const cliFormat = detailBody.querySelector('#cliFormat');
     const cliRunBtn = detailBody.querySelector('#cliRunBtn');
     const cliOutput = detailBody.querySelector('#cliOutput');
+    const cliOutputHeader = detailBody.querySelector('#cliOutputHeader');
+    const cliCopyBtn = detailBody.querySelector('#cliCopyBtn');
 
     if (!cliInput || !cliRunBtn || !cliOutput) return;
+
+    // Track last output for copy
+    let lastOutput = '';
 
     // Command history
     const history = [];
@@ -912,13 +917,17 @@
       cliRunBtn.disabled = true;
       cliRunBtn.textContent = '...';
       cliOutput.innerHTML = '<div class="cli-output-empty">Running...</div>';
+      cliOutputHeader.style.display = 'none';
+      lastOutput = '';
 
       try {
         const result = await API.runCommand(hostname, cmd.trim(), fmt);
         if (result.error) {
           cliOutput.innerHTML = `<div class="cli-output-error">ERROR: ${esc(result.error)}</div>`;
         } else {
-          cliOutput.innerHTML = `<pre>${esc(result.output || '(no output)')}</pre>`;
+          lastOutput = result.output || '(no output)';
+          cliOutput.innerHTML = `<pre>${esc(lastOutput)}</pre>`;
+          cliOutputHeader.style.display = 'flex';
         }
       } catch (err) {
         cliOutput.innerHTML = `<div class="cli-output-error">ERROR: ${esc(err.message)}</div>`;
@@ -927,6 +936,30 @@
       cliRunBtn.disabled = false;
       cliRunBtn.textContent = '▶ RUN';
     };
+
+    // Copy button
+    if (cliCopyBtn) {
+      cliCopyBtn.addEventListener('click', async () => {
+        if (!lastOutput) return;
+        try {
+          await navigator.clipboard.writeText(lastOutput);
+          cliCopyBtn.textContent = 'Copied!';
+          setTimeout(() => { cliCopyBtn.textContent = 'Copy'; }, 1500);
+        } catch {
+          // Fallback for non-HTTPS contexts
+          const ta = document.createElement('textarea');
+          ta.value = lastOutput;
+          ta.style.position = 'fixed';
+          ta.style.opacity = '0';
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand('copy');
+          document.body.removeChild(ta);
+          cliCopyBtn.textContent = 'Copied!';
+          setTimeout(() => { cliCopyBtn.textContent = 'Copy'; }, 1500);
+        }
+      });
+    }
 
     // Run button
     cliRunBtn.addEventListener('click', () => runCommand());
@@ -1134,6 +1167,9 @@
             (qp) =>
               `<button class="cli-quick-btn" data-cmd="${esc(qp.label)}" data-fmt="${qp.fmt}">${esc(qp.label)}</button>`
           ).join('')}
+        </div>
+        <div class="cli-output-header" id="cliOutputHeader" style="display:none;">
+          <button class="btn btn-ghost btn-sm" id="cliCopyBtn">Copy</button>
         </div>
         <div class="cli-output" id="cliOutput">
           <div class="cli-output-empty">ENTER A COMMAND OR CLICK A QUICK PICK</div>
