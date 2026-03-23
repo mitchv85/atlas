@@ -143,7 +143,7 @@
     devicesTableView.style.display = '';
     devicesDetailView.style.display = 'none';
 
-    renderDevicesTable(list);
+    renderDevicesTable(devices);
 
     // Fetch device info in background
     API.getDeviceInfo().then((info) => {
