@@ -2178,11 +2178,67 @@
         </div>`;
     }
 
-    // IP Reachability
+    // IS Neighbors (derived from topology edges)
+    if (topologyData) {
+      const nodeId = d.id;
+      const neighbors = [];
+
+      for (const edge of topologyData.edges) {
+        const ed = edge.data;
+        if (ed.source === nodeId) {
+          neighbors.push({
+            hostname: ed.targetLabel,
+            systemId: ed.target,
+            localAddr: ed.localAddr,
+            neighborAddr: ed.neighborAddr,
+            metric: ed.metric,
+            adjSids: ed.adjSids || [],
+            localIntf: ed.forwardHealth?.localInterface || '',
+          });
+        } else if (ed.target === nodeId) {
+          neighbors.push({
+            hostname: ed.sourceLabel,
+            systemId: ed.source,
+            localAddr: ed.reverseLocalAddr || ed.neighborAddr,
+            neighborAddr: ed.reverseNeighborAddr || ed.localAddr,
+            metric: ed.reverseMetric ?? ed.metric,
+            adjSids: ed.reverseAdjSids || [],
+            localIntf: ed.reverseHealth?.localInterface || '',
+          });
+        }
+      }
+
+      if (neighbors.length > 0) {
+        html += `
+          <div class="detail-section">
+            <h4>IS Neighbors (${neighbors.length})</h4>`;
+
+        for (const nbr of neighbors) {
+          const adjStr = nbr.adjSids.length > 0
+            ? nbr.adjSids.map((s) => `<span class="detail-badge green" style="font-size:0.65rem;">Adj ${s.sid}</span>`).join(' ')
+            : '';
+          html += `
+            <div style="padding:6px 0;border-bottom:1px solid var(--border);">
+              <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;">
+                <strong style="font-size:0.82rem;">${esc(nbr.hostname)}</strong>
+                <span class="detail-badge cyan" style="font-size:0.62rem;">metric ${nbr.metric}</span>
+                ${adjStr}
+              </div>
+              <div style="font-family:'JetBrains Mono',monospace;font-size:0.72rem;color:var(--text-muted);">
+                ${nbr.localIntf ? esc(nbr.localIntf) + ' — ' : ''}${esc(nbr.localAddr || '?')} → ${esc(nbr.neighborAddr || '?')}
+              </div>
+            </div>`;
+        }
+
+        html += `</div>`;
+      }
+    }
+
+    // Advertised IPv4 Reachability
     if (d.prefixes && d.prefixes.length > 0) {
       html += `
         <div class="detail-section">
-          <h4>IP Reachability (${d.prefixes.length})</h4>
+          <h4>Advertised IPv4 Reachability (${d.prefixes.length})</h4>
           <ul class="prefix-list">
             ${d.prefixes
               .map(
