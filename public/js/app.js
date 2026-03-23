@@ -1094,18 +1094,11 @@
     btnComputePath.addEventListener('click', handleComputePath);
     btnClearPath.addEventListener('click', handleClearPath);
 
-    // Mutual exclusion: selecting a node failure clears link failure and vice versa
     // All dropdown changes update selection markers on topology
     pathSource.addEventListener('change', () => updateSelectionMarkers());
     pathDest.addEventListener('change', () => updateSelectionMarkers());
-    pathFailNode.addEventListener('change', () => {
-      if (pathFailNode.value) pathFailLink.value = '';
-      updateSelectionMarkers();
-    });
-    pathFailLink.addEventListener('change', () => {
-      if (pathFailLink.value) pathFailNode.value = '';
-      updateSelectionMarkers();
-    });
+    pathFailNode.addEventListener('change', () => updateSelectionMarkers());
+    pathFailLink.addEventListener('change', () => updateSelectionMarkers());
 
     // ── Devices page bindings ───────────────────────────────────
     if (btnAddDevice) btnAddDevice.addEventListener('click', addDeviceFromForm);
@@ -1287,7 +1280,6 @@
         const ecmpResult = await API.computeECMP(source, dest);
 
         if (ecmpResult.pathCount > 1) {
-          // ECMP detected — use ECMP visualization
           currentPathResult = ecmpResult;
           topo.highlightECMP(ecmpResult);
           showECMPDetail(ecmpResult);
@@ -1297,40 +1289,48 @@
         }
       }
 
-      // Single path or failure simulation — existing logic
+      // Path with optional failure simulation
       const analysis = await API.analyzePath(source, dest);
       currentPathResult = analysis;
 
       let displayPath;
-      let failedNodes = [];
-      let failedEdges = [];
-      let failureLabel = '';
+      let failedNodes = failNode ? [failNode] : [];
+      let failedEdges = failLink ? [failLink] : [];
+      let failureLabels = [];
 
-      if (failNode) {
+      if (failNode && failLink) {
+        // Dual failure — compute from scratch with both exclusions
+        const result = await API.computePath(source, dest, [failNode], [failLink]);
+        displayPath = result.reachable ? result : null;
+        failureLabels.push(getHostname(failNode));
+        failureLabels.push(getEdgeLabel(failLink));
+      } else if (failNode) {
+        // Single node failure — try TI-LFA backup first
         const backup = analysis.nodeBackups.find((b) => b.failedNode === failNode);
         if (backup) {
           displayPath = backup.backupPath;
-          failureLabel = backup.failedHostname;
+          failureLabels.push(backup.failedHostname);
         } else {
           const result = await API.computePath(source, dest, [failNode], []);
           displayPath = result.reachable ? result : null;
-          failureLabel = getHostname(failNode);
+          failureLabels.push(getHostname(failNode));
         }
-        failedNodes = [failNode];
       } else if (failLink) {
+        // Single link failure — try TI-LFA backup first
         const backup = analysis.linkBackups.find((b) => b.failedEdgeId === failLink);
         if (backup) {
           displayPath = backup.backupPath;
-          failureLabel = backup.failedLinkLabel;
+          failureLabels.push(backup.failedLinkLabel);
         } else {
           const result = await API.computePath(source, dest, [], [failLink]);
           displayPath = result.reachable ? result : null;
-          failureLabel = failLink;
+          failureLabels.push(getEdgeLabel(failLink));
         }
-        failedEdges = [failLink];
       } else {
         displayPath = analysis.primary;
       }
+
+      const failureLabel = failureLabels.join(' + ');
 
       if (displayPath) {
         topo.highlightPath(displayPath, failedNodes, failedEdges);
@@ -1453,7 +1453,6 @@
 
         case 'fail-node':
           pathFailNode.value = ctxTargetData.id;
-          pathFailLink.value = ''; // Mutual exclusion
           updateSelectionMarkers();
           autoComputeIfReady();
           break;
@@ -1465,7 +1464,6 @@
 
         case 'fail-link':
           pathFailLink.value = ctxTargetData.id;
-          pathFailNode.value = ''; // Mutual exclusion
           updateSelectionMarkers();
           autoComputeIfReady();
           break;
@@ -1513,6 +1511,13 @@
     if (!topologyData) return systemId;
     const node = topologyData.nodes.find((n) => n.data.id === systemId);
     return node?.data?.hostname || systemId;
+  }
+
+  function getEdgeLabel(edgeId) {
+    if (!topologyData) return edgeId;
+    const edge = topologyData.edges.find((e) => e.data.id === edgeId);
+    if (edge) return `${edge.data.sourceLabel}↔${edge.data.targetLabel}`;
+    return edgeId;
   }
 
   // ── ECMP Detail Panel ────────────────────────────────────────────
@@ -1710,7 +1715,6 @@
     // Wire up "Show on Map" buttons for node failures
     detailBody.querySelectorAll('.btn-show-node-backup').forEach((btn) => {
       btn.addEventListener('click', () => {
-        pathFailLink.value = '';
         pathFailNode.value = btn.dataset.failNode;
         handleComputePath();
       });
@@ -1719,7 +1723,6 @@
     // Wire up "Show on Map" buttons for link failures
     detailBody.querySelectorAll('.btn-show-link-backup').forEach((btn) => {
       btn.addEventListener('click', () => {
-        pathFailNode.value = '';
         pathFailLink.value = btn.dataset.failEdge;
         handleComputePath();
       });
