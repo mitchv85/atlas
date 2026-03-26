@@ -30,6 +30,7 @@
       <nav class="topbar-tabs" id="mainTabs">
         <button class="topbar-tab active" data-tab="topology">Topology</button>
         <button class="topbar-tab" data-tab="devices">Devices</button>
+        <button class="topbar-tab" data-tab="bgp">BGP</button>
       </nav>
     </div>
 
@@ -242,6 +243,137 @@
 
         <!-- ── Detail View (hidden by default) ── -->
         <div id="devicesDetailView" style="display:none;">
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================================= -->
+    <!-- Tab: BGP                                                      -->
+    <!-- ============================================================= -->
+    <div class="tab-view" id="viewBgp">
+      <div class="bgp-page">
+        <!-- ── Status Section ── -->
+        <div class="bgp-status-section" id="bgpStatusSection">
+          <div class="devices-toolbar">
+            <div class="devices-toolbar-left">
+              <h2 class="devices-heading">BGP Status</h2>
+            </div>
+            <div class="devices-toolbar-right">
+              <button class="btn btn-ghost btn-sm" id="btnBgpRefresh">⟳ Refresh</button>
+            </div>
+          </div>
+          <div class="bgp-status-cards" id="bgpStatusCards">
+            <div class="bgp-status-card">
+              <div class="bgp-status-label">FRR Service</div>
+              <div class="bgp-status-value" id="bgpFrrStatus">—</div>
+            </div>
+            <div class="bgp-status-card">
+              <div class="bgp-status-label">gRPC Connection</div>
+              <div class="bgp-status-value" id="bgpGrpcStatus">—</div>
+            </div>
+            <div class="bgp-status-card">
+              <div class="bgp-status-label">Neighbors</div>
+              <div class="bgp-status-value" id="bgpNeighborStatus">—</div>
+            </div>
+            <div class="bgp-status-card">
+              <div class="bgp-status-label">VRFs</div>
+              <div class="bgp-status-value" id="bgpVrfStatus">—</div>
+            </div>
+            <div class="bgp-status-card">
+              <div class="bgp-status-label">VPNv4 Prefixes</div>
+              <div class="bgp-status-value" id="bgpRibStatus">—</div>
+            </div>
+          </div>
+
+          <!-- Neighbor Table -->
+          <div class="bgp-neighbors-section" id="bgpNeighborsSection" style="display:none;">
+            <h3 class="bgp-section-title">Neighbor Sessions</h3>
+            <table class="devices-table">
+              <thead>
+                <tr>
+                  <th>Neighbor</th>
+                  <th>Remote AS</th>
+                  <th>State</th>
+                  <th>Uptime</th>
+                  <th>Prefixes Rcvd</th>
+                  <th>Address Families</th>
+                </tr>
+              </thead>
+              <tbody id="bgpNeighborTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- ── Settings Section ── -->
+        <div class="bgp-settings-section">
+          <div class="devices-toolbar">
+            <div class="devices-toolbar-left">
+              <h2 class="devices-heading">BGP Configuration</h2>
+            </div>
+          </div>
+
+          <div class="bgp-settings-grid">
+            <!-- Left column: Config form -->
+            <div class="bgp-settings-form">
+              <div class="bgp-form-row">
+                <div class="form-group">
+                  <label>Local AS</label>
+                  <input type="number" id="bgpLocalAs" placeholder="e.g. 100" />
+                </div>
+                <div class="form-group">
+                  <label>Router ID</label>
+                  <input type="text" id="bgpRouterId" placeholder="e.g. 20.0.0.2" />
+                </div>
+                <div class="form-group">
+                  <label>Source Address</label>
+                  <input type="text" id="bgpSourceAddr" placeholder="e.g. 20.0.0.2" />
+                </div>
+              </div>
+
+              <h3 class="bgp-section-title">Route Reflector Neighbors</h3>
+              <div id="bgpNeighborList"></div>
+              <button class="btn btn-ghost btn-sm" id="btnAddBgpNeighbor" style="margin-top:8px;">+ Add Neighbor</button>
+
+              <h3 class="bgp-section-title" style="margin-top:20px;">Address Families</h3>
+              <div class="bgp-afi-toggles">
+                <label class="bgp-toggle">
+                  <input type="checkbox" id="bgpAfiVpnv4" checked />
+                  <span>VPNv4 Unicast</span>
+                </label>
+                <label class="bgp-toggle">
+                  <input type="checkbox" id="bgpAfiBgpLs" checked />
+                  <span>BGP-LS</span>
+                </label>
+              </div>
+
+              <h3 class="bgp-section-title" style="margin-top:20px;">FRR Settings</h3>
+              <div class="bgp-form-row">
+                <div class="form-group">
+                  <label>Config Path</label>
+                  <input type="text" id="bgpFrrConfPath" placeholder="/etc/frr/frr.conf" />
+                </div>
+                <div class="form-group">
+                  <label>gRPC Port</label>
+                  <input type="number" id="bgpFrrGrpcPort" placeholder="50051" />
+                </div>
+              </div>
+
+              <div class="bgp-form-actions">
+                <button class="btn btn-ghost" id="btnBgpPreview">Preview frr.conf</button>
+                <button class="btn btn-primary" id="btnBgpDeploy">Deploy to FRR</button>
+              </div>
+              <div class="bgp-deploy-status" id="bgpDeployStatus"></div>
+            </div>
+
+            <!-- Right column: frr.conf preview -->
+            <div class="bgp-preview-panel" id="bgpPreviewPanel" style="display:none;">
+              <div class="bgp-preview-header">
+                <h3 class="bgp-section-title">frr.conf Preview</h3>
+                <button class="btn btn-ghost btn-sm" id="btnBgpCopyConf">Copy</button>
+              </div>
+              <pre class="bgp-preview-code" id="bgpPreviewCode"></pre>
+            </div>
+          </div>
         </div>
       </div>
     </div>

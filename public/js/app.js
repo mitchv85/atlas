@@ -74,6 +74,7 @@
   const mainTabs = document.querySelectorAll('.topbar-tab');
   const viewTopology = $('#viewTopology');
   const viewDevices = $('#viewDevices');
+  const viewBgp = $('#viewBgp');
 
   // Devices page — use containers, re-query children as needed
   const devicesTableView = $('#devicesTableView');
@@ -110,6 +111,7 @@
     });
     viewTopology.classList.toggle('active', tabName === 'topology');
     viewDevices.classList.toggle('active', tabName === 'devices');
+    viewBgp.classList.toggle('active', tabName === 'bgp');
 
     // Show/hide path bar and collect button based on tab
     if (pathBar) pathBar.style.display = tabName === 'topology' && topologyData ? 'flex' : 'none';
@@ -117,6 +119,9 @@
 
     if (tabName === 'devices') {
       refreshDevicesPage();
+    }
+    if (tabName === 'bgp') {
+      refreshBgpPage();
     }
   }
 
@@ -1017,6 +1022,7 @@
     };
 
     bindEvents();
+    initBgpPage();
     await refreshDevices();
 
     // Load saved positions before loading topology
@@ -1373,6 +1379,230 @@
     if (topologyData) {
       setStatus('live', `${topologyData.metadata.nodeCount} nodes, ${topologyData.metadata.edgeCount} links`);
     }
+  }
+
+  // ── BGP Page ──────────────────────────────────────────────────────
+  let bgpConfigLoaded = false;
+
+  async function refreshBgpPage() {
+    // Load status
+    try {
+      const status = await API.getBgpStatus();
+      renderBgpStatus(status);
+    } catch (err) {
+      console.error('BGP status error:', err.message);
+    }
+
+    // Load config into form (once)
+    if (!bgpConfigLoaded) {
+      try {
+        const config = await API.getBgpConfig();
+        populateBgpForm(config);
+        bgpConfigLoaded = true;
+      } catch (err) {
+        console.error('BGP config error:', err.message);
+      }
+    }
+  }
+
+  function renderBgpStatus(status) {
+    // FRR Service
+    const frrEl = document.getElementById('bgpFrrStatus');
+    if (status.frr?.running) {
+      frrEl.innerHTML = '<span class="bgp-dot ok"></span> Running';
+    } else if (status.enabled) {
+      frrEl.innerHTML = '<span class="bgp-dot fail"></span> Stopped';
+    } else {
+      frrEl.innerHTML = '<span class="bgp-dot"></span> Not Configured';
+    }
+
+    // gRPC Connection
+    const grpcEl = document.getElementById('bgpGrpcStatus');
+    if (status.grpc?.connected) {
+      grpcEl.innerHTML = '<span class="bgp-dot ok"></span> Connected';
+    } else if (status.grpc?.available) {
+      grpcEl.innerHTML = '<span class="bgp-dot fail"></span> Disconnected';
+    } else {
+      grpcEl.innerHTML = '<span class="bgp-dot"></span> Unavailable';
+    }
+
+    // Neighbors
+    const nbrEl = document.getElementById('bgpNeighborStatus');
+    const est = status.store?.neighborsEstablished || 0;
+    const total = status.store?.neighborCount || 0;
+    if (total > 0) {
+      nbrEl.innerHTML = `<span class="bgp-dot ${est === total ? 'ok' : 'warn'}"></span> ${est}/${total} Established`;
+    } else {
+      nbrEl.textContent = '0';
+    }
+
+    // VRFs
+    document.getElementById('bgpVrfStatus').textContent = status.store?.vrfCount || '0';
+
+    // RIB
+    document.getElementById('bgpRibStatus').textContent = (status.store?.ribCount || 0).toLocaleString();
+
+    // Neighbor table
+    renderBgpNeighborTable(status.store?.neighborCount || 0);
+  }
+
+  async function renderBgpNeighborTable(count) {
+    const section = document.getElementById('bgpNeighborsSection');
+    const tbody = document.getElementById('bgpNeighborTableBody');
+
+    if (count === 0) {
+      section.style.display = 'none';
+      return;
+    }
+
+    try {
+      const neighbors = await API.getBgpNeighbors();
+      if (!neighbors || neighbors.length === 0) {
+        section.style.display = 'none';
+        return;
+      }
+
+      section.style.display = '';
+      tbody.innerHTML = neighbors.map((n) => {
+        const stateClass = n.state === 'Established' ? 'ok' : n.state === 'Active' || n.state === 'Connect' ? 'warn' : 'fail';
+        return `<tr>
+          <td><strong>${esc(n.address)}</strong>${n.description ? `<br><span style="font-size:0.72rem;color:var(--text-muted);">${esc(n.description)}</span>` : ''}</td>
+          <td>${n.remoteAs}</td>
+          <td><span class="dev-status"><span class="dev-status-dot ${stateClass}"></span>${esc(n.state)}</span></td>
+          <td>${esc(n.uptimeFormatted || '—')}</td>
+          <td>${n.prefixReceived}</td>
+          <td style="font-size:0.72rem;">${n.afis.join(', ')}</td>
+        </tr>`;
+      }).join('');
+    } catch {
+      section.style.display = 'none';
+    }
+  }
+
+  function populateBgpForm(config) {
+    document.getElementById('bgpLocalAs').value = config.localAs || '';
+    document.getElementById('bgpRouterId').value = config.routerId || '';
+    document.getElementById('bgpSourceAddr').value = config.sourceAddress || '';
+    document.getElementById('bgpAfiVpnv4').checked = config.addressFamilies?.vpnv4?.enabled !== false;
+    document.getElementById('bgpAfiBgpLs').checked = config.addressFamilies?.bgpLs?.enabled !== false;
+    document.getElementById('bgpFrrConfPath').value = config.frr?.configPath || '/etc/frr/frr.conf';
+    document.getElementById('bgpFrrGrpcPort').value = config.frr?.grpcPort || 50051;
+
+    // Populate neighbors
+    const list = document.getElementById('bgpNeighborList');
+    list.innerHTML = '';
+    for (const nbr of (config.neighbors || [])) {
+      addBgpNeighborRow(nbr.address, nbr.description);
+    }
+
+    // If no neighbors, add one empty row
+    if (!config.neighbors || config.neighbors.length === 0) {
+      addBgpNeighborRow('', '');
+    }
+  }
+
+  function addBgpNeighborRow(address, description) {
+    const list = document.getElementById('bgpNeighborList');
+    const row = document.createElement('div');
+    row.className = 'bgp-neighbor-row';
+    row.innerHTML = `
+      <input type="text" class="bgp-nbr-addr" placeholder="Neighbor IP" value="${esc(address || '')}" />
+      <input type="text" class="bgp-nbr-desc" placeholder="Description (optional)" value="${esc(description || '')}" />
+      <button class="btn btn-ghost btn-sm bgp-nbr-remove" title="Remove">✕</button>
+    `;
+    row.querySelector('.bgp-nbr-remove').addEventListener('click', () => {
+      row.remove();
+    });
+    list.appendChild(row);
+  }
+
+  function readBgpFormConfig() {
+    const neighbors = [];
+    document.querySelectorAll('.bgp-neighbor-row').forEach((row) => {
+      const addr = row.querySelector('.bgp-nbr-addr').value.trim();
+      if (addr) {
+        neighbors.push({
+          address: addr,
+          description: row.querySelector('.bgp-nbr-desc').value.trim(),
+        });
+      }
+    });
+
+    return {
+      enabled: true,
+      localAs: parseInt(document.getElementById('bgpLocalAs').value, 10) || 0,
+      routerId: document.getElementById('bgpRouterId').value.trim(),
+      sourceAddress: document.getElementById('bgpSourceAddr').value.trim(),
+      neighbors,
+      addressFamilies: {
+        vpnv4: { enabled: document.getElementById('bgpAfiVpnv4').checked },
+        bgpLs: { enabled: document.getElementById('bgpAfiBgpLs').checked },
+      },
+      frr: {
+        managed: true,
+        configPath: document.getElementById('bgpFrrConfPath').value.trim() || '/etc/frr/frr.conf',
+        daemonsPath: '/etc/frr/daemons',
+        grpcPort: parseInt(document.getElementById('bgpFrrGrpcPort').value, 10) || 50051,
+        restartCommand: 'sudo systemctl restart frr',
+        statusCommand: 'sudo systemctl is-active frr',
+      },
+    };
+  }
+
+  async function handleBgpPreview() {
+    const config = readBgpFormConfig();
+    const previewPanel = document.getElementById('bgpPreviewPanel');
+    const previewCode = document.getElementById('bgpPreviewCode');
+
+    try {
+      const result = await API.previewBgpConfig(config);
+      previewCode.textContent = result.frrConf;
+      previewPanel.style.display = '';
+    } catch (err) {
+      previewCode.textContent = `Error: ${err.message}`;
+      previewPanel.style.display = '';
+    }
+  }
+
+  async function handleBgpDeploy() {
+    const config = readBgpFormConfig();
+    const statusEl = document.getElementById('bgpDeployStatus');
+    const btn = document.getElementById('btnBgpDeploy');
+
+    btn.disabled = true;
+    statusEl.textContent = 'Deploying...';
+    statusEl.className = 'bgp-deploy-status';
+
+    try {
+      const result = await API.deployBgpConfig(config);
+      if (result.success) {
+        statusEl.textContent = 'Deployed successfully. FRR restarted.';
+        statusEl.classList.add('success');
+        bgpConfigLoaded = false; // Force reload on next tab visit
+        // Refresh status after a short delay for FRR to start
+        setTimeout(() => refreshBgpPage(), 4000);
+      } else {
+        statusEl.textContent = result.message || 'Deploy failed';
+        statusEl.classList.add('error');
+      }
+    } catch (err) {
+      statusEl.textContent = `Deploy error: ${err.message}`;
+      statusEl.classList.add('error');
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  // Wire BGP page events
+  function initBgpPage() {
+    document.getElementById('btnBgpRefresh')?.addEventListener('click', refreshBgpPage);
+    document.getElementById('btnAddBgpNeighbor')?.addEventListener('click', () => addBgpNeighborRow('', ''));
+    document.getElementById('btnBgpPreview')?.addEventListener('click', handleBgpPreview);
+    document.getElementById('btnBgpDeploy')?.addEventListener('click', handleBgpDeploy);
+    document.getElementById('btnBgpCopyConf')?.addEventListener('click', () => {
+      const code = document.getElementById('bgpPreviewCode')?.textContent || '';
+      copyToClipboard(code, document.getElementById('btnBgpCopyConf'));
+    });
   }
 
   // ── Context Menu ────────────────────────────────────────────────

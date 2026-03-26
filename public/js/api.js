@@ -148,4 +148,57 @@ const API = {
       body: JSON.stringify(positions),
     });
   },
+
+  // ── BGP ───────────────────────────────────────────────────────────
+  async getBgpStatus() {
+    const res = await fetch('/api/bgp/status');
+    return res.json();
+  },
+
+  async getBgpConfig() {
+    const res = await fetch('/api/bgp/config');
+    return res.json();
+  },
+
+  async deployBgpConfig(config) {
+    const res = await fetch('/api/bgp/config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(config),
+    });
+    return res.json();
+  },
+
+  async previewBgpConfig(config) {
+    const res = await fetch('/api/bgp/config/preview', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(config),
+    });
+    return res.json();
+  },
+
+  async getBgpNeighbors() {
+    const res = await fetch('/api/bgp/neighbors');
+    return res.json();
+  },
+
+  async getBgpVrfs() {
+    const res = await fetch('/api/bgp/vrfs');
+    return res.json();
+  },
+
+  async getBgpRib(filters = {}) {
+    const params = new URLSearchParams();
+    for (const [k, v] of Object.entries(filters)) {
+      if (v !== undefined && v !== '') params.set(k, v);
+    }
+    const res = await fetch(`/api/bgp/rib?${params}`);
+    return res.json();
+  },
+
+  async collectBgp() {
+    const res = await fetch('/api/bgp/collect', { method: 'POST' });
+    return res.json();
+  },
 };
