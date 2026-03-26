@@ -131,21 +131,21 @@ management api http-commands
 
 ATLAS can run FRR as a BGP speaker to peer with route reflectors and collect VPNv4 + BGP-LS data.
 
-**Install FRR with gRPC support:**
+**Install FRR (Alpine Linux):**
 
 ```bash
-# Ubuntu/Debian — FRR from official repo
-curl -s https://deb.frrouting.org/frr/keys.asc | sudo apt-key add -
-echo "deb https://deb.frrouting.org/frr $(lsb_release -s -c) frr-stable" | \
-  sudo tee /etc/apt/sources.list.d/frr.list
-sudo apt update && sudo apt install frr frr-grpc
+# Enable the community repository (if not already)
+# Ensure /etc/apk/repositories includes:
+#   http://dl-cdn.alpinelinux.org/alpine/v3.22/community
+
+apk update
+apk add frr frr-openrc
+
+# Enable FRR to start at boot
+rc-update add frr
 ```
 
-**Copy the gRPC proto file:**
-
-```bash
-cp /usr/share/frr/grpc/frr-northbound.proto src/proto/
-```
+**Note:** Alpine's FRR package does not include gRPC northbound support. ATLAS uses `vtysh` JSON polling as the data collection method on Alpine. gRPC support can be added by building FRR from source with `--enable-grpc`.
 
 **Configure via ATLAS:**
 

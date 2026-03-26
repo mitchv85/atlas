@@ -1543,8 +1543,8 @@
         configPath: document.getElementById('bgpFrrConfPath').value.trim() || '/etc/frr/frr.conf',
         daemonsPath: '/etc/frr/daemons',
         grpcPort: parseInt(document.getElementById('bgpFrrGrpcPort').value, 10) || 50051,
-        restartCommand: 'sudo systemctl restart frr',
-        statusCommand: 'sudo systemctl is-active frr',
+        restartCommand: 'rc-service frr restart',
+        statusCommand: 'rc-service frr status',
       },
     };
   }

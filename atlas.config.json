@@ -78,8 +78,8 @@
       "configPath": "/etc/frr/frr.conf",
       "daemonsPath": "/etc/frr/daemons",
       "grpcPort": 50051,
-      "restartCommand": "sudo systemctl restart frr",
-      "statusCommand": "sudo systemctl is-active frr"
+      "restartCommand": "rc-service frr restart",
+      "statusCommand": "rc-service frr status"
     },
     "neighbors": [
       {
