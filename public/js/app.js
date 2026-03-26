@@ -1385,6 +1385,13 @@
   let bgpConfigLoaded = false;
 
   async function refreshBgpPage() {
+    // Trigger collection from FRR first
+    try {
+      await API.collectBgp();
+    } catch (err) {
+      console.error('BGP collect error:', err.message);
+    }
+
     // Load status
     try {
       const status = await API.getBgpStatus();
@@ -1420,10 +1427,12 @@
     const grpcEl = document.getElementById('bgpGrpcStatus');
     if (status.grpc?.connected) {
       grpcEl.innerHTML = '<span class="bgp-dot ok"></span> Connected';
-    } else if (status.grpc?.available) {
+    } else if (status.enabled && status.grpc?.available && status.grpc?.connecting) {
+      grpcEl.innerHTML = '<span class="bgp-dot warn"></span> Connecting...';
+    } else if (status.enabled && status.grpc?.available && status.grpc?.reconnectAttempts > 0) {
       grpcEl.innerHTML = '<span class="bgp-dot fail"></span> Disconnected';
     } else {
-      grpcEl.innerHTML = '<span class="bgp-dot"></span> Unavailable';
+      grpcEl.innerHTML = '<span class="bgp-dot"></span> N/A (using vtysh)';
     }
 
     // Neighbors

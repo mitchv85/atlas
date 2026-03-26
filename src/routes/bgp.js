@@ -148,9 +148,9 @@ router.post('/config/preview', (req, res) => {
 
 /**
  * POST /api/bgp/collect
- * Trigger a manual BGP RIB collection from FRR.
- * In Phase 1, this runs a one-shot gRPC Get or vtysh fallback.
- * In Phase 3, the gRPC subscription handles continuous updates.
+ * Trigger a manual BGP data collection from FRR via vtysh JSON.
+ * Collects neighbor summary and VPNv4 RIB, parses them, and
+ * populates the BGP store.
  */
 router.post('/collect', async (_req, res) => {
   if (bgpStore.collecting) {
@@ -160,24 +160,43 @@ router.post('/collect', async (_req, res) => {
   try {
     bgpStore.setCollecting(true);
 
-    // TODO Phase 1: Implement collection via gRPC Get or vtysh fallback
-    // const grpcStatus = bgpGrpc.getStatus();
-    // if (grpcStatus.connected) {
-    //   // gRPC path
-    //   const ribData = await bgpGrpc.get('/frr-bgp:bgp/...');
-    //   ...
-    // } else {
-    //   // vtysh fallback
-    //   const { execSync } = require('child_process');
-    //   const raw = JSON.parse(execSync('vtysh -c "show bgp ipv4 vpn json"', { encoding: 'utf-8' }));
-    //   const { vrfs, rib } = bgpParser.parseVpnv4Rib(raw);
-    //   ...
-    // }
+    const { execSync } = require('child_process');
+    const bgpParser = require('../services/bgpParser');
+    const poller = require('../services/poller');
+
+    // 1. Collect neighbor summary
+    try {
+      const nbrRaw = JSON.parse(
+        execSync('vtysh -c "show bgp summary json"', { encoding: 'utf-8', timeout: 15000 })
+      );
+      const neighbors = bgpParser.parseNeighborSummary(nbrRaw);
+      bgpStore.setNeighbors(neighbors);
+    } catch (err) {
+      console.error('  [BGP] Neighbor collection failed:', err.message);
+    }
+
+    // 2. Collect VPNv4 RIB
+    try {
+      const ribRaw = JSON.parse(
+        execSync('vtysh -c "show bgp ipv4 vpn json"', { encoding: 'utf-8', timeout: 30000 })
+      );
+      const { vrfs, rib } = bgpParser.parseVpnv4Rib(ribRaw);
+
+      // Enrich with topology data (map next-hops to PE hostnames)
+      const topology = poller.getTopology();
+      if (topology) {
+        bgpParser.enrichWithTopology(rib, topology);
+      }
+
+      bgpStore.setVrfs(vrfs);
+      bgpStore.setRib(rib);
+    } catch (err) {
+      console.error('  [BGP] VPNv4 RIB collection failed:', err.message);
+    }
 
     bgpStore.setCollecting(false);
     res.json({
       success: true,
-      message: 'Collection triggered (Phase 1 implementation pending)',
       status: bgpStore.getStatus(),
     });
   } catch (err) {
