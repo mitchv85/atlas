@@ -2154,8 +2154,13 @@
           <ul class="prefix-list">
             ${d.srPrefixSids
               .map(
-                (s) =>
-                  `<li>${esc(s.prefix)}<span class="detail-badge cyan" style="margin-left:8px;">SID ${s.sid}</span><span class="prefix-metric">algo ${s.algorithm}${s.isNodeSid ? ' [N]' : ''}</span></li>`
+                (s) => {
+                  let flags = '';
+                  if (s.isNodeSid) flags += '<span class="detail-badge cyan" style="margin-left:4px;font-size:0.65rem;">N</span>';
+                  if (s.noPHP) flags += '<span class="detail-badge amber" style="margin-left:4px;font-size:0.65rem;">noPHP</span>';
+                  if (s.explicitNull) flags += '<span class="detail-badge green" style="margin-left:4px;font-size:0.65rem;">E</span>';
+                  return `<li>${esc(s.prefix)}<span class="detail-badge cyan" style="margin-left:8px;">SID ${s.sid}</span><span class="prefix-metric">algo ${s.algorithm}</span>${flags}</li>`;
+                }
               )
               .join('')}
           </ul>

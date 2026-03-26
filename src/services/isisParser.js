@@ -234,6 +234,8 @@ function parseReachabilities(reachabilities) {
         algorithmName: sr.algo || 'SPF',
         flags: sr.options || {},
         isNodeSid: sr.options?.nodeSID || false,
+        noPHP: sr.options?.noPenultimate || false,
+        explicitNull: sr.options?.explicitNull || false,
       });
     }
   }
