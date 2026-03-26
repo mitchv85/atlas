@@ -9,6 +9,7 @@
   let devices = [];
   let topologyData = null;
   let currentPathResult = null;
+  let lastViewedNode = null; // Track node for "back" navigation from path views
   const topo = new TopologyRenderer('cy');
   const socket = new AtlasSocket();
 
@@ -1540,12 +1541,23 @@
         topo.highlightECMP(ecmpResult);
       });
     });
+
+    // Wire up "Back to node" button
+    const btnBack = detailBody.querySelector('.btn-back-to-node');
+    if (btnBack) btnBack.addEventListener('click', backToNode);
   }
 
   function buildECMPDetailHTML(ecmpResult) {
     const colors = ['#22d3ee', '#fbbf24', '#a78bfa', '#fb7185'];
 
-    let html = `
+    let html = '';
+
+    // Back-to-node navigation
+    if (lastViewedNode) {
+      html += `<button class="btn btn-ghost btn-sm btn-back-to-node" style="margin-bottom:10px;display:inline-flex;align-items:center;gap:4px;">← Back to ${esc(lastViewedNode.hostname || lastViewedNode.label)}</button>`;
+    }
+
+    html += `
       <div class="path-result-banner">
         <svg class="path-result-icon" viewBox="0 0 20 20" fill="#22d3ee">
           <path fill-rule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clip-rule="evenodd"/>
@@ -1571,7 +1583,7 @@
 
       // Extract label stack for this path
       const labelEntry = (path.labelStack && path.labelStack.length > 0) ? path.labelStack[0] : null;
-      const labels = labelEntry?.labels || [];
+      const labels = wireLabels(labelEntry?.labels || []);
 
       html += `
         <div class="ecmp-path-row" data-path-idx="${i}" style="
@@ -1613,7 +1625,7 @@
       const path = ecmpResult.paths[i];
       const color = colors[i];
       const labelEntry = (path.labelStack && path.labelStack.length > 0) ? path.labelStack[0] : null;
-      const labels = labelEntry?.labels || [];
+      const labels = wireLabels(labelEntry?.labels || []);
 
       html += `
         <div style="margin-bottom:12px;">
@@ -1727,10 +1739,19 @@
         handleComputePath();
       });
     });
+
+    // Wire up "Back to node" button
+    const btnBack = detailBody.querySelector('.btn-back-to-node');
+    if (btnBack) btnBack.addEventListener('click', backToNode);
   }
 
   function buildPathDetailHTML(pathData, analysis, failedNodes, failedEdges, failureLabel) {
     let html = '';
+
+    // Back-to-node navigation
+    if (lastViewedNode) {
+      html += `<button class="btn btn-ghost btn-sm btn-back-to-node" style="margin-bottom:10px;display:inline-flex;align-items:center;gap:4px;">← Back to ${esc(lastViewedNode.hostname || lastViewedNode.label)}</button>`;
+    }
 
     // Unreachable state
     if (!pathData) {
@@ -1776,7 +1797,7 @@
       if (pathData.labelStackSource === 'tunnel-fib') {
         // Tunnel FIB format: [{ labels: [...], nexthop, interface, type }]
         for (const entry of pathData.labelStack) {
-          const labels = entry.labels || [];
+          const labels = wireLabels(entry.labels || []);
           html += `<div style="margin-bottom:10px;">`;
           if (entry.nexthop) {
             html += `<div style="font-size:0.72rem;color:var(--text-muted);margin-bottom:4px;">via ${esc(entry.nexthop)} (${esc(entry.interface || '')})</div>`;
@@ -1953,6 +1974,7 @@
 
   // ── Detail Panel ──────────────────────────────────────────────────
   async function showNodeDetail(nodeData) {
+    lastViewedNode = nodeData;
     detailTitle.textContent = nodeData.hostname || nodeData.label;
     detailBody.innerHTML = buildNodeDetailHTML(nodeData);
     detailPanel.classList.add('open');
@@ -2077,6 +2099,25 @@
 
   function closeDetail() {
     detailPanel.classList.remove('open');
+  }
+
+  /**
+   * Navigate back to the last-viewed node detail, clearing path state.
+   */
+  function backToNode() {
+    if (!lastViewedNode) return;
+    topo.clearPath();
+    currentPathResult = null;
+    btnClearPath.style.display = 'none';
+    pathSource.value = '';
+    pathDest.value = '';
+    pathFailNode.value = '';
+    pathFailLink.value = '';
+    topo.updateSelectionMarkers({ source: null, dest: null, failNode: null, failEdge: null });
+    if (topologyData) {
+      setStatus('live', `${topologyData.metadata.nodeCount} nodes, ${topologyData.metadata.edgeCount} links`);
+    }
+    showNodeDetail(lastViewedNode);
   }
 
   function buildNodeDetailHTML(d) {
@@ -2259,6 +2300,20 @@
     html += `
       <div class="detail-section" style="margin-top:8px;padding-top:16px;border-top:1px solid var(--border);">
         <h4>Remote Node SID Reachability</h4>
+        <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:10px;font-size:0.68rem;color:var(--text-muted);">
+          <span style="display:inline-flex;align-items:center;gap:3px;">
+            <svg viewBox="0 0 20 20" fill="#34d399" style="width:14px;height:14px;"><path fill-rule="evenodd" d="M10 1.944A11.954 11.954 0 012.166 5C2.056 5.649 2 6.319 2 7c0 5.225 3.34 9.67 8 11.317C14.66 16.67 18 12.225 18 7c0-.682-.057-1.35-.166-2.001A11.954 11.954 0 0110 1.944zM13.707 8.707a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
+            Protected
+          </span>
+          <span style="display:inline-flex;align-items:center;gap:3px;">
+            <svg viewBox="0 0 20 20" fill="#22d3ee" style="width:14px;height:14px;"><path fill-rule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clip-rule="evenodd"/></svg>
+            ECMP
+          </span>
+          <span style="display:inline-flex;align-items:center;gap:3px;">
+            <svg viewBox="0 0 20 20" fill="#fbbf24" style="width:14px;height:14px;"><path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>
+            Unprotected
+          </span>
+        </div>
         <div id="reachabilitySection">
           <div class="reach-loading">Loading reachability...</div>
         </div>
@@ -2324,25 +2379,25 @@
           <div class="reach-expand-section">
             <div class="reach-expand-label">Primary Path</div>
             <div class="reach-path-chain">${entry.primaryChain.join(' → ')}</div>
-            ${entry.primaryLabelStack.length > 0 ? `
+            ${wireLabels(entry.primaryLabelStack).length > 0 ? `
               <div class="reach-label-stack">
-                ${entry.primaryLabelStack.map(l => {
+                ${wireLabels(entry.primaryLabelStack).map(l => {
                   const decoded = decodeSrLabel(l);
                   return '<span class="detail-badge ' + decoded.color + '" title="' + esc(decoded.description) + '" style="cursor:help;font-size:0.7rem;">' + esc(l) + '</span>';
                 }).join('')}
               </div>` : ''}
           </div>
-          ${entry.backupLabelStack.length > 0 ? `
+          ${wireLabels(entry.backupLabelStack).length > 0 ? `
             <div class="reach-expand-section">
               <div class="reach-expand-label">TI-LFA Backup Stack</div>
               <div class="reach-label-stack">
-                ${entry.backupLabelStack.map(l => {
+                ${wireLabels(entry.backupLabelStack).map(l => {
                   const decoded = decodeSrLabel(l);
                   return '<span class="detail-badge ' + decoded.color + '" title="' + esc(decoded.description) + '" style="cursor:help;font-size:0.7rem;">' + esc(l) + '</span>';
                 }).join('')}
               </div>
               <div style="font-size:0.68rem;color:var(--text-muted);margin-top:3px;">
-                ${entry.backupLabelStack.map(l => decodeSrLabel(l).description).join(' → ')}
+                ${wireLabels(entry.backupLabelStack).map(l => decodeSrLabel(l).description).join(' → ')}
               </div>
               ${entry.backupNexthop ? `<div style="font-size:0.68rem;color:var(--text-muted);margin-top:2px;">via ${esc(entry.backupNexthop)} (${esc(entry.backupInterface)})</div>` : ''}
             </div>` : ''}
@@ -2587,6 +2642,14 @@
     const div = document.createElement('div');
     div.textContent = String(str);
     return div.innerHTML;
+  }
+
+  /**
+   * Filter labels for display — removes Implicit Null (3) since it never
+   * appears on the wire (PHP pops it before the packet arrives).
+   */
+  function wireLabels(labels) {
+    return labels.filter(l => String(l) !== '3');
   }
 
   /**
