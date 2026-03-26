@@ -17,6 +17,9 @@ const devices = new Map();
 // Polling config
 let pollingConfig = { enabled: true, intervalSeconds: 15 };
 
+// Preserve extra config keys we don't own (e.g., bgp)
+let extraConfig = {};
+
 /**
  * Load config from atlas.config.json and seed the device store.
  */
@@ -53,6 +56,10 @@ function loadConfig() {
       });
     }
 
+    // Preserve any config keys we don't own (e.g., bgp)
+    const { polling, devices: _d, ...rest } = config;
+    extraConfig = rest;
+
     console.log(`  Loaded ${devices.size} device(s) from atlas.config.json`);
   } catch (err) {
     console.error('  Error loading atlas.config.json:', err.message);
@@ -75,6 +82,7 @@ function saveConfig() {
         password: d.password,
         transport: d.transport,
       })),
+      ...extraConfig, // Preserve keys we don't own (e.g., bgp)
     };
 
     fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2) + '\n', 'utf-8');

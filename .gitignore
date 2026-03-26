@@ -9,3 +9,6 @@ logs/
 
 # User-specific state
 atlas.positions.json
+
+# FRR proto files (copy from your local FRR installation)
+src/proto/*.proto

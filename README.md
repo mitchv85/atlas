@@ -44,10 +44,21 @@ ATLAS reads the IS-IS link-state database from Arista EOS devices, builds an int
 - Config-backed device store (atlas.config.json)
 - Server-side persistent node positions (atlas.positions.json)
 
+### BGP Integration (v0.4.0)
+- FRR-managed BGP speaker with config generation and service lifecycle
+- gRPC northbound client for real-time BGP data (event-driven)
+- VPNv4 unicast + BGP-LS address family support
+- VRF-centric view: per-VRF prefix tables mapped to PE nodes
+- Full VPNv4 RIB browser with RD/RT/PE filtering and pagination
+- BGP neighbor session monitoring
+- eAPI enrichment: VRF names, RT policies from Arista devices
+
 ### Phase 1 — IS-IS Topology Visualization ✅
 ### Roadmap
 - FlexAlgo awareness (FAD parsing, per-algo overlays)
-- BGP IPVPN integration (prefix-to-algorithm mapping)
+- BGP IPVPN: gRPC collection implementation, VRF UI tab
+- BGP-LS topology enrichment (TE metrics, cross-validation)
+- EVPN + NG-MVPN address families
 
 ---
 
@@ -116,13 +127,37 @@ management api http-commands
    no shutdown
 ```
 
+### BGP Integration (optional)
+
+ATLAS can run FRR as a BGP speaker to peer with route reflectors and collect VPNv4 + BGP-LS data.
+
+**Install FRR with gRPC support:**
+
+```bash
+# Ubuntu/Debian — FRR from official repo
+curl -s https://deb.frrouting.org/frr/keys.asc | sudo apt-key add -
+echo "deb https://deb.frrouting.org/frr $(lsb_release -s -c) frr-stable" | \
+  sudo tee /etc/apt/sources.list.d/frr.list
+sudo apt update && sudo apt install frr frr-grpc
+```
+
+**Copy the gRPC proto file:**
+
+```bash
+cp /usr/share/frr/grpc/frr-northbound.proto src/proto/
+```
+
+**Configure via ATLAS:**
+
+BGP settings are managed in `atlas.config.json` under the `bgp` key, or via the BGP settings UI. ATLAS generates `frr.conf` and manages the FRR service lifecycle.
+
 ---
 
 ## Architecture
 
 ```
 atlas/
-├── server.js                    # Express entry point
+├── server.js                    # Express entry point + WebSocket hub
 ├── public/                      # Frontend (static)
 │   ├── index.html               # SPA shell
 │   ├── css/atlas.css            # Dark NOC-inspired theme
@@ -131,14 +166,21 @@ atlas/
 │       ├── topology.js          # Cytoscape.js renderer
 │       └── app.js               # Main application logic
 └── src/                         # Backend
+    ├── proto/                   # FRR gRPC proto definitions
+    │   └── README.md            # Setup instructions
     ├── routes/
+    │   ├── bgp.js               # BGP API (config, VRFs, RIB, neighbors)
     │   ├── devices.js           # Device CRUD + connectivity test
     │   └── topology.js          # LSDB collection + graph serving
     ├── services/
+    │   ├── bgpGrpc.js           # FRR northbound gRPC client
+    │   ├── bgpParser.js         # VPNv4 RIB + BGP-LS parser
     │   ├── eapi.js              # Arista eAPI client (JSON-RPC/HTTPS)
+    │   ├── frrManager.js        # FRR config generation + lifecycle
     │   ├── isisParser.js        # IS-IS LSDB TLV parser
     │   └── topologyBuilder.js   # LSDB → Cytoscape.js graph builder
     └── store/
+        ├── bgp.js               # In-memory BGP state (VRFs, RIB, neighbors)
         └── devices.js           # In-memory device store
 ```
 
@@ -155,6 +197,15 @@ atlas/
 | `GET` | `/api/topology` | Get current topology graph |
 | `POST` | `/api/topology/collect` | Collect LSDB and build topology |
 | `GET` | `/api/topology/node/:systemId` | Get detailed node info |
+| `GET` | `/api/bgp/status` | BGP subsystem status (FRR + gRPC + store) |
+| `GET` | `/api/bgp/config` | Current BGP configuration |
+| `POST` | `/api/bgp/config` | Deploy BGP config → FRR restart |
+| `POST` | `/api/bgp/config/preview` | Preview generated frr.conf |
+| `POST` | `/api/bgp/collect` | Trigger manual RIB collection |
+| `GET` | `/api/bgp/neighbors` | BGP neighbor session summary |
+| `GET` | `/api/bgp/vrfs` | VRF list with prefix counts |
+| `GET` | `/api/bgp/vrfs/:rd` | Prefixes for a specific VRF |
+| `GET` | `/api/bgp/rib` | Full VPNv4 RIB with filtering |
 
 ---
 

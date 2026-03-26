@@ -6,6 +6,7 @@ const { WebSocketServer } = require('ws');
 
 const deviceRoutes = require('./src/routes/devices');
 const topologyRoutes = require('./src/routes/topology');
+const bgpRoutes = require('./src/routes/bgp');
 const poller = require('./src/services/poller');
 
 const app = express();
@@ -27,6 +28,7 @@ app.set('poller', poller);
 // ---------------------------------------------------------------------------
 app.use('/api/devices', deviceRoutes);
 app.use('/api/topology', topologyRoutes);
+app.use('/api/bgp', bgpRoutes);
 
 // Poller status endpoint
 app.get('/api/status', (_req, res) => {
@@ -132,6 +134,27 @@ poller.on('status:updated', () => {
 });
 
 // ---------------------------------------------------------------------------
+// BGP Store Events → WebSocket Broadcasts
+// ---------------------------------------------------------------------------
+const bgpStore = require('./src/store/bgp');
+
+bgpStore.on('vrfs:updated', (vrfSummary) => {
+  broadcast({ type: 'bgp:vrfs:updated', data: vrfSummary });
+});
+
+bgpStore.on('rib:updated', (ribInfo) => {
+  broadcast({ type: 'bgp:rib:updated', data: ribInfo });
+});
+
+bgpStore.on('neighbors:updated', (neighbors) => {
+  broadcast({ type: 'bgp:neighbors:updated', data: neighbors });
+});
+
+bgpStore.on('status:changed', (status) => {
+  broadcast({ type: 'bgp:status', data: status });
+});
+
+// ---------------------------------------------------------------------------
 // WebSocket SSH Proxy — /ssh?device=<name>
 // ---------------------------------------------------------------------------
 const { Client: SshClient } = require('ssh2');
@@ -218,7 +241,7 @@ sshWss.on('connection', (ws, req) => {
 // ---------------------------------------------------------------------------
 server.listen(PORT, () => {
   console.log(`\n  ╔══════════════════════════════════════╗`);
-  console.log(`  ║          A T L A S   v0.3.0          ║`);
+  console.log(`  ║          A T L A S   v0.4.0          ║`);
   console.log(`  ║   Network Topology & Operations       ║`);
   console.log(`  ╠══════════════════════════════════════╣`);
   console.log(`  ║  http://localhost:${PORT}               ║`);

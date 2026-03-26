@@ -67,5 +67,23 @@
       "password": "admin",
       "transport": "https"
     }
-  ]
+  ],
+  "bgp": {
+    "enabled": false,
+    "localAs": 65000,
+    "routerId": "",
+    "frr": {
+      "managed": true,
+      "configPath": "/etc/frr/frr.conf",
+      "daemonsPath": "/etc/frr/daemons",
+      "grpcPort": 50051,
+      "restartCommand": "sudo systemctl restart frr",
+      "statusCommand": "sudo systemctl is-active frr"
+    },
+    "neighbors": [],
+    "addressFamilies": {
+      "vpnv4": { "enabled": true },
+      "bgpLs": { "enabled": true }
+    }
+  }
 }
