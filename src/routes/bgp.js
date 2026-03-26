@@ -81,6 +81,9 @@ router.post('/config', async (req, res) => {
   if (!bgpConfig.routerId || !/^\d+\.\d+\.\d+\.\d+$/.test(bgpConfig.routerId)) {
     return res.status(400).json({ error: 'routerId must be a valid IPv4 address' });
   }
+  if (bgpConfig.sourceAddress && !/^\d+\.\d+\.\d+\.\d+$/.test(bgpConfig.sourceAddress)) {
+    return res.status(400).json({ error: 'sourceAddress must be a valid IPv4 address (or omit to use routerId)' });
+  }
   if (!bgpConfig.neighbors || !Array.isArray(bgpConfig.neighbors) || bgpConfig.neighbors.length === 0) {
     return res.status(400).json({ error: 'At least one neighbor (Route Reflector) is required' });
   }

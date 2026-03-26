@@ -72,6 +72,7 @@
     "enabled": false,
     "localAs": 65000,
     "routerId": "",
+    "sourceAddress": "",
     "frr": {
       "managed": true,
       "configPath": "/etc/frr/frr.conf",

@@ -124,6 +124,7 @@ zebra_options="  -A 127.0.0.1 -s 90000000"
 function generateFrrConf(bgpConfig) {
   const localAs = bgpConfig.localAs || 65000;
   const routerId = bgpConfig.routerId || '0.0.0.0';
+  const sourceAddress = bgpConfig.sourceAddress || routerId;
   const neighbors = bgpConfig.neighbors || [];
   const afis = bgpConfig.addressFamilies || {};
 
@@ -142,9 +143,10 @@ router bgp ${localAs}
  no bgp default ipv4-unicast
  !
  ! Peer-group for Route Reflector sessions
+ ! update-source: ${sourceAddress}${sourceAddress !== routerId ? ` (router-id: ${routerId})` : ''}
  neighbor ATLAS-RR peer-group
  neighbor ATLAS-RR remote-as ${localAs}
- neighbor ATLAS-RR update-source ${routerId}
+ neighbor ATLAS-RR update-source ${sourceAddress}
  neighbor ATLAS-RR timers 10 30
 `;
 
