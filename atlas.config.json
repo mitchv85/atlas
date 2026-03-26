@@ -89,7 +89,7 @@
     ],
     "addressFamilies": {
       "vpnv4": { "enabled": true },
-      "bgpLs": { "enabled": true }
+      "bgpLs": { "enabled": false }
     }
   }
 }
