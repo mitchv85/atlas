@@ -2482,13 +2482,26 @@
         pathDest.value = destId;
         pathFailLink.value = '';
 
-        // Compute primary first to find a transit node to fail
+        // Compute primary first to find a transit node or link to fail
         const analysis = await API.analyzePath(sourceId, destId);
+        let foundBackup = false;
+
+        // Try node protection first (transit node failure)
         if (analysis.nodeBackups && analysis.nodeBackups.length > 0) {
-          // Pick the first node-protected backup
           const firstBackup = analysis.nodeBackups.find((b) => b.backupPath);
           if (firstBackup) {
             pathFailNode.value = firstBackup.failedNode;
+            foundBackup = true;
+          }
+        }
+
+        // Fall back to link protection (direct link failure)
+        if (!foundBackup && analysis.linkBackups && analysis.linkBackups.length > 0) {
+          const firstBackup = analysis.linkBackups.find((b) => b.backupPath);
+          if (firstBackup) {
+            pathFailLink.value = firstBackup.failedEdgeId;
+            pathFailNode.value = '';
+            foundBackup = true;
           }
         }
 
