@@ -111,11 +111,14 @@ router.post('/config', async (req, res) => {
       }, 3000);
     }
 
+    // Always return 200 since the config was saved — report per-step results
     res.json({
       success: result.success,
+      configSaved: result.configSaved,
+      filesWritten: result.filesWritten,
       message: result.success
         ? 'BGP configuration deployed and FRR restarted'
-        : 'Configuration saved but FRR restart failed',
+        : result.error || 'Deploy partially completed',
       restart: result.restart,
     });
   } catch (err) {

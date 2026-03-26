@@ -1582,8 +1582,8 @@
         // Refresh status after a short delay for FRR to start
         setTimeout(() => refreshBgpPage(), 4000);
       } else {
-        statusEl.textContent = result.message || 'Deploy failed';
-        statusEl.classList.add('error');
+        statusEl.textContent = result.message || 'Deploy partially completed';
+        statusEl.classList.add(result.configSaved ? 'warn' : 'error');
       }
     } catch (err) {
       statusEl.textContent = `Deploy error: ${err.message}`;

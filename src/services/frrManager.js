@@ -251,24 +251,44 @@ function getServiceStatus(bgpConfig) {
  * Full deploy: save config → write FRR files → restart service.
  * This is the main entry point called from the API route.
  *
+ * Each step is attempted independently so partial failures are reported
+ * clearly (e.g., config saved but FRR not installed yet).
+ *
  * @param {Object} bgpConfig - The complete bgp config block.
- * @returns {{ success: boolean, confPath: string, restart: Object }}
+ * @returns {{ success: boolean, configSaved: boolean, filesWritten: boolean, restart: Object|null, error: string|null }}
  */
 function deploy(bgpConfig) {
-  // 1. Save to atlas.config.json
+  const result = {
+    success: false,
+    configSaved: false,
+    filesWritten: false,
+    restart: null,
+    error: null,
+  };
+
+  // 1. Save to atlas.config.json (always succeeds or throws to caller)
   writeBgpConfig(bgpConfig);
+  result.configSaved = true;
 
   // 2. Generate and write FRR config files
-  const paths = writeConfFiles(bgpConfig);
+  try {
+    writeConfFiles(bgpConfig);
+    result.filesWritten = true;
+  } catch (err) {
+    result.error = `Config saved, but failed to write FRR files: ${err.message}. Is FRR installed?`;
+    return result;
+  }
 
   // 3. Restart FRR
   const restart = restartService(bgpConfig);
+  result.restart = restart;
+  result.success = restart.success;
 
-  return {
-    success: restart.success,
-    confPath: paths.confPath,
-    restart,
-  };
+  if (!restart.success) {
+    result.error = `Config saved and FRR files written, but service restart failed: ${restart.output}`;
+  }
+
+  return result;
 }
 
 /**

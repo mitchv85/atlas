@@ -1732,6 +1732,7 @@ body {
 }
 .bgp-deploy-status.success { color: var(--green); }
 .bgp-deploy-status.error { color: var(--red); }
+.bgp-deploy-status.warn { color: var(--amber); }
 
 /* Preview panel */
 .bgp-preview-panel {
