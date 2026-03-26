@@ -26,9 +26,22 @@
 // ---------------------------------------------------------------------------
 
 const EventEmitter = require('events');
-const grpc = require('@grpc/grpc-js');
-const protoLoader = require('@grpc/proto-loader');
 const path = require('path');
+
+// Lazy-load gRPC packages — server must not crash if they aren't installed yet
+let grpc = null;
+let protoLoader = null;
+let grpcAvailable = false;
+
+try {
+  grpc = require('@grpc/grpc-js');
+  protoLoader = require('@grpc/proto-loader');
+  grpcAvailable = true;
+} catch {
+  console.warn('  [gRPC] @grpc/grpc-js or @grpc/proto-loader not installed.');
+  console.warn('  [gRPC] Run: npm install @grpc/grpc-js @grpc/proto-loader');
+  console.warn('  [gRPC] BGP gRPC client will be unavailable until packages are installed.');
+}
 
 const PROTO_PATH = path.join(__dirname, '..', 'proto', 'frr-northbound.proto');
 
@@ -56,6 +69,11 @@ class BgpGrpcClient extends EventEmitter {
    * @returns {boolean} True if proto loaded successfully.
    */
   init() {
+    if (!grpcAvailable) {
+      console.error('  [gRPC] Cannot initialize — gRPC packages not installed');
+      return false;
+    }
+
     try {
       const packageDef = protoLoader.loadSync(PROTO_PATH, {
         keepCase: true,
@@ -307,6 +325,7 @@ class BgpGrpcClient extends EventEmitter {
    */
   getStatus() {
     return {
+      available: grpcAvailable,
       connected: this.connected,
       connecting: this.connecting,
       address: this.address,
