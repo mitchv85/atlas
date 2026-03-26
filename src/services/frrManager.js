@@ -270,8 +270,8 @@ function getServiceStatus(bgpConfig) {
   try {
     const output = execSync(cmd, { encoding: 'utf-8', timeout: 10000 });
     const status = output.trim();
-    // systemd returns "active", OpenRC includes "started" in output
-    const running = status === 'active' || status.includes('started');
+    // systemd returns "active", OpenRC includes "started" or "running" in output
+    const running = status === 'active' || status.includes('started') || status.includes('running');
     return { running, status };
   } catch {
     return { running: false, status: 'inactive' };
