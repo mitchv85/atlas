@@ -222,11 +222,12 @@ function writeConfFiles(bgpConfig) {
 /**
  * Restart the FRR service.
  * Uses stop + start rather than restart for reliability on first launch.
+ * Verifies actual service status after start, since rc-service may return
+ * non-zero exit codes due to harmless warnings (e.g., MPLS kernel support).
  * @param {Object} bgpConfig - The bgp config block (for restart command override).
  * @returns {{ success: boolean, output: string }}
  */
 function restartService(bgpConfig) {
-  const frr = bgpConfig.frr || {};
   const timeout = 60000; // 60 seconds — FRR can be slow on first start
 
   // Stop first (ignore errors — service might not be running)
@@ -236,16 +237,25 @@ function restartService(bgpConfig) {
     // Expected if FRR isn't running yet
   }
 
-  // Now start
-  const startCmd = frr.restartCommand?.replace('restart', 'start') || 'rc-service frr start';
+  // Start
+  let startOutput = '';
   try {
-    const output = execSync(startCmd, { encoding: 'utf-8', timeout });
-    console.log(`  [FRR] Service started successfully`);
-    return { success: true, output: output.trim() };
+    startOutput = execSync('rc-service frr start', { encoding: 'utf-8', timeout });
   } catch (err) {
-    console.error(`  [FRR] Start failed:`, err.message);
-    return { success: false, output: err.stderr?.trim() || err.message };
+    // rc-service may exit non-zero due to harmless warnings (e.g., MPLS)
+    // Capture whatever output we got — we'll verify status below
+    startOutput = (err.stdout || '') + (err.stderr || '');
   }
+
+  // Verify: is bgpd actually running?
+  const status = getServiceStatus(bgpConfig);
+  if (status.running) {
+    console.log('  [FRR] Service started successfully');
+    return { success: true, output: 'FRR started — bgpd running' };
+  }
+
+  console.error('  [FRR] Start failed — service not running after start attempt');
+  return { success: false, output: startOutput.trim() || 'Service failed to start' };
 }
 
 /**
