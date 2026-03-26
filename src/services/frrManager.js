@@ -221,20 +221,30 @@ function writeConfFiles(bgpConfig) {
 
 /**
  * Restart the FRR service.
+ * Uses stop + start rather than restart for reliability on first launch.
  * @param {Object} bgpConfig - The bgp config block (for restart command override).
  * @returns {{ success: boolean, output: string }}
  */
 function restartService(bgpConfig) {
   const frr = bgpConfig.frr || {};
-  const cmd = frr.restartCommand || DEFAULTS.restartCommand;
+  const timeout = 60000; // 60 seconds — FRR can be slow on first start
 
+  // Stop first (ignore errors — service might not be running)
   try {
-    const output = execSync(cmd, { encoding: 'utf-8', timeout: 30000 });
-    console.log(`  [FRR] Service restarted successfully`);
+    execSync('rc-service frr stop', { encoding: 'utf-8', timeout });
+  } catch {
+    // Expected if FRR isn't running yet
+  }
+
+  // Now start
+  const startCmd = frr.restartCommand?.replace('restart', 'start') || 'rc-service frr start';
+  try {
+    const output = execSync(startCmd, { encoding: 'utf-8', timeout });
+    console.log(`  [FRR] Service started successfully`);
     return { success: true, output: output.trim() };
   } catch (err) {
-    console.error(`  [FRR] Restart failed:`, err.message);
-    return { success: false, output: err.message };
+    console.error(`  [FRR] Start failed:`, err.message);
+    return { success: false, output: err.stderr?.trim() || err.message };
   }
 }
 
