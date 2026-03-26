@@ -69,10 +69,10 @@
     }
   ],
   "bgp": {
-    "enabled": false,
-    "localAs": 65000,
-    "routerId": "",
-    "sourceAddress": "",
+    "enabled": true,
+    "localAs": 100,
+    "routerId": "20.0.0.2",
+    "sourceAddress": "20.0.0.2",
     "frr": {
       "managed": true,
       "configPath": "/etc/frr/frr.conf",
@@ -81,7 +81,12 @@
       "restartCommand": "sudo systemctl restart frr",
       "statusCommand": "sudo systemctl is-active frr"
     },
-    "neighbors": [],
+    "neighbors": [
+      {
+        "address": "20.0.0.1",
+        "description": "Route Reflector"
+      }
+    ],
     "addressFamilies": {
       "vpnv4": { "enabled": true },
       "bgpLs": { "enabled": true }
