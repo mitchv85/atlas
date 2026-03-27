@@ -1107,6 +1107,12 @@
     pathFailNode.addEventListener('change', () => updateSelectionMarkers());
     pathFailLink.addEventListener('change', () => updateSelectionMarkers());
 
+    // Algorithm dropdown switches edge metric overlay
+    pathAlgo.addEventListener('change', () => {
+      const algoNum = parseInt(pathAlgo.value, 10) || 0;
+      topo.setAlgorithmOverlay(algoNum);
+    });
+
     // ── Devices page bindings ───────────────────────────────────
     if (btnAddDevice) btnAddDevice.addEventListener('click', addDeviceFromForm);
     if (btnRefreshDevices) btnRefreshDevices.addEventListener('click', refreshDevicesPage);
@@ -1475,6 +1481,34 @@
         </span>
       </div>`;
 
+    // FlexAlgo Label Stack
+    if (result.reachable && topologyData) {
+      const destId = result.hops?.[result.hops.length - 1]?.systemId;
+      const destNode = destId ? topologyData.nodes.find(n => n.data.systemId === destId || n.data.id === destId) : null;
+      const srcId = result.hops?.[0]?.systemId;
+      const srcNode = srcId ? topologyData.nodes.find(n => n.data.systemId === srcId || n.data.id === srcId) : null;
+
+      if (destNode) {
+        const destData = destNode.data;
+        const faSid = (destData.srPrefixSids || []).find(s => s.algorithm === algo);
+        const srgbBase = destData.routerCaps?.srgb?.[0]?.base || (srcNode?.data?.routerCaps?.srgb?.[0]?.base) || 900000;
+
+        if (faSid) {
+          const globalLabel = srgbBase + faSid.sid;
+          html += `
+            <div class="detail-section">
+              <h4>SR Label Stack</h4>
+              <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:6px;">
+                <span class="detail-badge cyan" title="FlexAlgo ${algo} Prefix-SID ${faSid.sid} for ${esc(destData.hostname)}" style="cursor:help;">${globalLabel}</span>
+              </div>
+              <div style="font-size:0.68rem;color:var(--text-muted);">
+                Algo ${algo} Prefix-SID ${faSid.sid} (${esc(destData.hostname)}) → label ${globalLabel} (SRGB ${srgbBase} + ${faSid.sid})
+              </div>
+            </div>`;
+        }
+      }
+    }
+
     // Hop-by-hop path
     if (result.hops && result.hops.length > 0) {
       html += `<div class="detail-section"><h4>Hop-by-Hop Path</h4>`;
@@ -1512,6 +1546,9 @@
     currentPathResult = null;
     btnClearPath.style.display = 'none';
     closeDetail();
+    // Reset algo overlay to default IS-IS metrics
+    topo.setAlgorithmOverlay(0);
+    pathAlgo.value = '0';
     // Clear selection markers too
     topo.updateSelectionMarkers({ source: null, dest: null, failNode: null, failEdge: null });
     if (topologyData) {
@@ -3371,6 +3408,57 @@
             <span class="detail-badge ${d.linkHealth === 'healthy' ? 'green' : d.linkHealth === 'degraded' ? 'amber' : d.linkHealth === 'down' ? 'red' : 'cyan'}">${d.linkHealth}</span>
           </div>` : ''}
       </div>`;
+
+    // Traffic Engineering metrics
+    if (d.forwardDelay != null || d.reverseDelay != null || d.forwardTeMetric || d.reverseTeMetric) {
+      html += `<div class="detail-section"><h4>Traffic Engineering</h4>`;
+
+      // Delay
+      if (d.forwardDelay != null || d.reverseDelay != null) {
+        if (d.forwardDelay != null) {
+          html += `<div class="detail-row">
+            <span class="detail-label">${esc(d.sourceLabel)} → ${esc(d.targetLabel)} Delay</span>
+            <span class="detail-badge amber">${d.forwardDelay} ms</span>
+          </div>`;
+        }
+        if (d.reverseDelay != null) {
+          html += `<div class="detail-row">
+            <span class="detail-label">${esc(d.targetLabel)} → ${esc(d.sourceLabel)} Delay</span>
+            <span class="detail-badge amber">${d.reverseDelay} ms</span>
+          </div>`;
+        }
+      }
+
+      // TE Metric
+      if (d.forwardTeMetric) {
+        html += `<div class="detail-row">
+          <span class="detail-label">${esc(d.sourceLabel)} → ${esc(d.targetLabel)} TE Metric</span>
+          <span class="detail-badge cyan">${d.forwardTeMetric}</span>
+        </div>`;
+      }
+      if (d.reverseTeMetric) {
+        html += `<div class="detail-row">
+          <span class="detail-label">${esc(d.targetLabel)} → ${esc(d.sourceLabel)} TE Metric</span>
+          <span class="detail-badge cyan">${d.reverseTeMetric}</span>
+        </div>`;
+      }
+
+      // Admin Groups
+      if (d.forwardAdminGroupNames?.length > 0) {
+        html += `<div class="detail-row">
+          <span class="detail-label">${esc(d.sourceLabel)} Admin Groups</span>
+          <span class="detail-value">${d.forwardAdminGroupNames.map(g => `<span class="detail-badge cyan" style="font-size:0.65rem;">${esc(g)}</span>`).join(' ')}</span>
+        </div>`;
+      }
+      if (d.reverseAdminGroupNames?.length > 0) {
+        html += `<div class="detail-row">
+          <span class="detail-label">${esc(d.targetLabel)} Admin Groups</span>
+          <span class="detail-value">${d.reverseAdminGroupNames.map(g => `<span class="detail-badge cyan" style="font-size:0.65rem;">${esc(g)}</span>`).join(' ')}</span>
+        </div>`;
+      }
+
+      html += `</div>`;
+    }
 
     // Adjacency Health — both directions
     const healthSides = [

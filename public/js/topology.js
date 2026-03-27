@@ -424,6 +424,48 @@ class TopologyRenderer {
   }
 
   /**
+   * Switch edge labels to show metrics for a specific algorithm.
+   * Algo 0  → IS-IS metric (default)
+   * Algo 128 → min-delay (ms)
+   * Algo 129 → TE metric
+   *
+   * @param {number} algoNum - Algorithm number (0 for default)
+   */
+  setAlgorithmOverlay(algoNum) {
+    if (!this.cy) return;
+
+    this.cy.edges().forEach((edge) => {
+      const d = edge.data();
+      if (algoNum === 0 || algoNum == null) {
+        // Restore IS-IS metrics
+        edge.data('sourceMetric', d._origSourceMetric ?? d.sourceMetric);
+        edge.data('targetMetric', d._origTargetMetric ?? d.targetMetric);
+      } else if (algoNum === 128) {
+        // Min-delay overlay
+        // Save originals on first switch
+        if (d._origSourceMetric == null) {
+          edge.data('_origSourceMetric', d.sourceMetric);
+          edge.data('_origTargetMetric', d.targetMetric);
+        }
+        const fwd = d.forwardDelay != null ? `${d.forwardDelay}ms` : '—';
+        const rev = d.reverseDelay != null ? `${d.reverseDelay}ms` : '—';
+        edge.data('sourceMetric', fwd);
+        edge.data('targetMetric', rev);
+      } else if (algoNum === 129) {
+        // TE metric overlay
+        if (d._origSourceMetric == null) {
+          edge.data('_origSourceMetric', d.sourceMetric);
+          edge.data('_origTargetMetric', d.targetMetric);
+        }
+        const fwd = d.forwardTeMetric ? String(d.forwardTeMetric) : '—';
+        const rev = d.reverseTeMetric ? String(d.reverseTeMetric) : '—';
+        edge.data('sourceMetric', fwd);
+        edge.data('targetMetric', rev);
+      }
+    });
+  }
+
+  /**
    * Cytoscape.js stylesheet — the visual identity of the topology.
    */
   _getStyles() {

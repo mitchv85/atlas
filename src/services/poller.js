@@ -105,6 +105,7 @@ class TopologyPoller extends EventEmitter {
       const allNeighborRecords = [];      // adjacency health records
       let flexAlgoPaths = null;           // FlexAlgo path data (from first device)
       let flexAlgoRouters = null;         // FlexAlgo router participation
+      const teInterfaceMap = new Map();   // "device:intf" → { delay, teMetric, ... }
 
       for (const device of allDevices) {
         try {
@@ -148,13 +149,13 @@ class TopologyPoller extends EventEmitter {
           }
           allNeighborRecords.push(...nbrRecords);
 
-          // FlexAlgo commands — best-effort, separate eAPI call
+          // FlexAlgo + TE commands — best-effort, separate eAPI call
           // eAPI rejects the entire batch if any command fails, so these
           // must not be in the same call as the core commands.
           try {
             const faResults = await eapi.execute(
               device,
-              ['show isis flex-algo path detail', 'show isis flex-algo router'],
+              ['show isis flex-algo path detail', 'show isis flex-algo router', 'show traffic-engineering interfaces'],
               'json'
             );
             if (faResults[0] && !flexAlgoPaths) {
@@ -162,6 +163,23 @@ class TopologyPoller extends EventEmitter {
             }
             if (faResults[1] && !flexAlgoRouters) {
               flexAlgoRouters = parseFlexAlgoRouters(faResults[1]);
+            }
+            // Parse TE interface data (delay, TE metric, admin groups per interface)
+            if (faResults[2]) {
+              const teIntfs = faResults[2].interfaces || [];
+              for (const te of teIntfs) {
+                if (!te.intf || te.intf.startsWith('Loopback')) continue;
+                teInterfaceMap.set(`${device.name}:${te.intf}`, {
+                  device: device.name,
+                  interface: te.intf,
+                  delay: te.delay?.value ?? null,
+                  delayUnits: te.delay?.units || 'milliseconds',
+                  teMetric: te.metric ?? null,
+                  adminGroup: te.adminGroup ?? 0,
+                  adminGroupNames: te.adminGroupNames || [],
+                  maxResvBw: te.maxResvBw?.value ?? null,
+                });
+              }
             }
           } catch {
             // FlexAlgo commands not supported on this device — that's OK
@@ -328,6 +346,40 @@ class TopologyPoller extends EventEmitter {
           srEnabled: revHealth.srEnabled,
           grSupported: revHealth.grSupported,
         } : null;
+      }
+
+      // ── TE Interface Enrichment ──
+      // Enrich edges with delay, TE metric, and admin groups from
+      // 'show traffic-engineering interfaces'. Uses the interface names
+      // already attached via adjacency health.
+      if (teInterfaceMap.size > 0) {
+        for (const edge of topology.edges) {
+          const d = edge.data;
+
+          // Forward direction: source device + source interface
+          const fwdIntf = d.forwardHealth?.localInterface;
+          if (fwdIntf) {
+            const teData = teInterfaceMap.get(`${d.sourceLabel}:${fwdIntf}`);
+            if (teData) {
+              d.forwardDelay = teData.delay;
+              d.forwardTeMetric = teData.teMetric;
+              d.forwardAdminGroup = teData.adminGroup;
+              d.forwardAdminGroupNames = teData.adminGroupNames;
+            }
+          }
+
+          // Reverse direction: target device + target interface
+          const revIntf = d.reverseHealth?.localInterface;
+          if (revIntf) {
+            const teData = teInterfaceMap.get(`${d.targetLabel}:${revIntf}`);
+            if (teData) {
+              d.reverseDelay = teData.delay;
+              d.reverseTeMetric = teData.teMetric;
+              d.reverseAdminGroup = teData.adminGroup;
+              d.reverseAdminGroupNames = teData.adminGroupNames;
+            }
+          }
+        }
       }
 
       // Check if topology changed (simple hash: node count + edge count + node ids)
