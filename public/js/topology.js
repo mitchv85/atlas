@@ -1,5 +1,13 @@
 // ---------------------------------------------------------------------------
-// ATLAS Topology Renderer — Cytoscape.js wrapper
+// ATLAS Topology Renderer — Cytoscape.js Wrapper
+// ---------------------------------------------------------------------------
+// Manages the interactive network topology visualization. Handles:
+//   - Graph initialization, layout (CoSE force-directed), and styling
+//   - Node/edge click callbacks for detail panels
+//   - Path highlighting: primary, TI-LFA backup, ECMP (4-color)
+//   - Selection markers: source (green), destination (amber), failures (red)
+//   - Algorithm overlay: swap edge labels between IS-IS / delay / TE metric
+//   - Persistent node positions (drag → save → restore on reload)
 // ---------------------------------------------------------------------------
 
 class TopologyRenderer {

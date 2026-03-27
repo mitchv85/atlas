@@ -1,3 +1,18 @@
+// ---------------------------------------------------------------------------
+// ATLAS Server — Main Entry Point
+// ---------------------------------------------------------------------------
+// Express HTTP server with WebSocket support for real-time topology updates.
+// Serves the SPA frontend, REST API routes, SSH proxy, and manages the
+// background topology poller lifecycle.
+//
+// Endpoints:
+//   /api/devices     — Device management (CRUD, test, bulk import)
+//   /api/topology    — Topology graph, path analysis, FlexAlgo
+//   /api/bgp         — BGP state, VRFs, prefix detail, service path trace
+//   /ws              — WebSocket for topology change notifications
+//   /ssh             — WebSocket-to-SSH proxy for terminal access
+// ---------------------------------------------------------------------------
+
 require('dotenv').config();
 const http = require('http');
 const express = require('express');

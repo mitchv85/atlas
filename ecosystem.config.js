@@ -1,3 +1,10 @@
+// ---------------------------------------------------------------------------
+// PM2 Ecosystem Configuration — ATLAS Production Service
+// ---------------------------------------------------------------------------
+// Start: pm2 start ecosystem.config.js
+// Logs:  pm2 logs atlas
+// Stop:  pm2 stop atlas
+// ---------------------------------------------------------------------------
 module.exports = {
   apps: [
     {

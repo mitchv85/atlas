@@ -123,6 +123,7 @@
   let deviceInfo = {};                  // name → { model, serial, eosVersion, ... }
   let selectedDeviceId = null;          // currently viewed device detail
 
+  /** Switch the active tab and update path bar visibility. */
   function switchTab(tabName) {
     activeTab = tabName;
     mainTabs.forEach((t) => {
@@ -578,6 +579,7 @@
       return 'var(--text-primary)';
     }
 
+  /** Escape HTML entities to prevent XSS in dynamic content. */
     function escRegex(str) {
       return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     }
@@ -1222,6 +1224,7 @@
     }
   }
 
+  /** Load topology data into the Cytoscape renderer and update all dropdowns. */
   function loadTopologyIntoView(data, preserveLayout = false) {
     const hadTopology = !!topologyData;
     topologyData = data;
@@ -1266,6 +1269,7 @@
   /**
    * Populate the source/destination/failure dropdowns from the topology.
    */
+  /** Populate all path bar and service trace dropdowns from topology data. */
   function populatePathDropdowns() {
     const nodes = topo.getNodeList();
 
@@ -1323,6 +1327,7 @@
   }
 
   // ── Path Computation ─────────────────────────────────────────────
+  /** Handle Compute Path button — dispatches to FlexAlgo or standard SPF. */
   async function handleComputePath() {
     const source = pathSource.value;
     const dest = pathDest.value;
@@ -1442,6 +1447,7 @@
    * Handle FlexAlgo path computation.
    * Traces the constrained path hop-by-hop by querying each device via eAPI.
    */
+  /** Compute and display a FlexAlgo path between two nodes. */
   async function handleFlexAlgoPath(source, dest, algo) {
     try {
       const result = await API.traceFlexAlgoPath(source, dest, algo);
@@ -1498,6 +1504,7 @@
   /**
    * Show FlexAlgo path detail in the side panel.
    */
+  /** Show FlexAlgo path detail in the side panel. */
   function showFlexAlgoDetail(result, algo) {
     const srcName = result.source || getHostname(pathSource.value);
     const dstName = result.destination || getHostname(pathDest.value);
@@ -1583,6 +1590,7 @@
     if (btnBack) btnBack.addEventListener('click', backToNode);
   }
 
+  /** Clear path highlighting and reset all path state. */
   function handleClearPath() {
     topo.clearPath();
     currentPathResult = null;
@@ -1601,6 +1609,7 @@
   // ── BGP Page ──────────────────────────────────────────────────────
   let bgpConfigLoaded = false;
 
+  /** Refresh the BGP tab — collect from FRR, then update status/VRFs/neighbors. */
   async function refreshBgpPage() {
     // Trigger collection from FRR first
     try {
@@ -1831,6 +1840,7 @@
   /**
    * Load and render prefixes for a VRF (by RT), with optional search filter.
    */
+  /** Load prefix entries for a VRF into a container, with search and pagination. */
   async function loadVrfPrefixes(rt, containerId, searchQuery, limit) {
     const container = document.getElementById(containerId);
     if (!container) return;
@@ -1941,6 +1951,7 @@
   /**
    * Fetch and render full BGP path detail for a prefix.
    */
+  /** Fetch and render full BGP path detail for a prefix (on-demand vtysh query). */
   async function loadPrefixDetail(prefix, container) {
     if (!container) return;
     container.innerHTML = '<div class="reach-loading">Loading path detail...</div>';
@@ -2032,6 +2043,7 @@
   /**
    * Handle service trace from the topology-tab trace bar.
    */
+  /** Handle Trace Service Path button from the topology-tab service bar. */
   async function handleSvcTrace() {
     const source = svcTraceSource.value;
     const prefix = svcTracePrefix.value.trim();
@@ -2052,6 +2064,7 @@
   /**
    * Populate the VRF combo in the service trace bar from BGP data.
    */
+  /** Populate the VRF combo in the service trace bar from BGP data. */
   async function refreshSvcTraceVrfs() {
     try {
       const vrfs = await API.getBgpVrfsByRT();
@@ -2068,6 +2081,7 @@
   /**
    * Show a small popup to pick the source PE for a service path trace.
    */
+  /** Show source PE picker popup for tracing from the BGP tab. */
   function showTraceSourcePicker(btn, prefix, peOptions, vrfRt) {
     // Remove any existing picker
     if (activeTracePicker) { activeTracePicker.remove(); activeTracePicker = null; }
@@ -2114,6 +2128,7 @@
   /**
    * Execute a service path trace and switch to topology view.
    */
+  /** Execute a service path trace — detects Color steering, highlights path, shows detail. */
   async function executeServiceTrace(sourceNode, prefix, vrf, algoOverride) {
     const algoLabel = algoOverride != null ? ` (What if Algo ${algoOverride}?)` : '';
     setStatus('collecting', `Tracing ${prefix} from ${sourceNode}${algoLabel}...`);
@@ -2200,6 +2215,7 @@
   /**
    * Render the service path detail panel.
    */
+  /** Render the service path detail panel with label stack and What-If buttons. */
   function showServicePathDetail(result, algoOverride) {
     detailTitle.textContent = `${result.sourceNode} → ${result.prefix}`;
 
@@ -2577,6 +2593,7 @@
   /**
    * Update selection markers on the topology to reflect current dropdown state.
    */
+  /** Update topology node highlights to reflect current path bar selections. */
   function updateSelectionMarkers() {
     topo.updateSelectionMarkers({
       source: pathSource.value || null,
@@ -2589,6 +2606,7 @@
   /**
    * Auto-compute path when both source and destination are set.
    */
+  /** Auto-compute path if source and destination are both selected. */
   function autoComputeIfReady() {
     if (pathSource.value && pathDest.value && pathSource.value !== pathDest.value) {
       handleComputePath();
@@ -2832,6 +2850,7 @@
     if (btnBack) btnBack.addEventListener('click', backToNode);
   }
 
+  /** Build the HTML for the primary/backup path detail panel. */
   function buildPathDetailHTML(pathData, analysis, failedNodes, failedEdges, failureLabel) {
     let html = '';
 
@@ -3060,6 +3079,7 @@
   }
 
   // ── Detail Panel ──────────────────────────────────────────────────
+  /** Open the node detail side panel with full SR/FlexAlgo/reachability data. */
   async function showNodeDetail(nodeData) {
     lastViewedNode = nodeData;
     detailTitle.textContent = nodeData.hostname || nodeData.label;
@@ -3230,6 +3250,7 @@
     });
   }
 
+  /** Open the edge detail side panel with IS-IS metrics, TE, and health. */
   function showEdgeDetail(edgeData) {
     detailTitle.textContent = `${edgeData.sourceLabel} ↔ ${edgeData.targetLabel}`;
     detailBody.innerHTML = buildEdgeDetailHTML(edgeData);
@@ -3259,6 +3280,7 @@
     showNodeDetail(lastViewedNode);
   }
 
+  /** Build the complete HTML for the node detail panel. */
   function buildNodeDetailHTML(d) {
     let html = `
       <div class="detail-section">
@@ -3706,6 +3728,7 @@
     });
   }
 
+  /** Build the complete HTML for the edge detail panel. */
   function buildEdgeDetailHTML(d) {
     let html = `
       <div class="detail-section">
@@ -3888,6 +3911,7 @@
   }
 
   // ── Status Indicator ──────────────────────────────────────────────
+  /** Update the top-right status indicator (live/collecting/error). */
   function setStatus(state, text) {
     statusDot.className = 'status-dot';
     if (state === 'live') statusDot.classList.add('live');
@@ -3897,6 +3921,7 @@
   }
 
   // ── Utility ───────────────────────────────────────────────────────
+  /** Escape HTML entities to prevent XSS in dynamic content. */
   function esc(str) {
     if (str == null) return '';
     const div = document.createElement('div');
@@ -3908,6 +3933,7 @@
    * Filter labels for display — removes Implicit Null (3) since it never
    * appears on the wire (PHP pops it before the packet arrives).
    */
+  /** Filter Implicit Null (label 3) from label stack displays. */
   function wireLabels(labels) {
     return labels.filter(l => String(l) !== '3');
   }
@@ -3916,6 +3942,7 @@
    * Decode an SR MPLS label into a human-readable description.
    * Uses knowledge of the SRGB range and known prefix-SIDs.
    */
+  /** Decode an SR label into its type (Prefix-SID, Adj-SID, etc.) with colors. */
   function decodeSrLabel(labelStr) {
     const label = parseInt(labelStr, 10);
     const srgbBase = 900000;

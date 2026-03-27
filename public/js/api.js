@@ -1,24 +1,34 @@
 // ---------------------------------------------------------------------------
 // ATLAS API Client
 // ---------------------------------------------------------------------------
+// Frontend HTTP client for all ATLAS REST API endpoints. Organized by domain:
+// Devices, Topology, Path Computation, FlexAlgo, Positions, and BGP.
+//
+// All methods return parsed JSON. Methods that can legitimately return
+// "not found" (getTopology, getNodeDetail, etc.) return null on 404.
+// ---------------------------------------------------------------------------
 
 const API = {
   // ── Devices ──────────────────────────────────────────────────────────
+  /** Fetch all configured devices. */
   async getDevices() {
     const res = await fetch('/api/devices');
     return res.json();
   },
 
+  /** Fetch enriched device info (model, EOS version, serial, etc.). */
   async getDeviceInfo() {
     const res = await fetch('/api/devices/info');
     return res.json();
   },
 
+  /** Fetch running config for a specific device. */
   async getDeviceConfig(id) {
     const res = await fetch(`/api/devices/${id}/config`);
     return res.json();
   },
 
+  /** Add a new device to the inventory. */
   async addDevice(device) {
     const res = await fetch('/api/devices', {
       method: 'POST',
@@ -28,6 +38,7 @@ const API = {
     return res.json();
   },
 
+  /** Update fields on an existing device. */
   async updateDevice(id, fields) {
     const res = await fetch(`/api/devices/${id}`, {
       method: 'PUT',
@@ -37,11 +48,13 @@ const API = {
     return res.json();
   },
 
+  /** Delete a device from the inventory. */
   async deleteDevice(id) {
     const res = await fetch(`/api/devices/${id}`, { method: 'DELETE' });
     return res.json();
   },
 
+  /** Bulk import devices from an array of device objects. */
   async bulkImportDevices(devices) {
     const res = await fetch('/api/devices/bulk', {
       method: 'POST',
@@ -51,11 +64,13 @@ const API = {
     return res.json();
   },
 
+  /** Test eAPI connectivity to a specific device. */
   async testDevice(id) {
     const res = await fetch(`/api/devices/${id}/test`, { method: 'POST' });
     return res.json();
   },
 
+  /** Run an eAPI command on a device (by hostname). Returns text or JSON. */
   async runCommand(hostname, cmd, format = 'text') {
     const res = await fetch(`/api/devices/by-hostname/${encodeURIComponent(hostname)}/command`, {
       method: 'POST',
@@ -66,12 +81,14 @@ const API = {
   },
 
   // ── Topology ─────────────────────────────────────────────────────────
+  /** Fetch the current topology graph. Returns null if not yet collected. */
   async getTopology() {
     const res = await fetch('/api/topology');
     if (res.status === 404) return null;
     return res.json();
   },
 
+  /** Trigger a topology collection cycle. Optionally target a specific device. */
   async collectTopology(deviceId = null) {
     const body = deviceId ? { deviceId } : {};
     const res = await fetch('/api/topology/collect', {
@@ -86,12 +103,14 @@ const API = {
     return res.json();
   },
 
+  /** Fetch detail for a specific node by system ID. */
   async getNodeDetail(systemId) {
     const res = await fetch(`/api/topology/node/${systemId}`);
     if (!res.ok) return null;
     return res.json();
   },
 
+  /** Fetch Remote Node SID reachability (TI-LFA protection status). */
   async getNodeReachability(systemId) {
     const res = await fetch(`/api/topology/node/${systemId}/reachability`);
     if (!res.ok) return null;
@@ -99,6 +118,7 @@ const API = {
   },
 
   // ── Path Computation ──────────────────────────────────────────────
+  /** Compute shortest path with optional node/edge failure simulation. */
   async computePath(source, destination, excludeNodes = [], excludeEdges = []) {
     const res = await fetch('/api/topology/path', {
       method: 'POST',
@@ -108,6 +128,7 @@ const API = {
     return res.json();
   },
 
+  /** Full path analysis: primary + TI-LFA backup paths with label stacks. */
   async analyzePath(source, destination) {
     const res = await fetch('/api/topology/path/analyze', {
       method: 'POST',
@@ -117,6 +138,7 @@ const API = {
     return res.json();
   },
 
+  /** Compute all ECMP paths between source and destination. */
   async computeECMP(source, destination) {
     const res = await fetch('/api/topology/path/ecmp', {
       method: 'POST',
@@ -127,11 +149,13 @@ const API = {
   },
 
   // ── Positions ─────────────────────────────────────────────────────
+  /** Fetch saved node positions for layout persistence. */
   async getPositions() {
     const res = await fetch('/api/topology/positions');
     return res.json();
   },
 
+  /** Save node positions to server for layout persistence. */
   async savePositions(positions) {
     await fetch('/api/topology/positions', {
       method: 'PUT',
@@ -141,27 +165,15 @@ const API = {
   },
 
   // ── FlexAlgo ──────────────────────────────────────────────────────
+
+  /** Fetch FlexAlgo summary from LSDB: defined algorithms, participation, FADs. */
   async getFlexAlgoSummary() {
     const res = await fetch('/api/topology/flexalgo/summary');
     if (!res.ok) return null;
     return res.json();
   },
 
-  async getFlexAlgoPaths(systemId, algo) {
-    const res = await fetch(`/api/topology/flexalgo/paths/${encodeURIComponent(systemId)}/${algo}`);
-    if (!res.ok) return null;
-    return res.json();
-  },
-
-  async traceFlexAlgoPath(source, destination, algorithm) {
-    const res = await fetch('/api/topology/flexalgo/trace', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ source, destination, algorithm }),
-    });
-    return res.json();
-  },
-
+  /** Fetch FlexAlgo computed paths from a specific device via eAPI. */
   async getFlexAlgoPaths(systemId, algo) {
     const res = await fetch(`/api/topology/flexalgo/paths/${encodeURIComponent(systemId)}/${algo}`);
     if (!res.ok) {
@@ -171,17 +183,31 @@ const API = {
     return res.json();
   },
 
+  /** Trace a FlexAlgo path between two nodes for a specific algorithm. */
+  async traceFlexAlgoPath(source, destination, algorithm) {
+    const res = await fetch('/api/topology/flexalgo/trace', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source, destination, algorithm }),
+    });
+    return res.json();
+  },
+
   // ── BGP ───────────────────────────────────────────────────────────
+
+  /** Fetch BGP subsystem status (FRR, gRPC, neighbors, VRFs, prefixes). */
   async getBgpStatus() {
     const res = await fetch('/api/bgp/status');
     return res.json();
   },
 
+  /** Fetch BGP configuration (local AS, router ID, neighbors, address families). */
   async getBgpConfig() {
     const res = await fetch('/api/bgp/config');
     return res.json();
   },
 
+  /** Deploy BGP configuration to FRR (generates frr.conf + restarts service). */
   async deployBgpConfig(config) {
     const res = await fetch('/api/bgp/config', {
       method: 'POST',
@@ -191,6 +217,7 @@ const API = {
     return res.json();
   },
 
+  /** Preview the FRR config that would be generated (without deploying). */
   async previewBgpConfig(config) {
     const res = await fetch('/api/bgp/config/preview', {
       method: 'POST',
@@ -200,21 +227,25 @@ const API = {
     return res.json();
   },
 
+  /** Fetch BGP neighbor session summary. */
   async getBgpNeighbors() {
     const res = await fetch('/api/bgp/neighbors');
     return res.json();
   },
 
+  /** Fetch VRFs grouped by RD. */
   async getBgpVrfs() {
     const res = await fetch('/api/bgp/vrfs');
     return res.json();
   },
 
+  /** Fetch VRFs grouped by Route Target (preferred for display). */
   async getBgpVrfsByRT() {
     const res = await fetch('/api/bgp/vrfs/by-rt');
     return res.json();
   },
 
+  /** Fetch filtered VPNv4 RIB entries with pagination. */
   async getBgpRib(filters = {}) {
     const params = new URLSearchParams();
     for (const [k, v] of Object.entries(filters)) {
@@ -224,16 +255,26 @@ const API = {
     return res.json();
   },
 
+  /** Trigger a BGP collection cycle (vtysh queries to FRR). */
   async collectBgp() {
     const res = await fetch('/api/bgp/collect', { method: 'POST' });
     return res.json();
   },
 
+  /** Fetch full BGP path detail for a specific VPN prefix. */
   async getBgpPrefixDetail(prefix) {
     const res = await fetch(`/api/bgp/prefix/${encodeURIComponent(prefix)}`);
     return res.json();
   },
 
+  /**
+   * Trace the end-to-end service path for a VPN prefix.
+   * Detects Color community steering and resolves the full label stack.
+   * @param {string} sourceNode - Source PE hostname
+   * @param {string} prefix - Destination VPN prefix (e.g., "92.1.1.2/32")
+   * @param {string} [vrf] - Route Target to disambiguate overlapping prefixes
+   * @param {number} [algoOverride] - Algorithm override for "What if" simulation
+   */
   async traceServicePath(sourceNode, prefix, vrf, algoOverride) {
     const body = { sourceNode, prefix };
     if (vrf) body.vrf = vrf;
