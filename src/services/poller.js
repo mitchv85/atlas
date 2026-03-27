@@ -108,9 +108,10 @@ class TopologyPoller extends EventEmitter {
 
       for (const device of allDevices) {
         try {
+          // Core commands — must succeed
           const results = await eapi.execute(
             device,
-            ['show isis database detail', 'show tunnel fib', 'show isis neighbors detail', 'show interfaces', 'show isis flexalgo path detail', 'show isis flexalgo router'],
+            ['show isis database detail', 'show tunnel fib', 'show isis neighbors detail', 'show interfaces'],
             'json'
           );
 
@@ -147,18 +148,23 @@ class TopologyPoller extends EventEmitter {
           }
           allNeighborRecords.push(...nbrRecords);
 
-          // Parse FlexAlgo data (from the first device that returns it)
+          // FlexAlgo commands — best-effort, separate eAPI call
+          // eAPI rejects the entire batch if any command fails, so these
+          // must not be in the same call as the core commands.
           try {
-            const faPathRaw = results[4];
-            const faRouterRaw = results[5];
-            if (faPathRaw && !flexAlgoPaths) {
-              flexAlgoPaths = parseFlexAlgoPaths(faPathRaw);
+            const faResults = await eapi.execute(
+              device,
+              ['show isis flexalgo path detail', 'show isis flexalgo router'],
+              'json'
+            );
+            if (faResults[0] && !flexAlgoPaths) {
+              flexAlgoPaths = parseFlexAlgoPaths(faResults[0]);
             }
-            if (faRouterRaw && !flexAlgoRouters) {
-              flexAlgoRouters = parseFlexAlgoRouters(faRouterRaw);
+            if (faResults[1] && !flexAlgoRouters) {
+              flexAlgoRouters = parseFlexAlgoRouters(faResults[1]);
             }
-          } catch (faErr) {
-            // FlexAlgo commands may not be supported — that's OK
+          } catch {
+            // FlexAlgo commands not supported on this device — that's OK
           }
 
         } catch (deviceErr) {
