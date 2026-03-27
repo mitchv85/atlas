@@ -1136,9 +1136,12 @@
     });
 
     // Service trace mode toggle
-    btnSvcModeToggle.addEventListener('click', () => {
+    btnSvcModeToggle.addEventListener('click', async () => {
       pathBar.style.display = 'none';
       svcTraceBar.style.display = 'flex';
+      // Ensure VRFs are loaded (triggers BGP collect if needed)
+      try { await API.collectBgp(); } catch {}
+      refreshSvcTraceVrfs();
     });
     btnSvcTraceToggle.addEventListener('click', () => {
       svcTraceBar.style.display = 'none';
