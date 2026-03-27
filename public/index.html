@@ -304,6 +304,30 @@
           </div>
         </div>
 
+        <!-- ── VRF Visibility Section ── -->
+        <div class="bgp-vrf-section" id="bgpVrfSection" style="display:none;">
+          <div class="devices-toolbar">
+            <div class="devices-toolbar-left">
+              <h2 class="devices-heading">VRF Routing Tables</h2>
+              <span class="devices-count" id="bgpVrfCount">0 VRFs</span>
+            </div>
+          </div>
+          <div class="bgp-vrf-table-wrap">
+            <table class="devices-table" id="bgpVrfTable">
+              <thead>
+                <tr>
+                  <th></th>
+                  <th>Route Distinguisher</th>
+                  <th>Route Target</th>
+                  <th>Origin PE</th>
+                  <th>Prefixes</th>
+                </tr>
+              </thead>
+              <tbody id="bgpVrfTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+
         <!-- ── Settings Section ── -->
         <div class="bgp-settings-section">
           <div class="devices-toolbar">

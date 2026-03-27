@@ -24,7 +24,23 @@
  * Input: `vtysh -c "show bgp ipv4 vpn json"` parsed as object.
  *
  * FRR's VPNv4 JSON structure:
- *   { "routes": { "RD:prefix/len": [ { path attributes... } ] } }
+ *   {
+ *     "routes": {
+ *       "routeDistinguishers": {
+ *         "100.0.0.1:91": {
+ *           "30.91.100.0/30": [ { path attributes... } ],
+ *           "91.0.0.1/32":   [ { path attributes... } ]
+ *         }
+ *       }
+ *     },
+ *     "totalRoutes": 24
+ *   }
+ *
+ * Path attributes include:
+ *   valid, bestpath, selectionReason, pathFrom, prefix, prefixLen,
+ *   network, locPrf, weight, peerId, path (AS path), origin,
+ *   nexthops: [{ ip, afi, used }],
+ *   extendedCommunity (when available), remoteLabel (when available)
  *
  * @param {Object} raw - Raw vtysh JSON output.
  * @returns {{ vrfs: Map<string, Object>, rib: Object[] }}
@@ -33,19 +49,10 @@ function parseVpnv4Rib(raw) {
   const vrfs = new Map();
   const rib = [];
 
-  const routes = raw.routes || {};
+  // FRR nests VPNv4 routes under routes.routeDistinguishers.{RD}.{prefix/len}
+  const rds = raw.routes?.routeDistinguishers || {};
 
-  for (const [routeKey, paths] of Object.entries(routes)) {
-    // routeKey format: "RD:prefix/length" e.g. "100.0.0.1:1:10.0.0.0/24"
-    const rdSepIdx = routeKey.indexOf(':');
-    if (rdSepIdx === -1) continue;
-
-    // RD can contain colons (e.g., "100.0.0.1:1"), so we need smarter parsing.
-    // VPNv4 route keys: "RD prefix/len" — FRR uses space or : as separator.
-    // Try to parse by finding the prefix portion (contains a slash).
-    const { rd, prefix, prefixLen } = parseVpnv4RouteKey(routeKey);
-    if (!rd) continue;
-
+  for (const [rd, prefixes] of Object.entries(rds)) {
     // Ensure VRF entry exists for this RD
     if (!vrfs.has(rd)) {
       vrfs.set(rd, {
@@ -55,49 +62,67 @@ function parseVpnv4Rib(raw) {
         rtExport: [],
         prefixes: [],
         prefixCount: 0,
+        samplePrefix: '', // Used to fetch RT via detail query
       });
     }
 
     const vrf = vrfs.get(rd);
 
-    for (const p of (Array.isArray(paths) ? paths : [paths])) {
-      const entry = {
-        prefix,
-        prefixLen,
-        rd,
-        nextHop: p.nexthop || p.nextHop || '',
-        label: p.remoteLabel || p.label || null,
-        asPath: p.aspath || p.asPath || '',
-        origin: p.origin || '',
-        locPref: p.locPrf || p.localPreference || 100,
-        med: p.med || p.metric || 0,
-        communities: parseCommunities(p.community),
-        extCommunities: parseExtCommunities(p.extendedCommunity || p.extCommunity),
-        originatorId: p.originatorId || '',
-        clusterList: p.clusterList || [],
-        valid: p.valid !== false,
-        bestpath: p.bestpath || p.best || false,
-        peer: p.peerId || p.peer || '',
-        originPE: '', // Resolved later by cross-referencing topology
-      };
+    for (const [prefixKey, paths] of Object.entries(prefixes)) {
+      // prefixKey format: "30.91.100.0/30"
+      const slashIdx = prefixKey.indexOf('/');
+      if (slashIdx === -1) continue;
 
-      rib.push(entry);
+      const prefix = prefixKey.substring(0, slashIdx);
+      const prefixLen = parseInt(prefixKey.substring(slashIdx + 1), 10);
 
-      // Add to VRF prefix list (best paths only to avoid duplicates)
-      if (entry.bestpath) {
-        vrf.prefixes.push({
-          prefix: `${prefix}/${prefixLen}`,
-          nextHop: entry.nextHop,
-          label: entry.label,
-          asPath: entry.asPath,
-        });
-      }
+      // Track a sample prefix for RT lookup
+      if (!vrf.samplePrefix) vrf.samplePrefix = prefixKey;
 
-      // Extract RTs from extended communities
-      for (const ext of entry.extCommunities) {
-        if (ext.type === 'RT') {
-          if (!vrf.rtImport.includes(ext.value)) vrf.rtImport.push(ext.value);
-          if (!vrf.rtExport.includes(ext.value)) vrf.rtExport.push(ext.value);
+      for (const p of (Array.isArray(paths) ? paths : [paths])) {
+        // Extract next-hop from the nexthops array
+        const nextHop = p.nexthops?.[0]?.ip || p.nexthop || '';
+
+        const entry = {
+          prefix,
+          prefixLen,
+          rd,
+          nextHop,
+          label: p.remoteLabel || p.label || null,
+          asPath: p.path || p.aspath || '',
+          origin: p.origin || '',
+          locPref: p.locPrf || 100,
+          med: p.med || p.metric || 0,
+          weight: p.weight || 0,
+          communities: parseCommunities(p.community),
+          extCommunities: parseExtCommunities(p.extendedCommunity || p.extCommunity),
+          originatorId: p.originatorId || '',
+          clusterList: p.clusterList?.list || (Array.isArray(p.clusterList) ? p.clusterList : []),
+          valid: p.valid !== false,
+          bestpath: p.bestpath === true || p.bestpath?.overall === true,
+          selectionReason: p.selectionReason || p.bestpath?.selectionReason || '',
+          peer: p.peerId || '',
+          originPE: '', // Resolved later by cross-referencing topology
+        };
+
+        rib.push(entry);
+
+        // Add to VRF prefix list (best paths only to avoid duplicates)
+        if (entry.bestpath) {
+          vrf.prefixes.push({
+            prefix: `${prefix}/${prefixLen}`,
+            nextHop: entry.nextHop,
+            label: entry.label,
+            asPath: entry.asPath,
+          });
+        }
+
+        // Extract RTs from extended communities
+        for (const ext of entry.extCommunities) {
+          if (ext.type === 'RT') {
+            if (!vrf.rtImport.includes(ext.value)) vrf.rtImport.push(ext.value);
+            if (!vrf.rtExport.includes(ext.value)) vrf.rtExport.push(ext.value);
+          }
         }
       }
     }
@@ -106,49 +131,6 @@ function parseVpnv4Rib(raw) {
   }
 
   return { vrfs, rib };
-}
-
-/**
- * Parse a VPNv4 route key into its components.
- * Handles both FRR formats:
- *   "100.0.0.1:1:10.0.0.0/24" (colon-separated)
- *   "100.0.0.1:1 10.0.0.0/24" (space-separated)
- *
- * @param {string} key - Raw route key.
- * @returns {{ rd: string, prefix: string, prefixLen: number }}
- */
-function parseVpnv4RouteKey(key) {
-  // Try space-separated first (cleaner)
-  const spaceIdx = key.indexOf(' ');
-  if (spaceIdx > 0) {
-    const rd = key.substring(0, spaceIdx);
-    const prefixStr = key.substring(spaceIdx + 1);
-    const slashIdx = prefixStr.indexOf('/');
-    if (slashIdx > 0) {
-      return {
-        rd,
-        prefix: prefixStr.substring(0, slashIdx),
-        prefixLen: parseInt(prefixStr.substring(slashIdx + 1), 10),
-      };
-    }
-  }
-
-  // Fall back to colon-separated: find the last segment with a slash
-  const parts = key.split(':');
-  for (let i = parts.length - 1; i >= 0; i--) {
-    if (parts[i].includes('/')) {
-      const rd = parts.slice(0, i).join(':');
-      const prefixStr = parts[i];
-      const slashIdx = prefixStr.indexOf('/');
-      return {
-        rd,
-        prefix: prefixStr.substring(0, slashIdx),
-        prefixLen: parseInt(prefixStr.substring(slashIdx + 1), 10),
-      };
-    }
-  }
-
-  return { rd: null, prefix: null, prefixLen: null };
 }
 
 /**
@@ -166,6 +148,7 @@ function parseCommunities(raw) {
 
 /**
  * Parse BGP extended communities (Route Targets, etc.).
+ * Handles both string format and FRR object format: { string: "RT:91:91" }
  * @param {Object|string} raw - Extended community data from FRR.
  * @returns {{ type: string, value: string }[]}
  */
@@ -173,27 +156,83 @@ function parseExtCommunities(raw) {
   if (!raw) return [];
 
   const results = [];
-  const items = typeof raw === 'string' ? raw.split(/\s+/) : (Array.isArray(raw) ? raw : []);
+
+  // FRR object format: { string: "RT:91:91 RT:92:92" }
+  let items;
+  if (typeof raw === 'string') {
+    items = raw.split(/\s+/);
+  } else if (raw.string) {
+    items = raw.string.split(/\s+/);
+  } else if (Array.isArray(raw)) {
+    items = raw.map(String);
+  } else {
+    return [];
+  }
 
   for (const item of items) {
-    const str = typeof item === 'string' ? item : (item.string || String(item));
+    const str = typeof item === 'string' ? item : String(item);
 
-    // Route Target: "RT:65000:100" or "rt 65000:100"
-    const rtMatch = str.match(/^(?:RT:|rt\s*)(\S+)$/i);
+    // Route Target: "RT:65000:100" or "RT:91:91"
+    const rtMatch = str.match(/^RT:(.+)$/i);
     if (rtMatch) {
       results.push({ type: 'RT', value: rtMatch[1] });
       continue;
     }
 
     // Route Origin / Site of Origin
-    const soMatch = str.match(/^(?:SoO:|soo\s*)(\S+)$/i);
+    const soMatch = str.match(/^SoO:(.+)$/i);
     if (soMatch) {
       results.push({ type: 'SoO', value: soMatch[1] });
       continue;
     }
 
     // Generic extended community
-    results.push({ type: 'unknown', value: str });
+    if (str.trim()) {
+      results.push({ type: 'unknown', value: str });
+    }
+  }
+
+  return results;
+}
+
+/**
+ * Parse per-prefix VPNv4 detail output to extract Route Targets and labels.
+ * Input: `vtysh -c "show bgp ipv4 vpn <prefix> json"` parsed as object.
+ *
+ * FRR per-prefix detail structure:
+ *   {
+ *     "100.0.0.1:91": {
+ *       "prefix": "91.0.0.1/32",
+ *       "paths": [{
+ *         "extendedCommunity": { "string": "RT:91:91" },
+ *         "remoteLabel": 100000,
+ *         "originatorId": "100.0.0.1",
+ *         "clusterList": { "list": ["100.0.0.7"] },
+ *         ...
+ *       }]
+ *     }
+ *   }
+ *
+ * @param {Object} raw - Raw vtysh JSON output for a specific prefix.
+ * @returns {{ rd: string, rts: string[], label: number|null, originatorId: string }[]}
+ */
+function parsePrefixDetail(raw) {
+  const results = [];
+
+  for (const [rd, data] of Object.entries(raw)) {
+    const paths = data.paths || [];
+    for (const p of paths) {
+      const extComms = parseExtCommunities(p.extendedCommunity);
+      const rts = extComms.filter(c => c.type === 'RT').map(c => c.value);
+
+      results.push({
+        rd,
+        rts,
+        label: p.remoteLabel || null,
+        originatorId: p.originatorId || '',
+        clusterList: p.clusterList?.list || [],
+      });
+    }
   }
 
   return results;
@@ -310,7 +349,7 @@ function parseBgpLsPrefixes(raw) {
 
 module.exports = {
   parseVpnv4Rib,
-  parseVpnv4RouteKey,
+  parsePrefixDetail,
   parseCommunities,
   parseExtCommunities,
   parseNeighborSummary,

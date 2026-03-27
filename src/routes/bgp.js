@@ -188,6 +188,34 @@ router.post('/collect', async (_req, res) => {
         bgpParser.enrichWithTopology(rib, topology);
       }
 
+      // 3. Enrich VRFs with Route Targets by querying one sample prefix per RD
+      for (const [rd, vrf] of vrfs) {
+        if (vrf.rtImport.length > 0 || !vrf.samplePrefix) continue;
+        try {
+          const detailRaw = JSON.parse(
+            execSync(`vtysh -c "show bgp ipv4 vpn ${vrf.samplePrefix} json"`, { encoding: 'utf-8', timeout: 10000 })
+          );
+          const details = bgpParser.parsePrefixDetail(detailRaw);
+          // Apply RTs from the detail to the VRF
+          for (const d of details) {
+            if (d.rd === rd) {
+              for (const rt of d.rts) {
+                if (!vrf.rtImport.includes(rt)) vrf.rtImport.push(rt);
+                if (!vrf.rtExport.includes(rt)) vrf.rtExport.push(rt);
+              }
+              // Also backfill label on the matching RIB entries
+              if (d.label) {
+                for (const entry of rib) {
+                  if (entry.rd === rd && !entry.label) entry.label = d.label;
+                }
+              }
+            }
+          }
+        } catch (err) {
+          console.error(`  [BGP] RT lookup for RD ${rd} failed:`, err.message);
+        }
+      }
+
       bgpStore.setVrfs(vrfs);
       bgpStore.setRib(rib);
     } catch (err) {

@@ -1766,3 +1766,62 @@ body {
   white-space: pre;
   background: var(--bg-deep);
 }
+
+/* ── VRF Section ──────────────────────────────────────────────────── */
+.bgp-vrf-section {
+  margin-bottom: 28px;
+}
+
+.bgp-vrf-table-wrap {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.bgp-vrf-row {
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.bgp-vrf-row:hover {
+  background: var(--bg-hover);
+}
+
+.bgp-vrf-row.expanded {
+  background: var(--bg-elevated);
+}
+
+.bgp-vrf-chevron {
+  width: 24px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  user-select: none;
+}
+
+.bgp-vrf-expand > td {
+  padding: 0 !important;
+  border-top: none !important;
+}
+
+.bgp-vrf-detail {
+  padding: 12px 16px 16px;
+  background: var(--bg-deep);
+  border-top: 1px solid var(--border);
+}
+
+.bgp-prefix-table {
+  font-size: 0.78rem;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.bgp-prefix-table thead th {
+  font-size: 0.65rem;
+}
+
+.bgp-prefix-table tbody td {
+  padding: 6px 12px;
+}

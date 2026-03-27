@@ -1453,6 +1453,9 @@
 
     // Neighbor table
     renderBgpNeighborTable(status.store?.neighborCount || 0);
+
+    // VRF table
+    renderBgpVrfTable(status.store?.vrfCount || 0);
   }
 
   async function renderBgpNeighborTable(count) {
@@ -1485,6 +1488,142 @@
       }).join('');
     } catch {
       section.style.display = 'none';
+    }
+  }
+
+  // ── VRF Table ───────────────────────────────────────────────────
+  async function renderBgpVrfTable(count) {
+    const section = document.getElementById('bgpVrfSection');
+    const tbody = document.getElementById('bgpVrfTableBody');
+    const countEl = document.getElementById('bgpVrfCount');
+
+    if (count === 0) {
+      section.style.display = 'none';
+      return;
+    }
+
+    try {
+      const vrfs = await API.getBgpVrfs();
+      if (!vrfs || vrfs.length === 0) {
+        section.style.display = 'none';
+        return;
+      }
+
+      section.style.display = '';
+      countEl.textContent = `${vrfs.length} VRF${vrfs.length !== 1 ? 's' : ''}`;
+
+      tbody.innerHTML = vrfs.map((v) => {
+        const originPE = resolveOriginPE(v.rd);
+        const rtDisplay = v.rtImport.length > 0 ? v.rtImport.join(', ') : '<span style="color:var(--text-muted);">—</span>';
+        const rowId = `vrf-${v.rd.replace(/[:.]/g, '-')}`;
+
+        return `<tr class="bgp-vrf-row" data-rd="${esc(v.rd)}" data-row-id="${rowId}">
+          <td class="bgp-vrf-chevron">▸</td>
+          <td><strong style="font-family:'JetBrains Mono',monospace;font-size:0.78rem;">${esc(v.rd)}</strong></td>
+          <td style="font-family:'JetBrains Mono',monospace;font-size:0.78rem;">${rtDisplay}</td>
+          <td>${esc(originPE)}</td>
+          <td><span class="detail-badge cyan">${v.prefixCount}</span></td>
+        </tr>
+        <tr class="bgp-vrf-expand" id="${rowId}" style="display:none;">
+          <td colspan="5">
+            <div class="bgp-vrf-detail" id="${rowId}-detail">
+              <div class="reach-loading">Loading prefixes...</div>
+            </div>
+          </td>
+        </tr>`;
+      }).join('');
+
+      // Wire click-to-expand
+      tbody.querySelectorAll('.bgp-vrf-row').forEach((row) => {
+        row.addEventListener('click', () => {
+          const rd = row.dataset.rd;
+          const rowId = row.dataset.rowId;
+          const expandRow = document.getElementById(rowId);
+          const chevron = row.querySelector('.bgp-vrf-chevron');
+          const wasOpen = expandRow.style.display !== 'none';
+
+          // Close all others
+          tbody.querySelectorAll('.bgp-vrf-expand').forEach(r => r.style.display = 'none');
+          tbody.querySelectorAll('.bgp-vrf-chevron').forEach(c => c.textContent = '▸');
+          tbody.querySelectorAll('.bgp-vrf-row').forEach(r => r.classList.remove('expanded'));
+
+          if (!wasOpen) {
+            expandRow.style.display = '';
+            chevron.textContent = '▾';
+            row.classList.add('expanded');
+            loadVrfPrefixes(rd, `${rowId}-detail`);
+          }
+        });
+      });
+    } catch {
+      section.style.display = 'none';
+    }
+  }
+
+  /**
+   * Resolve the origin PE hostname from an RD like "100.0.0.1:91".
+   * Cross-references with the IS-IS topology.
+   */
+  function resolveOriginPE(rd) {
+    const pePart = rd.split(':')[0];
+    if (!topologyData?.nodes) return pePart;
+
+    for (const node of topologyData.nodes) {
+      const d = node.data;
+      if (d.routerCaps?.routerId === pePart) return d.hostname;
+      if ((d.interfaceAddresses || []).includes(pePart)) return d.hostname;
+    }
+    return pePart;
+  }
+
+  /**
+   * Load and render prefixes for a specific VRF (by RD).
+   */
+  async function loadVrfPrefixes(rd, containerId) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+
+    try {
+      const vrf = await API.getBgpRib({ rd, bestOnly: 'true', limit: 200 });
+      if (!vrf.entries || vrf.entries.length === 0) {
+        container.innerHTML = '<p class="text-muted">No prefixes in this VRF.</p>';
+        return;
+      }
+
+      let html = `<table class="devices-table bgp-prefix-table">
+        <thead>
+          <tr>
+            <th>Prefix</th>
+            <th>Next-Hop</th>
+            <th>Origin PE</th>
+            <th>AS Path</th>
+            <th>Label</th>
+            <th>Local Pref</th>
+          </tr>
+        </thead>
+        <tbody>`;
+
+      for (const e of vrf.entries) {
+        const peLabel = e.originPE || resolveOriginPE(e.rd);
+        html += `<tr>
+          <td style="font-family:'JetBrains Mono',monospace;font-size:0.78rem;">${esc(e.prefix)}/${e.prefixLen}</td>
+          <td style="font-family:'JetBrains Mono',monospace;font-size:0.78rem;">${esc(e.nextHop)}</td>
+          <td>${esc(peLabel)}</td>
+          <td style="font-family:'JetBrains Mono',monospace;font-size:0.78rem;">${esc(e.asPath || '—')}</td>
+          <td>${e.label ? `<span class="detail-badge green">${e.label}</span>` : '<span style="color:var(--text-muted);">—</span>'}</td>
+          <td>${e.locPref}</td>
+        </tr>`;
+      }
+
+      html += `</tbody></table>`;
+
+      if (vrf.filtered > vrf.entries.length) {
+        html += `<div style="font-size:0.72rem;color:var(--text-muted);margin-top:6px;">Showing ${vrf.entries.length} of ${vrf.filtered} prefixes</div>`;
+      }
+
+      container.innerHTML = html;
+    } catch (err) {
+      container.innerHTML = `<p class="text-muted">Error loading prefixes: ${esc(err.message)}</p>`;
     }
   }
 
