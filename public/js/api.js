@@ -242,4 +242,13 @@ const API = {
     const res = await fetch(`/api/bgp/prefix/${encodeURIComponent(prefix)}`);
     return res.json();
   },
+
+  async traceServicePath(sourceNode, prefix) {
+    const res = await fetch('/api/bgp/trace', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sourceNode, prefix }),
+    });
+    return res.json();
+  },
 };

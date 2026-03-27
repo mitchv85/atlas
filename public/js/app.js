@@ -1822,9 +1822,15 @@
             <th>AS Path</th>
             <th>Label</th>
             <th>Local Pref</th>
+            <th></th>
           </tr>
         </thead>
         <tbody>`;
+
+      // Build PE list for trace source selector
+      const peOptions = topologyData?.nodes
+        ? topologyData.nodes.map(n => n.data.hostname).sort().map(h => `<option value="${esc(h)}">${esc(h)}</option>`).join('')
+        : '';
 
       for (let i = 0; i < result.entries.length; i++) {
         const e = result.entries[i];
@@ -1839,9 +1845,10 @@
           <td style="font-family:'JetBrains Mono',monospace;font-size:0.78rem;">${esc(e.asPath || '—')}</td>
           <td>${e.label ? `<span class="detail-badge green">${e.label}</span>` : '<span style="color:var(--text-muted);">—</span>'}</td>
           <td>${e.locPref}</td>
+          <td><button class="btn btn-ghost btn-sm btn-trace-svc" data-prefix="${esc(pfxKey)}" title="Trace service path across transport">⤴ Trace</button></td>
         </tr>
         <tr class="bgp-pfx-expand" id="${detailId}" style="display:none;">
-          <td colspan="6"><div class="bgp-pfx-detail-body"></div></td>
+          <td colspan="7"><div class="bgp-pfx-detail-body"></div></td>
         </tr>`;
       }
 
@@ -1855,7 +1862,10 @@
 
       // Wire click-to-expand on prefix rows
       container.querySelectorAll('.bgp-pfx-row').forEach((row) => {
-        row.addEventListener('click', () => {
+        row.addEventListener('click', (e) => {
+          // Don't expand if clicking the trace button
+          if (e.target.closest('.btn-trace-svc')) return;
+
           const pfx = row.dataset.prefix;
           const detailId = row.dataset.detailId;
           const expandRow = document.getElementById(detailId);
@@ -1870,6 +1880,15 @@
             row.classList.add('expanded');
             loadPrefixDetail(pfx, expandRow.querySelector('.bgp-pfx-detail-body'));
           }
+        });
+      });
+
+      // Wire Trace buttons
+      container.querySelectorAll('.btn-trace-svc').forEach((btn) => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const pfx = btn.dataset.prefix;
+          showTraceSourcePicker(btn, pfx, peOptions);
         });
       });
     } catch (err) {
@@ -1963,6 +1982,204 @@
       <span class="bgp-path-label">${esc(label)}</span>
       <span class="bgp-path-value">${isHtml ? value : esc(String(value))}</span>
     </div>`;
+  }
+
+  // ── Service Path Trace ──────────────────────────────────────────
+  let activeTracePicker = null;
+
+  /**
+   * Show a small popup to pick the source PE for a service path trace.
+   */
+  function showTraceSourcePicker(btn, prefix, peOptions) {
+    // Remove any existing picker
+    if (activeTracePicker) { activeTracePicker.remove(); activeTracePicker = null; }
+
+    const picker = document.createElement('div');
+    picker.className = 'trace-picker';
+    picker.innerHTML = `
+      <div class="trace-picker-title">Trace service path to <strong>${esc(prefix)}</strong></div>
+      <div class="trace-picker-row">
+        <label>From:</label>
+        <select class="trace-picker-select">${peOptions}</select>
+        <button class="btn btn-primary btn-sm trace-picker-go">Trace</button>
+      </div>
+    `;
+
+    // Position below the button
+    btn.parentElement.style.position = 'relative';
+    btn.parentElement.appendChild(picker);
+    activeTracePicker = picker;
+
+    // Wire Go button
+    picker.querySelector('.trace-picker-go').addEventListener('click', async () => {
+      const source = picker.querySelector('.trace-picker-select').value;
+      picker.remove();
+      activeTracePicker = null;
+      await executeServiceTrace(source, prefix);
+    });
+
+    // Close on outside click
+    setTimeout(() => {
+      document.addEventListener('click', function dismiss(e) {
+        if (!picker.contains(e.target) && e.target !== btn) {
+          picker.remove();
+          activeTracePicker = null;
+          document.removeEventListener('click', dismiss);
+        }
+      });
+    }, 0);
+  }
+
+  /**
+   * Execute a service path trace and switch to topology view.
+   */
+  async function executeServiceTrace(sourceNode, prefix) {
+    setStatus('collecting', `Tracing ${prefix} from ${sourceNode}...`);
+
+    try {
+      const result = await API.traceServicePath(sourceNode, prefix);
+
+      if (result.error) {
+        setStatus('error', result.error);
+        return;
+      }
+
+      // Switch to topology tab
+      switchTab('topology');
+
+      // If FlexAlgo transport, set the algo overlay
+      if (result.transportAlgorithm >= 128) {
+        pathAlgo.value = String(result.transportAlgorithm);
+        topo.setAlgorithmOverlay(result.transportAlgorithm);
+      } else {
+        pathAlgo.value = '0';
+        topo.setAlgorithmOverlay(0);
+      }
+
+      // Highlight the transport path on the topology
+      if (result.transportPath?.hops) {
+        const pathData = {
+          source: result.destinationPEId || result.destinationPE,
+          sourceHostname: result.sourceNode,
+          hops: result.transportPath.hops,
+          hopCount: result.transportPath.hopCount,
+          totalMetric: result.transportPath.metric,
+          algorithm: result.transportAlgorithm,
+        };
+        topo.highlightPath(pathData, [], []);
+      }
+
+      // Show the service path detail panel
+      showServicePathDetail(result);
+      btnClearPath.style.display = 'inline-flex';
+
+      const algoLabel = result.colorCommunity ? `Color:${result.colorCommunity} → ${result.transportAlgorithmName}` : 'IGP';
+      setStatus('live', `Service path: ${result.sourceNode} → ${result.prefix} via ${result.destinationPE} (${algoLabel})`);
+    } catch (err) {
+      setStatus('error', `Trace failed: ${err.message}`);
+    }
+  }
+
+  /**
+   * Render the service path detail panel.
+   */
+  function showServicePathDetail(result) {
+    detailTitle.textContent = `${result.sourceNode} → ${result.prefix}`;
+
+    let html = '';
+
+    // Back button
+    if (lastViewedNode) {
+      html += `<button class="btn btn-ghost btn-sm btn-back-to-node" style="margin-bottom:10px;display:inline-flex;align-items:center;gap:4px;">← Back to ${esc(lastViewedNode.hostname || lastViewedNode.label)}</button>`;
+    }
+
+    // Service path banner
+    const hasColor = result.colorCommunity != null;
+    const bannerColor = hasColor ? 'var(--amber)' : 'var(--accent)';
+    html += `
+      <div class="path-result-banner" style="border-left:3px solid ${bannerColor};">
+        <span class="path-result-text">
+          <strong>Service Path</strong> — ${esc(result.sourceNode)} → ${esc(result.prefix)}<br>
+          Destination PE: <strong>${esc(result.destinationPE)}</strong>
+          ${hasColor ? `<br>Color: <span class="detail-badge amber" style="font-size:0.65rem;">Color:${result.colorCommunity}</span> → <strong>${esc(result.transportAlgorithmName)}</strong>` : '<br>Transport: <strong>Standard IGP (Algo 0)</strong>'}
+        </span>
+      </div>`;
+
+    // Label Stack — the crown jewel
+    if (result.labelStack && result.labelStack.length > 0) {
+      html += `<div class="detail-section"><h4>Label Stack (outer → inner)</h4>`;
+      html += `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;">`;
+      for (const lbl of result.labelStack) {
+        const color = lbl.type === 'VPN Label' ? 'green' : 'cyan';
+        html += `<span class="detail-badge ${color}" title="${esc(lbl.description)}" style="cursor:help;font-size:0.85rem;padding:4px 10px;">${lbl.label}</span>`;
+      }
+      html += `</div>`;
+      // Decoded breakdown
+      for (const lbl of result.labelStack) {
+        html += `<div style="font-size:0.72rem;color:var(--text-muted);margin-bottom:2px;">
+          <strong>${esc(lbl.type)}</strong>: ${esc(lbl.description)}
+        </div>`;
+      }
+      html += `</div>`;
+    }
+
+    // Transport path info
+    if (result.transportPath) {
+      const tp = result.transportPath;
+      html += `<div class="detail-section"><h4>Transport Path (${esc(result.transportAlgorithmName)})</h4>`;
+      html += `<div class="detail-row"><span class="detail-label">Algorithm</span><span class="detail-badge cyan">${result.transportAlgorithm}</span></div>`;
+      if (tp.metric != null) {
+        html += `<div class="detail-row"><span class="detail-label">Metric</span><span class="detail-value">${tp.metric}</span></div>`;
+      }
+      html += `<div class="detail-row"><span class="detail-label">Reachable</span><span class="detail-badge ${tp.reachable ? 'green' : 'red'}">${tp.reachable ? 'Yes' : 'No'}</span></div>`;
+
+      // Hop list for standard IGP path
+      if (tp.hops && tp.hops.length > 0) {
+        html += '<ul class="path-hops">';
+        html += `<li class="path-hop"><div class="path-hop-dot source"><div class="path-hop-dot-inner"></div></div><div class="path-hop-info"><div class="path-hop-name">${esc(result.sourceNode)}</div><div class="path-hop-detail">source</div></div></li>`;
+        for (let i = 0; i < tp.hops.length; i++) {
+          const hop = tp.hops[i];
+          const isLast = i === tp.hops.length - 1;
+          html += `<li class="path-hop"><div class="path-hop-dot ${isLast ? 'dest' : ''}"></div><div class="path-hop-info"><div class="path-hop-name">${esc(hop.toHostname)}</div><div class="path-hop-detail">via ${esc(hop.localAddr || '?')} → ${esc(hop.neighborAddr || '?')}</div></div></li>`;
+        }
+        html += '</ul>';
+      }
+
+      // FlexAlgo vias
+      if (tp.vias && tp.vias.length > 0) {
+        html += `<div style="margin-top:8px;font-size:0.78rem;color:var(--text-secondary);">Next-hop: <strong>${tp.vias.map(v => `${esc(v.nexthop)} (${esc(v.interface)})`).join(', ')}</strong></div>`;
+      }
+
+      html += `</div>`;
+    }
+
+    // BGP Attributes
+    if (result.bgpAttributes) {
+      const bgp = result.bgpAttributes;
+      html += `<div class="detail-section"><h4>BGP Attributes</h4>`;
+      html += `<div class="detail-row"><span class="detail-label">AS Path</span><span class="detail-value">${esc(bgp.asPath || '—')}</span></div>`;
+      html += `<div class="detail-row"><span class="detail-label">Origin</span><span class="detail-value">${esc(bgp.origin || '—')}</span></div>`;
+      html += `<div class="detail-row"><span class="detail-label">Local Pref</span><span class="detail-value">${bgp.locPref}</span></div>`;
+      if (bgp.extCommunities?.length > 0) {
+        html += `<div class="detail-row"><span class="detail-label">Ext Communities</span><span class="detail-value" style="display:flex;flex-wrap:wrap;gap:3px;">`;
+        html += bgp.extCommunities.map(c => `<span class="detail-badge cyan" style="font-size:0.65rem;">${esc(c.type)}:${esc(String(c.value))}</span>`).join('');
+        html += `</span></div>`;
+      }
+      if (bgp.originatorId) {
+        html += `<div class="detail-row"><span class="detail-label">Originator</span><span class="detail-value">${esc(bgp.originatorId)}</span></div>`;
+      }
+      if (bgp.clusterList?.length > 0) {
+        html += `<div class="detail-row"><span class="detail-label">Cluster List</span><span class="detail-value">${bgp.clusterList.join(' → ')}</span></div>`;
+      }
+      html += `</div>`;
+    }
+
+    detailBody.innerHTML = html;
+    detailPanel.classList.add('open');
+
+    // Wire back button
+    const btnBack = detailBody.querySelector('.btn-back-to-node');
+    if (btnBack) btnBack.addEventListener('click', backToNode);
   }
 
   function populateBgpForm(config) {

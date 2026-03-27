@@ -377,4 +377,200 @@ function resolveNextHopToPE(ip, topology) {
   return null;
 }
 
+// ---------------------------------------------------------------------------
+// Service Path Trace
+// ---------------------------------------------------------------------------
+
+/**
+ * POST /api/bgp/trace
+ * Trace the end-to-end service path for a VPN prefix.
+ *
+ * Given a source PE and a destination VPN prefix, ATLAS:
+ *   1. Looks up the prefix in BGP (via vtysh detail query)
+ *   2. Extracts: next-hop (dest PE), VPN label, Color community
+ *   3. Determines transport algorithm from Color community
+ *   4. Computes the transport path (FlexAlgo or standard IGP)
+ *   5. Returns the full service path with label stacks
+ *
+ * Body: { sourceNode: "PE-1", prefix: "92.1.1.2/32" }
+ */
+router.post('/trace', async (req, res) => {
+  const { sourceNode, prefix } = req.body;
+
+  if (!sourceNode || !prefix) {
+    return res.status(400).json({ error: 'sourceNode and prefix are required' });
+  }
+
+  try {
+    const { execSync } = require('child_process');
+    const bgpParser = require('../services/bgpParser');
+    const poller = require('../services/poller');
+    const topology = poller.getTopology();
+
+    // 1. Fetch prefix detail from FRR
+    const raw = JSON.parse(
+      execSync(`vtysh -c "show bgp ipv4 vpn ${prefix} json"`, { encoding: 'utf-8', timeout: 10000 })
+    );
+    const details = bgpParser.parsePrefixDetail(raw);
+
+    if (!details || details.length === 0) {
+      return res.json({ error: `Prefix ${prefix} not found in VPNv4 RIB` });
+    }
+
+    // Use the best path
+    const best = details.find(d => d.bestpath) || details[0];
+
+    // 2. Resolve destination PE
+    const destPE = topology ? resolveNextHopToPE(best.nextHop, topology) : best.nextHop;
+    const destNode = topology?.nodes?.find(n =>
+      n.data.hostname === destPE || n.data.routerCaps?.routerId === best.nextHop
+    );
+
+    // 3. Extract color community → transport algorithm
+    const colorComm = (best.extCommunities || []).find(c => c.type === 'Color');
+    const transportAlgo = colorComm ? colorComm.value : 0;
+    const algoName = transportAlgo === 0 ? 'IGP (SPF)'
+      : transportAlgo === 128 ? 'MIN_DELAY'
+      : transportAlgo === 129 ? 'TE_METRIC'
+      : `Algo ${transportAlgo}`;
+
+    // 4. Resolve source PE
+    const srcNode = topology?.nodes?.find(n =>
+      n.data.hostname?.toLowerCase() === sourceNode.toLowerCase() ||
+      n.data.id === sourceNode
+    );
+
+    if (!srcNode) {
+      return res.json({ error: `Source node ${sourceNode} not found in topology` });
+    }
+
+    // 5. Compute transport label (destination's prefix SID for the algo)
+    let transportLabel = null;
+    let transportSidIndex = null;
+    const srgbBase = srcNode.data.routerCaps?.srgb?.[0]?.base || 900000;
+
+    if (destNode) {
+      const destSids = destNode.data.srPrefixSids || [];
+      const faSid = destSids.find(s => s.algorithm === transportAlgo);
+      if (faSid) {
+        transportSidIndex = faSid.sid;
+        transportLabel = srgbBase + faSid.sid;
+      }
+    }
+
+    // 6. Build label stack: [Transport Label, VPN Label]
+    const labelStack = [];
+    if (transportLabel) {
+      labelStack.push({
+        label: transportLabel,
+        type: transportAlgo >= 128 ? `FlexAlgo ${transportAlgo} Prefix-SID` : 'Prefix-SID',
+        description: `${algoName} SID ${transportSidIndex} → label ${transportLabel}`,
+        target: destPE || best.nextHop,
+      });
+    }
+    if (best.label) {
+      labelStack.push({
+        label: best.label,
+        type: 'VPN Label',
+        description: `VPN service label for ${prefix}`,
+        target: prefix,
+      });
+    }
+
+    // 7. Compute transport path
+    let transportPath = null;
+
+    if (transportAlgo >= 128) {
+      // FlexAlgo path — query from source device via eAPI
+      try {
+        const deviceStore = require('../store/devices');
+        const allDevices = deviceStore.getAllRaw();
+        const device = allDevices.find(d =>
+          d.name.toLowerCase() === srcNode.data.hostname.toLowerCase()
+        );
+
+        if (device) {
+          const eapi = require('../services/eapi');
+          const faResult = await eapi.execute(device, ['show isis flex-algo path detail'], 'json');
+          const faRaw = faResult[0];
+
+          // Extract the path for the destination PE's loopback
+          const destIp = best.nextHop;
+          const destPrefix = `${destIp}/32`;
+          const vrfs = faRaw?.vrfs || {};
+
+          for (const vrfData of Object.values(vrfs)) {
+            const topos = vrfData.v4Info?.topologies || {};
+            for (const topoData of Object.values(topos)) {
+              const destData = topoData.destinations?.[destPrefix];
+              if (!destData) continue;
+              const pathData = destData.paths?.[String(transportAlgo)];
+              if (!pathData) continue;
+
+              transportPath = {
+                algorithm: transportAlgo,
+                algorithmName: algoName,
+                metric: pathData.details?.metric ?? null,
+                reachable: (pathData.vias || []).length > 0,
+                vias: (pathData.vias || []).map(v => ({
+                  nexthop: v.nexthop || '',
+                  interface: v.intf || '',
+                })),
+              };
+            }
+          }
+        }
+      } catch (faErr) {
+        // FlexAlgo path query failed — still return what we have
+        console.error('  [Trace] FlexAlgo path query failed:', faErr.message);
+      }
+    } else {
+      // Standard IGP path — use existing SPF computation
+      try {
+        const { computePath } = require('../services/spf');
+        const spfResult = computePath(topology, srcNode.data.id, destNode?.data.id);
+        if (spfResult) {
+          transportPath = {
+            algorithm: 0,
+            algorithmName: 'IGP (SPF)',
+            metric: spfResult.totalMetric,
+            reachable: spfResult.reachable !== false,
+            hops: spfResult.hops,
+            hopCount: spfResult.hopCount,
+          };
+        }
+      } catch {
+        // SPF failed
+      }
+    }
+
+    // 8. Build the response
+    res.json({
+      prefix,
+      rd: best.rd,
+      sourceNode: srcNode.data.hostname,
+      destinationPE: destPE || best.nextHop,
+      destinationPEId: destNode?.data.id || null,
+      nextHop: best.nextHop,
+      vpnLabel: best.label,
+      colorCommunity: colorComm ? colorComm.value : null,
+      transportAlgorithm: transportAlgo,
+      transportAlgorithmName: algoName,
+      labelStack,
+      transportPath,
+      bgpAttributes: {
+        asPath: best.asPath,
+        origin: best.origin,
+        locPref: best.locPref,
+        originatorId: best.originatorId,
+        clusterList: best.clusterList,
+        extCommunities: best.extCommunities,
+        communities: best.communities,
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ error: `Service path trace failed: ${err.message}` });
+  }
+});
+
 module.exports = router;

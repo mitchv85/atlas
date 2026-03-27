@@ -186,6 +186,13 @@ function parseExtCommunities(raw) {
       continue;
     }
 
+    // Color Extended Community: "Color:00:128" → algo/color 128
+    const colorMatch = str.match(/^Color:(\d+):(\d+)$/i);
+    if (colorMatch) {
+      results.push({ type: 'Color', value: parseInt(colorMatch[2], 10) });
+      continue;
+    }
+
     // Generic extended community
     if (str.trim()) {
       results.push({ type: 'unknown', value: str });

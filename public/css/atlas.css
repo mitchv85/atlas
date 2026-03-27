@@ -1938,3 +1938,57 @@ body {
   gap: 3px;
   justify-content: flex-end;
 }
+
+/* ── Service Path Trace Picker ────────────────────────────────────── */
+.trace-picker {
+  position: absolute;
+  right: 0;
+  top: 100%;
+  z-index: 200;
+  background: var(--bg-surface);
+  border: 1px solid var(--accent-dim);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+  min-width: 280px;
+}
+
+.trace-picker-title {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+
+.trace-picker-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.trace-picker-row label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.trace-picker-select {
+  flex: 1;
+  padding: 5px 8px;
+  font-size: 0.78rem;
+  font-family: 'JetBrains Mono', monospace;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  outline: none;
+}
+
+.trace-picker-select:focus {
+  border-color: var(--accent);
+}
+
+.btn-trace-svc {
+  font-size: 0.68rem !important;
+  white-space: nowrap;
+  color: var(--accent) !important;
+}
