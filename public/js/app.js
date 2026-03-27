@@ -1625,7 +1625,6 @@
 
       // Apply search query as prefix or originPE filter
       if (searchQuery) {
-        // If it looks like an IP prefix, filter by prefix; otherwise by originPE
         if (/^\d/.test(searchQuery)) {
           filters.prefix = searchQuery;
         } else {
@@ -1652,15 +1651,22 @@
         </thead>
         <tbody>`;
 
-      for (const e of result.entries) {
+      for (let i = 0; i < result.entries.length; i++) {
+        const e = result.entries[i];
         const peLabel = e.originPE || resolveOriginPE(e.rd);
-        html += `<tr>
-          <td style="font-family:'JetBrains Mono',monospace;font-size:0.78rem;">${esc(e.prefix)}/${e.prefixLen}</td>
+        const pfxKey = `${e.prefix}/${e.prefixLen}`;
+        const detailId = `pfx-detail-${containerId}-${i}`;
+
+        html += `<tr class="bgp-pfx-row" data-prefix="${esc(pfxKey)}" data-detail-id="${detailId}" title="Click for full path details">
+          <td style="font-family:'JetBrains Mono',monospace;font-size:0.78rem;">${esc(pfxKey)}</td>
           <td style="font-family:'JetBrains Mono',monospace;font-size:0.78rem;">${esc(e.nextHop)}</td>
           <td>${esc(peLabel)}</td>
           <td style="font-family:'JetBrains Mono',monospace;font-size:0.78rem;">${esc(e.asPath || '—')}</td>
           <td>${e.label ? `<span class="detail-badge green">${e.label}</span>` : '<span style="color:var(--text-muted);">—</span>'}</td>
           <td>${e.locPref}</td>
+        </tr>
+        <tr class="bgp-pfx-expand" id="${detailId}" style="display:none;">
+          <td colspan="6"><div class="bgp-pfx-detail-body"></div></td>
         </tr>`;
       }
 
@@ -1671,9 +1677,117 @@
       }
 
       container.innerHTML = html;
+
+      // Wire click-to-expand on prefix rows
+      container.querySelectorAll('.bgp-pfx-row').forEach((row) => {
+        row.addEventListener('click', () => {
+          const pfx = row.dataset.prefix;
+          const detailId = row.dataset.detailId;
+          const expandRow = document.getElementById(detailId);
+          const wasOpen = expandRow.style.display !== 'none';
+
+          // Close all others in this table
+          container.querySelectorAll('.bgp-pfx-expand').forEach(r => r.style.display = 'none');
+          container.querySelectorAll('.bgp-pfx-row').forEach(r => r.classList.remove('expanded'));
+
+          if (!wasOpen) {
+            expandRow.style.display = '';
+            row.classList.add('expanded');
+            loadPrefixDetail(pfx, expandRow.querySelector('.bgp-pfx-detail-body'));
+          }
+        });
+      });
     } catch (err) {
       container.innerHTML = `<p class="text-muted">Error: ${esc(err.message)}</p>`;
     }
+  }
+
+  /**
+   * Fetch and render full BGP path detail for a prefix.
+   */
+  async function loadPrefixDetail(prefix, container) {
+    if (!container) return;
+    container.innerHTML = '<div class="reach-loading">Loading path detail...</div>';
+
+    try {
+      const result = await API.getBgpPrefixDetail(prefix);
+      if (!result.paths || result.paths.length === 0) {
+        container.innerHTML = '<p class="text-muted">No path detail available.</p>';
+        return;
+      }
+
+      let html = '';
+      for (const p of result.paths) {
+        const originPE = p.originPE || p.originatorId || '—';
+        const originatorPE = p.originatorPE || p.originatorId || '—';
+
+        html += `<div class="bgp-path-detail">`;
+
+        // Path summary banner
+        html += `<div class="bgp-path-banner">
+          ${p.bestpath ? '<span class="detail-badge green" style="font-size:0.65rem;">BEST</span>' : ''}
+          ${p.valid ? '<span class="detail-badge cyan" style="font-size:0.65rem;">VALID</span>' : '<span class="detail-badge red" style="font-size:0.65rem;">INVALID</span>'}
+          ${p.selectionReason ? `<span style="font-size:0.68rem;color:var(--text-muted);margin-left:6px;">${esc(p.selectionReason)}</span>` : ''}
+        </div>`;
+
+        // Two-column detail grid
+        html += `<div class="bgp-path-grid">`;
+
+        // Left column — core attributes
+        html += `<div class="bgp-path-col">`;
+        html += pathRow('Next-Hop', p.nextHop + (p.nextHopAccessible === false ? ' (unreachable)' : ''));
+        html += pathRow('Origin PE', originPE);
+        html += pathRow('AS Path', p.asPath || '—');
+        html += pathRow('Origin', p.origin || '—');
+        html += pathRow('Local Pref', p.locPref);
+        if (p.med) html += pathRow('MED', p.med);
+        html += pathRow('Label', p.label ? `<span class="detail-badge green">${p.label}</span>` : '—', true);
+        if (p.nextHopMetric !== null && p.nextHopMetric !== undefined) {
+          html += pathRow('IGP Metric to NH', p.nextHopMetric);
+        }
+        html += `</div>`;
+
+        // Right column — communities + reflection
+        html += `<div class="bgp-path-col">`;
+
+        // Extended Communities
+        const extComms = (p.extCommunities || []).map(c => `${c.type}:${c.value}`);
+        html += pathRow('Ext Communities', extComms.length > 0
+          ? extComms.map(c => `<span class="detail-badge cyan" style="font-size:0.65rem;">${esc(c)}</span>`).join(' ')
+          : '—', true);
+
+        // Standard Communities
+        html += pathRow('Communities', (p.communities || []).length > 0
+          ? p.communities.map(c => `<span class="detail-badge cyan" style="font-size:0.65rem;">${esc(c)}</span>`).join(' ')
+          : '—', true);
+
+        // Originator & Cluster List
+        html += pathRow('Originator ID', `${esc(p.originatorId || '—')}${p.originatorPE ? ` (${esc(p.originatorPE)})` : ''}`);
+        html += pathRow('Cluster List', (p.clusterList || []).length > 0
+          ? p.clusterList.map(c => `<span style="font-family:'JetBrains Mono',monospace;font-size:0.75rem;">${esc(c)}</span>`).join(' → ')
+          : '—', true);
+
+        // Peer info
+        html += pathRow('Peer', `${esc(p.peer || '—')}${p.peerType ? ` (${esc(p.peerType)})` : ''}`);
+        if (p.lastUpdate) html += pathRow('Last Update', p.lastUpdate);
+
+        html += `</div>`;
+        html += `</div>`; // close grid
+        html += `</div>`; // close path-detail
+      }
+
+      container.innerHTML = html;
+    } catch (err) {
+      container.innerHTML = `<p class="text-muted">Error: ${esc(err.message)}</p>`;
+    }
+  }
+
+  /** Helper: render a detail row. */
+  function pathRow(label, value, isHtml) {
+    return `<div class="bgp-path-row">
+      <span class="bgp-path-label">${esc(label)}</span>
+      <span class="bgp-path-value">${isHtml ? value : esc(String(value))}</span>
+    </div>`;
   }
 
   function populateBgpForm(config) {

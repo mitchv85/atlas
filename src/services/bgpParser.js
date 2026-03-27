@@ -220,17 +220,46 @@ function parsePrefixDetail(raw) {
   const results = [];
 
   for (const [rd, data] of Object.entries(raw)) {
+    const prefix = data.prefix || '';
     const paths = data.paths || [];
+
     for (const p of paths) {
       const extComms = parseExtCommunities(p.extendedCommunity);
       const rts = extComms.filter(c => c.type === 'RT').map(c => c.value);
+      const stdComms = parseCommunities(p.community);
+
+      // AS path — can be string or structured object
+      let asPath = '';
+      if (typeof p.aspath === 'string') {
+        asPath = p.aspath;
+      } else if (p.aspath?.string) {
+        asPath = p.aspath.string;
+      }
 
       results.push({
         rd,
+        prefix,
         rts,
+        extCommunities: extComms,
+        communities: stdComms,
         label: p.remoteLabel || null,
+        origin: p.origin || '',
+        asPath,
+        locPref: p.locPrf || p.locPref || 100,
+        med: p.med || p.metric || 0,
+        weight: p.weight || 0,
+        valid: p.valid !== false,
+        bestpath: p.bestpath?.overall || false,
+        selectionReason: p.bestpath?.selectionReason || '',
         originatorId: p.originatorId || '',
-        clusterList: p.clusterList?.list || [],
+        clusterList: p.clusterList?.list || (Array.isArray(p.clusterList) ? p.clusterList : []),
+        peer: p.peer?.peerId || '',
+        peerRouterId: p.peer?.routerId || '',
+        peerType: p.peer?.type || '',
+        nextHop: p.nexthops?.[0]?.ip || '',
+        nextHopMetric: p.nexthops?.[0]?.metric ?? null,
+        nextHopAccessible: p.nexthops?.[0]?.accessible ?? null,
+        lastUpdate: p.lastUpdate?.string || '',
       });
     }
   }

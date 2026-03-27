@@ -206,4 +206,9 @@ const API = {
     const res = await fetch('/api/bgp/collect', { method: 'POST' });
     return res.json();
   },
+
+  async getBgpPrefixDetail(prefix) {
+    const res = await fetch(`/api/bgp/prefix/${encodeURIComponent(prefix)}`);
+    return res.json();
+  },
 };

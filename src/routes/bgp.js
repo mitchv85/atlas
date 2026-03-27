@@ -318,4 +318,63 @@ router.get('/rib', (req, res) => {
   res.json(bgpStore.getRib(filters));
 });
 
+// ---------------------------------------------------------------------------
+// Prefix Detail
+// ---------------------------------------------------------------------------
+
+/**
+ * GET /api/bgp/prefix/:prefix
+ * Fetch full BGP path detail for a specific prefix via vtysh.
+ * Returns extended communities, standard communities, cluster list,
+ * originator ID, label, AS path, and all other path attributes.
+ *
+ * :prefix is URL-encoded (e.g., "91.0.0.1%2F32" for "91.0.0.1/32").
+ */
+router.get('/prefix/:prefix', (req, res) => {
+  const prefix = decodeURIComponent(req.params.prefix);
+
+  // Validate prefix format
+  if (!/^\d+\.\d+\.\d+\.\d+\/\d+$/.test(prefix)) {
+    return res.status(400).json({ error: `Invalid prefix format: ${prefix}` });
+  }
+
+  try {
+    const { execSync } = require('child_process');
+    const bgpParser = require('../services/bgpParser');
+
+    const raw = JSON.parse(
+      execSync(`vtysh -c "show bgp ipv4 vpn ${prefix} json"`, { encoding: 'utf-8', timeout: 10000 })
+    );
+
+    const details = bgpParser.parsePrefixDetail(raw);
+
+    // Enrich with PE hostnames from topology
+    const poller = require('../services/poller');
+    const topology = poller.getTopology();
+    if (topology) {
+      for (const d of details) {
+        d.originPE = resolveNextHopToPE(d.nextHop, topology) || '';
+        d.originatorPE = resolveNextHopToPE(d.originatorId, topology) || '';
+      }
+    }
+
+    res.json({ prefix, paths: details });
+  } catch (err) {
+    res.status(500).json({ error: `Prefix lookup failed: ${err.message}` });
+  }
+});
+
+/**
+ * Resolve an IP address to a PE hostname using the topology.
+ */
+function resolveNextHopToPE(ip, topology) {
+  if (!ip || !topology?.nodes) return null;
+  for (const node of topology.nodes) {
+    const d = node.data;
+    if (d.routerCaps?.routerId === ip) return d.hostname;
+    if ((d.interfaceAddresses || []).includes(ip)) return d.hostname;
+  }
+  return null;
+}
+
 module.exports = router;
