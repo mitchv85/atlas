@@ -149,24 +149,15 @@ class TopologyPoller extends EventEmitter {
           }
           allNeighborRecords.push(...nbrRecords);
 
-          // FlexAlgo + TE commands — best-effort, separate eAPI call
-          // eAPI rejects the entire batch if any command fails, so these
-          // must not be in the same call as the core commands.
+          // TE interface data — separate batch (most devices support this)
           try {
-            const faResults = await eapi.execute(
+            const teResults = await eapi.execute(
               device,
-              ['show isis flex-algo path detail', 'show isis flex-algo router', 'show traffic-engineering interfaces'],
+              ['show traffic-engineering interfaces'],
               'json'
             );
-            if (faResults[0] && !flexAlgoPaths) {
-              flexAlgoPaths = parseFlexAlgoPaths(faResults[0]);
-            }
-            if (faResults[1] && !flexAlgoRouters) {
-              flexAlgoRouters = parseFlexAlgoRouters(faResults[1]);
-            }
-            // Parse TE interface data (delay, TE metric, admin groups per interface)
-            if (faResults[2]) {
-              const teIntfs = faResults[2].interfaces || [];
+            if (teResults[0]) {
+              const teIntfs = teResults[0].interfaces || [];
               for (const te of teIntfs) {
                 if (!te.intf || te.intf.startsWith('Loopback')) continue;
                 teInterfaceMap.set(`${device.name}:${te.intf}`, {
@@ -180,6 +171,24 @@ class TopologyPoller extends EventEmitter {
                   maxResvBw: te.maxResvBw?.value ?? null,
                 });
               }
+            }
+          } catch {
+            // TE not supported on this device — OK
+          }
+
+          // FlexAlgo commands — best-effort, separate batch
+          // These may not be supported on all EOS versions
+          try {
+            const faResults = await eapi.execute(
+              device,
+              ['show isis flex-algo path detail', 'show isis flex-algo router'],
+              'json'
+            );
+            if (faResults[0] && !flexAlgoPaths) {
+              flexAlgoPaths = parseFlexAlgoPaths(faResults[0]);
+            }
+            if (faResults[1] && !flexAlgoRouters) {
+              flexAlgoRouters = parseFlexAlgoRouters(faResults[1]);
             }
           } catch {
             // FlexAlgo commands not supported on this device — that's OK
