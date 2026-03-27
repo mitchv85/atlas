@@ -98,6 +98,14 @@
   const btnComputePath = $('#btnComputePath');
   const btnClearPath = $('#btnClearPath');
 
+  // Service trace bar
+  const svcTraceBar = $('#svcTraceBar');
+  const svcTraceSource = $('#svcTraceSource');
+  const svcTracePrefix = $('#svcTracePrefix');
+  const btnSvcTrace = $('#btnSvcTrace');
+  const btnSvcModeToggle = $('#btnSvcModeToggle');
+  const btnSvcTraceToggle = $('#btnSvcTraceToggle');
+
   // ── Tab Switching ───────────────────────────────────────────────
   let activeTab = 'topology';
   const deviceTestResults = new Map(); // id → 'ok' | 'fail' | 'testing'
@@ -114,7 +122,10 @@
     viewBgp.classList.toggle('active', tabName === 'bgp');
 
     // Show/hide path bar and collect button based on tab
-    if (pathBar) pathBar.style.display = tabName === 'topology' && topologyData ? 'flex' : 'none';
+    // Only show the path bar OR service trace bar — whichever was active
+    const svcMode = svcTraceBar.style.display === 'flex';
+    if (pathBar) pathBar.style.display = tabName === 'topology' && topologyData && !svcMode ? 'flex' : 'none';
+    if (svcTraceBar) svcTraceBar.style.display = tabName === 'topology' && topologyData && svcMode ? 'flex' : 'none';
     if (btnCollect) btnCollect.style.display = tabName === 'topology' ? '' : 'none';
 
     if (tabName === 'devices') {
@@ -1113,6 +1124,22 @@
       topo.setAlgorithmOverlay(algoNum);
     });
 
+    // Service trace mode toggle
+    btnSvcModeToggle.addEventListener('click', () => {
+      pathBar.style.display = 'none';
+      svcTraceBar.style.display = 'flex';
+    });
+    btnSvcTraceToggle.addEventListener('click', () => {
+      svcTraceBar.style.display = 'none';
+      pathBar.style.display = topologyData ? 'flex' : 'none';
+    });
+
+    // Service trace execution
+    btnSvcTrace.addEventListener('click', handleSvcTrace);
+    svcTracePrefix.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') handleSvcTrace();
+    });
+
     // ── Devices page bindings ───────────────────────────────────
     if (btnAddDevice) btnAddDevice.addEventListener('click', addDeviceFromForm);
     if (btnRefreshDevices) btnRefreshDevices.addEventListener('click', refreshDevicesPage);
@@ -1246,6 +1273,12 @@
       pathSource.add(optSrc);
       pathDest.add(optDst);
       pathFailNode.add(optFail);
+    }
+
+    // Populate service trace source dropdown
+    svcTraceSource.innerHTML = '<option value="">Select PE...</option>';
+    for (const node of nodes) {
+      svcTraceSource.add(new Option(node.label, node.label));
     }
 
     // Populate link failure dropdown from topology edges
@@ -1988,6 +2021,25 @@
   let activeTracePicker = null;
 
   /**
+   * Handle service trace from the topology-tab trace bar.
+   */
+  async function handleSvcTrace() {
+    const source = svcTraceSource.value;
+    const prefix = svcTracePrefix.value.trim();
+
+    if (!source) {
+      setStatus('error', 'Select a source PE');
+      return;
+    }
+    if (!prefix || !/^\d+\.\d+\.\d+\.\d+\/\d+$/.test(prefix)) {
+      setStatus('error', 'Enter a valid prefix (e.g., 92.1.1.2/32)');
+      return;
+    }
+
+    await executeServiceTrace(source, prefix);
+  }
+
+  /**
    * Show a small popup to pick the source PE for a service path trace.
    */
   function showTraceSourcePicker(btn, prefix, peOptions) {
@@ -2047,7 +2099,16 @@
       // Switch to topology tab
       switchTab('topology');
 
-      // If FlexAlgo transport, set the algo overlay
+      // Set path bar dropdowns to match the trace
+      const srcNode = topologyData?.nodes?.find(n => n.data.hostname === result.sourceNode);
+      const dstNode = topologyData?.nodes?.find(n => n.data.hostname === result.destinationPE);
+
+      if (srcNode) pathSource.value = srcNode.data.id;
+      if (dstNode) pathDest.value = dstNode.data.id;
+      pathFailNode.value = '';
+      pathFailLink.value = '';
+
+      // Set algo overlay
       if (result.transportAlgorithm >= 128) {
         pathAlgo.value = String(result.transportAlgorithm);
         topo.setAlgorithmOverlay(result.transportAlgorithm);
@@ -2056,20 +2117,45 @@
         topo.setAlgorithmOverlay(0);
       }
 
-      // Highlight the transport path on the topology
-      if (result.transportPath?.hops) {
-        const pathData = {
-          source: result.destinationPEId || result.destinationPE,
-          sourceHostname: result.sourceNode,
-          hops: result.transportPath.hops,
-          hopCount: result.transportPath.hopCount,
-          totalMetric: result.transportPath.metric,
-          algorithm: result.transportAlgorithm,
-        };
-        topo.highlightPath(pathData, [], []);
+      // Use existing path computation for highlighting
+      // This reuses the proven FlexAlgo trace or SPF path computation
+      if (result.transportAlgorithm >= 128 && srcNode && dstNode) {
+        // FlexAlgo — use existing trace which gives full hop chain + edge IDs
+        try {
+          const faResult = await API.traceFlexAlgoPath(srcNode.data.id, dstNode.data.id, result.transportAlgorithm);
+          if (faResult.reachable && faResult.hops?.length > 1) {
+            const pathHops = [];
+            for (let i = 0; i < faResult.hops.length - 1; i++) {
+              pathHops.push({
+                from: faResult.hops[i].systemId,
+                to: faResult.hops[i + 1].systemId,
+                fromHostname: faResult.hops[i].hostname,
+                toHostname: faResult.hops[i + 1].hostname,
+                edgeId: faResult.hops[i].edgeId || null,
+              });
+            }
+            topo.highlightPath({
+              source: faResult.hops[0].systemId,
+              destination: faResult.hops[faResult.hops.length - 1].systemId,
+              hops: pathHops,
+            }, [], []);
+          }
+        } catch {
+          // FlexAlgo highlight failed — show detail panel anyway
+        }
+      } else if (srcNode && dstNode) {
+        // Standard IGP — use existing SPF path
+        try {
+          const analysis = await API.analyzePath(srcNode.data.id, dstNode.data.id);
+          if (analysis?.primary) {
+            topo.highlightPath(analysis.primary, [], []);
+          }
+        } catch {
+          // SPF highlight failed
+        }
       }
 
-      // Show the service path detail panel
+      // Show the service path detail panel (with label stack, BGP attrs, etc.)
       showServicePathDetail(result);
       btnClearPath.style.display = 'inline-flex';
 

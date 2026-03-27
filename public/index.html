@@ -95,6 +95,35 @@
       Compute Path
     </button>
     <button class="btn btn-ghost btn-sm" id="btnClearPath" style="display:none;">Clear</button>
+    <button class="btn btn-ghost btn-sm" id="btnSvcModeToggle" style="margin-left:auto;" title="Switch to service path trace mode">⤴ Service Trace</button>
+  </div>
+
+  <!-- ================================================================== -->
+  <!-- Service Trace Bar                                                   -->
+  <!-- ================================================================== -->
+  <div class="svc-trace-bar" id="svcTraceBar" style="display:none;">
+    <div class="path-bar-section">
+      <label class="path-label">Source PE</label>
+      <select class="path-select" id="svcTraceSource">
+        <option value="">Select PE...</option>
+      </select>
+    </div>
+    <div class="path-bar-arrow">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M5 12h14M12 5l7 7-7 7"/>
+      </svg>
+    </div>
+    <div class="path-bar-section" style="flex:2;">
+      <label class="path-label">VPN Prefix</label>
+      <input type="text" class="path-select svc-trace-input" id="svcTracePrefix" placeholder="e.g. 92.1.1.2/32" />
+    </div>
+    <button class="btn btn-primary" id="btnSvcTrace">
+      <svg viewBox="0 0 20 20" fill="currentColor" class="btn-icon">
+        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 10-2 0v3.586L7.707 9.293a1 1 0 00-1.414 1.414l3 3a1 1 0 001.414 0l3-3a1 1 0 00-1.414-1.414L11 10.586V7z" clip-rule="evenodd"/>
+      </svg>
+      Trace Service Path
+    </button>
+    <button class="btn btn-ghost btn-sm" id="btnSvcTraceToggle" title="Switch to transport path mode">Transport Mode</button>
   </div>
 
   <!-- ================================================================== -->

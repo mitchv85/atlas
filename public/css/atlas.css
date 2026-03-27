@@ -493,6 +493,23 @@ body {
   z-index: 90;
 }
 
+.svc-trace-bar {
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--accent-dim);
+  padding: 10px 20px;
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  flex-shrink: 0;
+  z-index: 90;
+}
+
+.svc-trace-input {
+  padding: 6px 10px !important;
+  appearance: auto !important;
+  cursor: text !important;
+}
+
 .path-bar-section {
   display: flex;
   flex-direction: column;
