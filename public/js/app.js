@@ -1503,31 +1503,30 @@
     }
 
     try {
-      const vrfs = await API.getBgpVrfs();
-      if (!vrfs || vrfs.length === 0) {
+      const vrfGroups = await API.getBgpVrfsByRT();
+      if (!vrfGroups || vrfGroups.length === 0) {
         section.style.display = 'none';
         return;
       }
 
       section.style.display = '';
-      countEl.textContent = `${vrfs.length} VRF${vrfs.length !== 1 ? 's' : ''}`;
+      countEl.textContent = `${vrfGroups.length} VRF${vrfGroups.length !== 1 ? 's' : ''}`;
 
-      tbody.innerHTML = vrfs.map((v) => {
-        const originPE = resolveOriginPE(v.rd);
-        const rtDisplay = v.rtImport.length > 0 ? v.rtImport.join(', ') : '<span style="color:var(--text-muted);">—</span>';
-        const rowId = `vrf-${v.rd.replace(/[:.]/g, '-')}`;
+      tbody.innerHTML = vrfGroups.map((g) => {
+        const rowId = `vrf-rt-${g.rt.replace(/[:.]/g, '-')}`;
+        const peNames = g.rds.map(r => resolveOriginPE(r.rd)).filter(Boolean);
+        const uniquePEs = [...new Set(peNames)];
+        const peDisplay = uniquePEs.length > 0 ? uniquePEs.join(', ') : '<span style="color:var(--text-muted);">—</span>';
 
-        return `<tr class="bgp-vrf-row" data-rd="${esc(v.rd)}" data-row-id="${rowId}">
+        return `<tr class="bgp-vrf-row" data-rt="${esc(g.rt)}" data-row-id="${rowId}">
           <td class="bgp-vrf-chevron">▸</td>
-          <td><strong style="font-family:'JetBrains Mono',monospace;font-size:0.78rem;">${esc(v.rd)}</strong></td>
-          <td style="font-family:'JetBrains Mono',monospace;font-size:0.78rem;">${rtDisplay}</td>
-          <td>${esc(originPE)}</td>
-          <td><span class="detail-badge cyan">${v.prefixCount}</span></td>
+          <td><strong style="font-family:'JetBrains Mono',monospace;font-size:0.78rem;">${esc(g.rt)}</strong></td>
+          <td>${peDisplay}</td>
+          <td><span class="detail-badge cyan">${g.totalPrefixes}</span></td>
         </tr>
         <tr class="bgp-vrf-expand" id="${rowId}" style="display:none;">
-          <td colspan="5">
+          <td colspan="4">
             <div class="bgp-vrf-detail" id="${rowId}-detail">
-              <div class="reach-loading">Loading prefixes...</div>
             </div>
           </td>
         </tr>`;
@@ -1536,7 +1535,7 @@
       // Wire click-to-expand
       tbody.querySelectorAll('.bgp-vrf-row').forEach((row) => {
         row.addEventListener('click', () => {
-          const rd = row.dataset.rd;
+          const rt = row.dataset.rt;
           const rowId = row.dataset.rowId;
           const expandRow = document.getElementById(rowId);
           const chevron = row.querySelector('.bgp-vrf-chevron');
@@ -1551,7 +1550,7 @@
             expandRow.style.display = '';
             chevron.textContent = '▾';
             row.classList.add('expanded');
-            loadVrfPrefixes(rd, `${rowId}-detail`);
+            renderVrfSearchPanel(rt, `${rowId}-detail`);
           }
         });
       });
@@ -1562,7 +1561,6 @@
 
   /**
    * Resolve the origin PE hostname from an RD like "100.0.0.1:91".
-   * Cross-references with the IS-IS topology.
    */
   function resolveOriginPE(rd) {
     const pePart = rd.split(':')[0];
@@ -1577,16 +1575,67 @@
   }
 
   /**
-   * Load and render prefixes for a specific VRF (by RD).
+   * Render the prefix search panel inside a VRF expand row.
    */
-  async function loadVrfPrefixes(rd, containerId) {
+  function renderVrfSearchPanel(rt, containerId) {
     const container = document.getElementById(containerId);
     if (!container) return;
 
+    const searchId = `vrf-search-${rt.replace(/[:.]/g, '-')}`;
+    const resultsId = `vrf-results-${rt.replace(/[:.]/g, '-')}`;
+
+    container.innerHTML = `
+      <div class="bgp-vrf-search-bar">
+        <input type="text" class="bgp-vrf-search-input" id="${searchId}" placeholder="Search by prefix, next-hop, or origin PE..." />
+        <button class="btn btn-primary btn-sm" id="${searchId}-btn">Search</button>
+        <button class="btn btn-ghost btn-sm" id="${searchId}-all">Show All (first 100)</button>
+      </div>
+      <div id="${resultsId}">
+        <p class="text-muted" style="font-size:0.78rem;padding:8px 0;">Enter a search term or click "Show All" to view prefixes.</p>
+      </div>`;
+
+    const input = document.getElementById(searchId);
+    const btnSearch = document.getElementById(`${searchId}-btn`);
+    const btnAll = document.getElementById(`${searchId}-all`);
+
+    const doSearch = () => {
+      const query = input.value.trim();
+      loadVrfPrefixes(rt, resultsId, query, 100);
+    };
+
+    btnSearch.addEventListener('click', doSearch);
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') doSearch(); });
+    btnAll.addEventListener('click', () => {
+      input.value = '';
+      loadVrfPrefixes(rt, resultsId, '', 100);
+    });
+  }
+
+  /**
+   * Load and render prefixes for a VRF (by RT), with optional search filter.
+   */
+  async function loadVrfPrefixes(rt, containerId, searchQuery, limit) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+
+    container.innerHTML = '<div class="reach-loading">Searching...</div>';
+
     try {
-      const vrf = await API.getBgpRib({ rd, bestOnly: 'true', limit: 200 });
-      if (!vrf.entries || vrf.entries.length === 0) {
-        container.innerHTML = '<p class="text-muted">No prefixes in this VRF.</p>';
+      const filters = { rt, bestOnly: 'true', limit: limit || 100 };
+
+      // Apply search query as prefix or originPE filter
+      if (searchQuery) {
+        // If it looks like an IP prefix, filter by prefix; otherwise by originPE
+        if (/^\d/.test(searchQuery)) {
+          filters.prefix = searchQuery;
+        } else {
+          filters.originPE = searchQuery;
+        }
+      }
+
+      const result = await API.getBgpRib(filters);
+      if (!result.entries || result.entries.length === 0) {
+        container.innerHTML = `<p class="text-muted" style="font-size:0.78rem;padding:8px 0;">No prefixes found${searchQuery ? ` matching "${esc(searchQuery)}"` : ''}.</p>`;
         return;
       }
 
@@ -1603,7 +1652,7 @@
         </thead>
         <tbody>`;
 
-      for (const e of vrf.entries) {
+      for (const e of result.entries) {
         const peLabel = e.originPE || resolveOriginPE(e.rd);
         html += `<tr>
           <td style="font-family:'JetBrains Mono',monospace;font-size:0.78rem;">${esc(e.prefix)}/${e.prefixLen}</td>
@@ -1617,13 +1666,13 @@
 
       html += `</tbody></table>`;
 
-      if (vrf.filtered > vrf.entries.length) {
-        html += `<div style="font-size:0.72rem;color:var(--text-muted);margin-top:6px;">Showing ${vrf.entries.length} of ${vrf.filtered} prefixes</div>`;
+      if (result.filtered > result.entries.length) {
+        html += `<div style="font-size:0.72rem;color:var(--text-muted);margin-top:6px;">Showing ${result.entries.length} of ${result.filtered} prefixes — refine your search to see more.</div>`;
       }
 
       container.innerHTML = html;
     } catch (err) {
-      container.innerHTML = `<p class="text-muted">Error loading prefixes: ${esc(err.message)}</p>`;
+      container.innerHTML = `<p class="text-muted">Error: ${esc(err.message)}</p>`;
     }
   }
 

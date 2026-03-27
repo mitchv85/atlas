@@ -259,6 +259,16 @@ router.get('/vrfs', (_req, res) => {
 });
 
 /**
+ * GET /api/bgp/vrfs/by-rt
+ * List VRFs grouped by Route Target.
+ * Same RT across multiple PEs = one logical VRF with multiple RDs.
+ * Returns: [{ rt, name, rds: [{ rd, prefixCount }], totalPrefixes }]
+ */
+router.get('/vrfs/by-rt', (_req, res) => {
+  res.json(bgpStore.getVrfsByRT());
+});
+
+/**
  * GET /api/bgp/vrfs/:rd
  * Get detailed info for a specific VRF including all prefixes.
  *

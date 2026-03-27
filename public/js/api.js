@@ -188,6 +188,11 @@ const API = {
     return res.json();
   },
 
+  async getBgpVrfsByRT() {
+    const res = await fetch('/api/bgp/vrfs/by-rt');
+    return res.json();
+  },
+
   async getBgpRib(filters = {}) {
     const params = new URLSearchParams();
     for (const [k, v] of Object.entries(filters)) {

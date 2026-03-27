@@ -71,6 +71,34 @@ class BgpStore extends EventEmitter {
   }
 
   /**
+   * Get VRFs grouped by Route Target.
+   * Same RT on different PEs = same logical VRF.
+   * @returns {Object[]} Array of { rt, rds: [{ rd, prefixCount, originPE }], totalPrefixes }
+   */
+  getVrfsByRT() {
+    const rtMap = new Map(); // rt → { rt, rds: [], totalPrefixes }
+
+    for (const vrf of this.vrfs.values()) {
+      const rts = vrf.rtImport.length > 0 ? vrf.rtImport : ['unknown'];
+
+      for (const rt of rts) {
+        if (!rtMap.has(rt)) {
+          rtMap.set(rt, { rt, name: vrf.name, rds: [], totalPrefixes: 0 });
+        }
+        const group = rtMap.get(rt);
+        group.rds.push({
+          rd: vrf.rd,
+          prefixCount: vrf.prefixCount,
+        });
+        group.totalPrefixes += vrf.prefixCount;
+        if (vrf.name && !group.name) group.name = vrf.name;
+      }
+    }
+
+    return Array.from(rtMap.values()).sort((a, b) => a.rt.localeCompare(b.rt));
+  }
+
+  /**
    * Get a specific VRF by RD, including its full prefix list.
    * @param {string} rd - Route Distinguisher.
    * @returns {Object|null}
@@ -129,9 +157,15 @@ class BgpStore extends EventEmitter {
       entries = entries.filter((e) => e.nextHop === filters.nextHop);
     }
     if (filters.rt) {
-      entries = entries.filter((e) =>
-        e.extCommunities.some((c) => c.type === 'RT' && c.value === filters.rt)
-      );
+      // RT isn't on every RIB entry (only in detail queries), so look up
+      // which RDs belong to this RT via the VRF map
+      const matchingRDs = new Set();
+      for (const vrf of this.vrfs.values()) {
+        if (vrf.rtImport.includes(filters.rt) || vrf.rtExport.includes(filters.rt)) {
+          matchingRDs.add(vrf.rd);
+        }
+      }
+      entries = entries.filter((e) => matchingRDs.has(e.rd));
     }
     if (filters.originPE) {
       const search = filters.originPE.toLowerCase();
@@ -205,7 +239,7 @@ class BgpStore extends EventEmitter {
       collecting: this.collecting,
       lastUpdated: this.lastUpdated,
       lastError: this.lastError,
-      vrfCount: this.vrfs.size,
+      vrfCount: this.getVrfsByRT().length,
       ribCount: this.rib.length,
       neighborCount: this.neighbors.length,
       neighborsEstablished: this.neighbors.filter(
