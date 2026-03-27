@@ -154,7 +154,7 @@ class TopologyPoller extends EventEmitter {
           try {
             const faResults = await eapi.execute(
               device,
-              ['show isis flexalgo path detail', 'show isis flexalgo router'],
+              ['show isis flex-algo path detail', 'show isis flex-algo router'],
               'json'
             );
             if (faResults[0] && !flexAlgoPaths) {

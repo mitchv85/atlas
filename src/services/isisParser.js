@@ -346,7 +346,7 @@ function parseHostnameTable(raw) {
 module.exports = { parseLSDB, parseHostnameTable, parseFlexAlgoPaths, parseFlexAlgoRouters };
 
 /**
- * Parse `show isis flexalgo path detail` (JSON format).
+ * Parse `show isis flex-algo path detail` (JSON format).
  *
  * Structure:
  *   vrfs.default.v4Info.topologies.{topoId}.destinations.{prefix}.paths.{algoNum}
@@ -416,7 +416,7 @@ function parseFlexAlgoPaths(raw) {
 }
 
 /**
- * Parse `show isis flexalgo router` (JSON format).
+ * Parse `show isis flex-algo router` (JSON format).
  *
  * Structure:
  *   vrfs.default.isisInstances.{inst}.routers[].{ level, algorithm, routers[] }
