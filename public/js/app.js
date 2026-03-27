@@ -1259,6 +1259,19 @@
     if (prevDst && nodes.some(n => n.id === prevDst)) pathDest.value = prevDst;
     if (prevFail && nodes.some(n => n.id === prevFail)) pathFailNode.value = prevFail;
     if (prevFailLink) pathFailLink.value = prevFailLink;
+
+    // Populate algorithm dropdown from discovered FlexAlgos
+    const prevAlgo = pathAlgo.value;
+    pathAlgo.innerHTML = '<option value="0">Algo 0 (SPF)</option>';
+    if (topologyData?.metadata?.algorithms) {
+      for (const algo of topologyData.metadata.algorithms) {
+        if (algo.number === 0) continue; // Already added
+        const label = `Algo ${algo.number} (${algo.name})`;
+        const opt = new Option(label, algo.number);
+        pathAlgo.add(opt);
+      }
+    }
+    if (prevAlgo) pathAlgo.value = prevAlgo;
   }
 
   // ── Path Computation ─────────────────────────────────────────────
@@ -2538,6 +2551,58 @@
 
     // Wire CLI panel
     wireCLIPanel(nodeData.hostname);
+
+    // Wire FlexAlgo path buttons
+    detailBody.querySelectorAll('.btn-fa-paths').forEach((btn) => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const systemId = btn.dataset.systemId;
+        const algo = btn.dataset.algo;
+        const container = detailBody.querySelector('#faPathsContainer');
+        if (!container) return;
+
+        btn.disabled = true;
+        btn.textContent = 'Loading...';
+        container.innerHTML = '<div class="reach-loading">Querying device...</div>';
+
+        try {
+          const result = await API.getFlexAlgoPaths(systemId, algo);
+          if (!result || !result.paths || result.paths.length === 0) {
+            container.innerHTML = `<p class="text-muted">No Algo ${algo} paths found.</p>`;
+            return;
+          }
+
+          let html = `<div style="margin-top:10px;">
+            <div style="font-size:0.75rem;font-weight:600;color:var(--text-secondary);margin-bottom:6px;">Algo ${algo} — ${esc(result.paths[0]?.algoName || '')} Paths from ${esc(result.source)}</div>
+            <table class="devices-table bgp-prefix-table">
+              <thead><tr><th>Destination</th><th>Node</th><th>Next-Hop</th><th>Interface</th><th>Metric</th><th>Status</th></tr></thead>
+              <tbody>`;
+
+          for (const p of result.paths) {
+            const statusBadge = p.reachable
+              ? '<span class="detail-badge green" style="font-size:0.65rem;">Reachable</span>'
+              : '<span class="detail-badge amber" style="font-size:0.65rem;">No Path</span>';
+            const via = p.vias[0] || {};
+            html += `<tr>
+              <td style="font-family:'JetBrains Mono',monospace;font-size:0.75rem;">${esc(p.destination)}</td>
+              <td>${esc(p.destinationHostname || '—')}</td>
+              <td style="font-family:'JetBrains Mono',monospace;font-size:0.75rem;">${esc(via.nexthop || '—')}</td>
+              <td>${esc(via.interface || '—')}</td>
+              <td>${p.metric !== null ? p.metric : '—'}</td>
+              <td>${statusBadge}</td>
+            </tr>`;
+          }
+
+          html += `</tbody></table></div>`;
+          container.innerHTML = html;
+        } catch (err) {
+          container.innerHTML = `<p class="text-muted">Error: ${esc(err.message)}</p>`;
+        } finally {
+          btn.disabled = false;
+          btn.textContent = `Algo ${algo} Paths`;
+        }
+      });
+    });
   }
 
   /**
@@ -2726,6 +2791,63 @@
         html += `<div class="detail-row"><span class="detail-label">Max SID Depth</span><span class="detail-value">${caps.maxSIDDepth}</span></div>`;
       }
       html += `</div>`;
+
+      // FlexAlgo — show participation and definitions
+      const faAlgos = (caps.srAlgorithms || []).filter(a => a.number >= 128);
+      const faDefs = caps.flexAlgoDefinitions || [];
+
+      if (faAlgos.length > 0) {
+        html += `<div class="detail-section"><h4>FlexAlgo</h4>`;
+
+        // Algorithms this node participates in
+        html += `<div class="detail-row"><span class="detail-label">Algorithms</span><span class="detail-value" style="display:flex;flex-wrap:wrap;gap:4px;">`;
+        html += faAlgos.map(a => `<span class="detail-badge cyan" style="font-size:0.65rem;">Algo ${a.number} — ${esc(a.name)}</span>`).join('');
+        html += `</span></div>`;
+
+        // FlexAlgo Definitions (if this node is the advertiser)
+        if (faDefs.length > 0) {
+          html += `<div style="margin-top:8px;font-size:0.68rem;color:var(--accent);font-weight:600;">⚑ FAD Advertiser</div>`;
+          for (const fad of faDefs) {
+            html += `<div style="margin-top:6px;padding:8px 10px;background:var(--bg-elevated);border:1px solid var(--border);border-radius:var(--radius-sm);">`;
+            html += `<div style="font-weight:600;font-size:0.78rem;margin-bottom:4px;">Algo ${fad.algorithm}</div>`;
+            html += `<div class="detail-row"><span class="detail-label">Metric Type</span><span class="detail-value">${esc(fad.metricType)}</span></div>`;
+            html += `<div class="detail-row"><span class="detail-label">Calc Type</span><span class="detail-value">${esc(fad.calcType)}</span></div>`;
+            html += `<div class="detail-row"><span class="detail-label">Priority</span><span class="detail-value">${fad.priority}</span></div>`;
+            if (fad.excludeGroups?.length > 0) {
+              html += `<div class="detail-row"><span class="detail-label">Exclude</span><span class="detail-value">${fad.excludeGroups.join(', ')}</span></div>`;
+            }
+            if (fad.includeAnyGroups?.length > 0) {
+              html += `<div class="detail-row"><span class="detail-label">Include-Any</span><span class="detail-value">${fad.includeAnyGroups.join(', ')}</span></div>`;
+            }
+            if (fad.includeAllGroups?.length > 0) {
+              html += `<div class="detail-row"><span class="detail-label">Include-All</span><span class="detail-value">${fad.includeAllGroups.join(', ')}</span></div>`;
+            }
+            html += `</div>`;
+          }
+        }
+
+        // FA Prefix SIDs
+        const faSids = (d.srPrefixSids || []).filter(s => s.algorithm >= 128);
+        if (faSids.length > 0) {
+          html += `<div style="margin-top:8px;">`;
+          for (const s of faSids) {
+            html += `<div class="detail-row">
+              <span class="detail-label">Algo ${s.algorithm} SID</span>
+              <span class="detail-value">${esc(s.prefix)} <span class="detail-badge cyan" style="margin-left:4px;">SID ${s.sid}</span></span>
+            </div>`;
+          }
+          html += `</div>`;
+        }
+
+        // FlexAlgo Paths button (loads on demand from the device via eAPI)
+        html += `<div style="margin-top:10px;">`;
+        for (const a of faAlgos) {
+          html += `<button class="btn btn-ghost btn-sm btn-fa-paths" data-system-id="${esc(d.systemId)}" data-algo="${a.number}" style="margin-right:6px;">Algo ${a.number} Paths</button>`;
+        }
+        html += `</div>`;
+        html += `<div id="faPathsContainer"></div>`;
+        html += `</div>`;
+      }
     }
 
     // SR Prefix SIDs

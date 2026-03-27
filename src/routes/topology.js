@@ -246,4 +246,140 @@ router.put('/positions', (req, res) => {
   res.json({ success: true });
 });
 
+// ---------------------------------------------------------------------------
+// FlexAlgo
+// ---------------------------------------------------------------------------
+
+const { buildFlexAlgoSummary } = require('../services/flexAlgo');
+
+/**
+ * GET /api/topology/flexalgo/summary
+ * Returns FlexAlgo overview built from the LSDB topology data:
+ *   - Defined algorithms (number, name, definition, advertiser)
+ *   - Per-node participation and FA prefix SIDs
+ */
+router.get('/flexalgo/summary', (req, res) => {
+  const topology = getTopology(req);
+  if (!topology) {
+    return res.status(404).json({ error: 'No topology data available' });
+  }
+  res.json(buildFlexAlgoSummary(topology));
+});
+
+/**
+ * GET /api/topology/flexalgo/paths/:systemId/:algo
+ * Query FlexAlgo paths from a specific device for a given algorithm.
+ * Uses eAPI: `show isis flexalgo path detail | json`
+ *
+ * Returns pre-computed FlexAlgo paths from the device to all destinations,
+ * including next-hop, interface, metric, and constraint type.
+ */
+router.get('/flexalgo/paths/:systemId/:algo', async (req, res) => {
+  const topology = getTopology(req);
+  if (!topology) {
+    return res.status(404).json({ error: 'No topology data available' });
+  }
+
+  const { systemId, algo } = req.params;
+  const algoNum = parseInt(algo, 10);
+
+  // Find the device in the topology
+  const node = topology.nodes.find(n => n.data.systemId === systemId || n.data.hostname === systemId);
+  if (!node) {
+    return res.status(404).json({ error: `Node ${systemId} not found in topology` });
+  }
+
+  // Find the device credentials
+  const deviceStore = require('../store/devices');
+  const allDevices = deviceStore.getAllRaw();
+  const device = allDevices.find(d =>
+    d.name.toLowerCase() === (node.data.hostname || '').toLowerCase()
+  );
+
+  if (!device) {
+    return res.status(404).json({
+      error: `No device credentials for ${node.data.hostname}. Add it in the Devices tab.`,
+    });
+  }
+
+  try {
+    const eapi = require('../services/eapi');
+    const result = await eapi.execute(device, ['show isis flexalgo path detail | json']);
+    const raw = result[0];
+
+    // Parse FlexAlgo paths for the requested algorithm
+    const paths = parseFlexAlgoPaths(raw, algoNum, topology);
+
+    res.json({
+      source: node.data.hostname,
+      sourceSystemId: node.data.systemId,
+      algorithm: algoNum,
+      paths,
+    });
+  } catch (err) {
+    res.status(500).json({ error: `FlexAlgo path query failed: ${err.message}` });
+  }
+});
+
+/**
+ * Parse FlexAlgo path detail output from eAPI.
+ *
+ * Structure:
+ *   vrfs.default.v4Info.topologies.{topoId}.destinations.{prefix}.paths.{algo}
+ *     .algoName, .vias[{ nexthop, intf }], .details.{ metric, constraint }
+ *
+ * @param {Object} raw - eAPI result for `show isis flexalgo path detail | json`
+ * @param {number} algoNum - The algorithm number to extract (128, 129, etc.)
+ * @param {Object} topology - Current ATLAS topology for hostname resolution
+ * @returns {Object[]} Parsed paths
+ */
+function parseFlexAlgoPaths(raw, algoNum, topology) {
+  const results = [];
+  const vrfs = raw.vrfs || {};
+
+  // Build IP → hostname lookup from topology
+  const ipToHost = new Map();
+  if (topology?.nodes) {
+    for (const n of topology.nodes) {
+      const d = n.data;
+      if (d.routerCaps?.routerId) ipToHost.set(d.routerCaps.routerId, d.hostname);
+      for (const addr of (d.interfaceAddresses || [])) {
+        ipToHost.set(addr, d.hostname);
+      }
+    }
+  }
+
+  for (const [vrfName, vrfData] of Object.entries(vrfs)) {
+    const topos = vrfData.v4Info?.topologies || {};
+    for (const [topoId, topoData] of Object.entries(topos)) {
+      const dests = topoData.destinations || {};
+      for (const [prefix, destData] of Object.entries(dests)) {
+        const algoKey = String(algoNum);
+        const pathData = destData.paths?.[algoKey];
+        if (!pathData) continue;
+
+        const vias = (pathData.vias || []).map(v => ({
+          nexthop: v.nexthop || '',
+          interface: v.intf || '',
+        }));
+
+        const details = pathData.details || {};
+        const destIp = prefix.split('/')[0];
+
+        results.push({
+          destination: prefix,
+          destinationHostname: ipToHost.get(destIp) || '',
+          algoName: pathData.algoName || `Algo ${algoNum}`,
+          vias,
+          metric: details.metric ?? null,
+          constraint: details.constraint || {},
+          reachable: vias.length > 0,
+        });
+      }
+    }
+  }
+
+  return results.sort((a, b) => a.destination.localeCompare(b.destination));
+}
+
 module.exports = router;

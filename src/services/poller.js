@@ -10,6 +10,7 @@ const EventEmitter = require('events');
 const deviceStore = require('../store/devices');
 const eapi = require('../services/eapi');
 const { parseLSDB } = require('../services/isisParser');
+const { parseFlexAlgoPaths, parseFlexAlgoRouters } = require('../services/flexAlgo');
 const { buildGraph } = require('../services/topologyBuilder');
 const { parseTunnelFib } = require('../services/tunnelParser');
 const { parseNeighborDetail, formatUptime } = require('../services/neighborParser');
@@ -102,12 +103,14 @@ class TopologyPoller extends EventEmitter {
       const sourceDevices = [];
       const perDeviceTunnels = new Map(); // device name -> tunnel map
       const allNeighborRecords = [];      // adjacency health records
+      let flexAlgoPaths = null;           // FlexAlgo path data (from first device)
+      let flexAlgoRouters = null;         // FlexAlgo router participation
 
       for (const device of allDevices) {
         try {
           const results = await eapi.execute(
             device,
-            ['show isis database detail', 'show tunnel fib', 'show isis neighbors detail', 'show interfaces'],
+            ['show isis database detail', 'show tunnel fib', 'show isis neighbors detail', 'show interfaces', 'show isis flexalgo path detail', 'show isis flexalgo router'],
             'json'
           );
 
@@ -143,6 +146,20 @@ class TopologyPoller extends EventEmitter {
             rec.mtu = intf?.mtu || null;
           }
           allNeighborRecords.push(...nbrRecords);
+
+          // Parse FlexAlgo data (from the first device that returns it)
+          try {
+            const faPathRaw = results[4];
+            const faRouterRaw = results[5];
+            if (faPathRaw && !flexAlgoPaths) {
+              flexAlgoPaths = parseFlexAlgoPaths(faPathRaw);
+            }
+            if (faRouterRaw && !flexAlgoRouters) {
+              flexAlgoRouters = parseFlexAlgoRouters(faRouterRaw);
+            }
+          } catch (faErr) {
+            // FlexAlgo commands may not be supported — that's OK
+          }
 
         } catch (deviceErr) {
           // Log but continue — one device failing shouldn't stop the whole poll

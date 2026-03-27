@@ -191,14 +191,31 @@ function parseRouterCapabilities(capabilities) {
     // MSD (Maximum SID Depth)
     result.maxSIDDepth = cap.msd?.baseMplsImposition || result.maxSIDDepth;
 
-    // SR Algorithms
-    if (cap.srAlgos && Object.keys(cap.srAlgos).length > 0) {
-      result.srAlgorithms = cap.srAlgos;
+    // SR Algorithms — normalize to [{ number, name }]
+    const srAlgos = cap.srAlgos || [];
+    if (Array.isArray(srAlgos) && srAlgos.length > 0) {
+      result.srAlgorithms = srAlgos.map(a => ({
+        number: a.algoNum ?? 0,
+        name: a.srAlgo || (a.algoNum === 0 ? 'SPF' : `Algo ${a.algoNum}`),
+      }));
     }
 
-    // FlexAlgo Definitions
-    if (cap.flexAlgoDefs && Object.keys(cap.flexAlgoDefs).length > 0) {
-      result.flexAlgoDefinitions = cap.flexAlgoDefs;
+    // FlexAlgo Definitions — normalize to structured objects
+    const fads = cap.flexAlgoDefs || [];
+    if (Array.isArray(fads) && fads.length > 0) {
+      result.flexAlgoDefinitions = fads.map(f => ({
+        algorithm: f.algorithm,
+        metricType: f.metricType || '',
+        metricTypeValue: f.metricTypeValue ?? null,
+        calcType: f.calcType || 'SPF',
+        calcTypeValue: f.calcTypeValue ?? 0,
+        priority: f.prio ?? 0,
+        excludeGroups: f.excludeGroups || [],
+        includeAllGroups: f.includeAllGroups || [],
+        includeAnyGroups: f.includeAnyGroups || [],
+        excludeSrlgGroups: f.excludeSrlgGroups || [],
+        flags: f.flags || [],
+      }));
     }
   }
 
@@ -253,12 +270,38 @@ function parseNeighborsFromLSP(neighbors) {
   for (const nbr of neighbors) {
     const nbrHostname = nbr.systemId?.replace(/\.\d+$/, '') || '';
 
+    // Extract link-level attributes (delay, TE metric, admin groups)
+    const appLinkAttrs = nbr.applicationLinkAttributes || [];
+    const teInfo = nbr.TEInfo || null;
+
+    // Application-Specific Link Attributes (ASLA) — used by FlexAlgo
+    let minDelay = null;
+    let teMetric = null;
+    let adminGroups = [];
+
+    for (const ala of appLinkAttrs) {
+      if (ala.minDelay != null) minDelay = ala.minDelay;
+      if (ala.teMetric != null) teMetric = ala.teMetric;
+      if (ala.adminGroups) adminGroups = ala.adminGroups;
+    }
+
+    // TE Info from TLV 22 sub-TLVs (legacy TE)
+    if (teInfo) {
+      if (teMetric === null && teInfo.teMetric != null) teMetric = teInfo.teMetric;
+      if (minDelay === null && teInfo.minDelay != null) minDelay = teInfo.minDelay;
+      if (adminGroups.length === 0 && teInfo.adminGroups) adminGroups = teInfo.adminGroups;
+    }
+
     neighborList.push({
       neighborId: nbr.systemId || '',
       neighborHostname: nbrHostname,
       metric: nbr.metric || 10,
       neighborAddr: nbr.neighborAddr || '',
       localAddr: nbr.adjInterfaceAddresses?.[0]?.adjInterfaceAddress || '',
+      // FlexAlgo link attributes
+      minDelay,
+      teMetric,
+      adminGroups,
     });
 
     // Adj-SIDs
@@ -300,4 +343,128 @@ function parseHostnameTable(raw) {
   return mapping;
 }
 
-module.exports = { parseLSDB, parseHostnameTable };
+module.exports = { parseLSDB, parseHostnameTable, parseFlexAlgoPaths, parseFlexAlgoRouters };
+
+/**
+ * Parse `show isis flexalgo path detail` (JSON format).
+ *
+ * Structure:
+ *   vrfs.default.v4Info.topologies.{topoId}.destinations.{prefix}.paths.{algoNum}
+ *     .algoName, .vias[{ nexthop, intf }], .details.{ metric, constraint.metricType }
+ *
+ * @param {Object} raw - eAPI JSON result.
+ * @returns {Object} - { algorithms: Map<number, { name, metricType, destinations: Map }> }
+ */
+function parseFlexAlgoPaths(raw) {
+  const algorithms = new Map();
+
+  const vrfs = raw.vrfs || {};
+  for (const vrfData of Object.values(vrfs)) {
+    const topos = vrfData.v4Info?.topologies || {};
+
+    for (const [_topoId, topoData] of Object.entries(topos)) {
+      const destinations = topoData.destinations || {};
+
+      for (const [prefix, destData] of Object.entries(destinations)) {
+        const paths = destData.paths || {};
+
+        for (const [algoStr, pathData] of Object.entries(paths)) {
+          const algoNum = parseInt(algoStr, 10);
+          if (algoNum < 128) continue; // Only FlexAlgo (128-255)
+
+          if (!algorithms.has(algoNum)) {
+            algorithms.set(algoNum, {
+              number: algoNum,
+              name: pathData.algoName || `Algo ${algoNum}`,
+              metricType: pathData.details?.constraint?.metricType || '',
+              destinations: new Map(),
+            });
+          }
+
+          const algo = algorithms.get(algoNum);
+          const vias = (pathData.vias || []).map(v => ({
+            nexthop: v.nexthop || '',
+            interface: v.intf || '',
+          }));
+
+          algo.destinations.set(prefix, {
+            prefix,
+            hostname: destData.hostname || '',
+            vias,
+            metric: pathData.details?.metric ?? null,
+            reachable: vias.length > 0,
+          });
+        }
+      }
+    }
+  }
+
+  // Convert to serializable format
+  const result = {};
+  for (const [algoNum, algo] of algorithms) {
+    result[algoNum] = {
+      number: algo.number,
+      name: algo.name,
+      metricType: algo.metricType,
+      destinations: Object.fromEntries(algo.destinations),
+      reachableCount: [...algo.destinations.values()].filter(d => d.reachable).length,
+      totalCount: algo.destinations.size,
+    };
+  }
+
+  return result;
+}
+
+/**
+ * Parse `show isis flexalgo router` (JSON format).
+ *
+ * Structure:
+ *   vrfs.default.isisInstances.{inst}.routers[].{ level, algorithm, routers[] }
+ *     routers[].{ router, advertising, priority? }
+ *
+ * @param {Object} raw - eAPI JSON result.
+ * @returns {Object} - { algorithms: { [algoName]: { level, participants[], advertiser } } }
+ */
+function parseFlexAlgoRouters(raw) {
+  const result = {};
+
+  const vrfs = raw.vrfs || {};
+  for (const vrfData of Object.values(vrfs)) {
+    const instances = vrfData.isisInstances || {};
+
+    for (const instData of Object.values(instances)) {
+      for (const entry of (instData.routers || [])) {
+        const algoName = entry.algorithm || '';
+        const level = entry.level || '';
+
+        const participants = [];
+        let advertiser = null;
+
+        for (const r of (entry.routers || [])) {
+          participants.push({
+            hostname: r.router,
+            advertising: r.advertising || false,
+            priority: r.priority ?? null,
+          });
+
+          if (r.advertising) {
+            advertiser = {
+              hostname: r.router,
+              priority: r.priority ?? 0,
+            };
+          }
+        }
+
+        result[algoName] = {
+          level,
+          algorithm: algoName,
+          participantCount: participants.length,
+          participants,
+          advertiser,
+        };
+      }
+    }
+  }
+
+  return result;
+}

@@ -112,6 +112,38 @@ function buildGraph(nodesMap, adjacencies) {
     edge.data.targetMetric = edge.data.reverseMetric ?? edge.data.metric;
   }
 
+  // ── Discover FlexAlgo algorithms across all nodes ──
+  const algoMap = new Map(); // algoNum → { number, name, participants[], advertiser, fad }
+  for (const [systemId, nodeInfo] of nodesMap) {
+    const caps = nodeInfo.routerCaps;
+    if (!caps) continue;
+
+    // Track which algorithms this node participates in
+    for (const algo of (caps.srAlgorithms || [])) {
+      if (!algoMap.has(algo.number)) {
+        algoMap.set(algo.number, {
+          number: algo.number,
+          name: algo.name,
+          participants: [],
+          advertiser: null,
+          fad: null,
+        });
+      }
+      algoMap.get(algo.number).participants.push(nodeInfo.hostname || systemId);
+    }
+
+    // Check if this node advertises any FADs
+    for (const fad of (caps.flexAlgoDefinitions || [])) {
+      const algoEntry = algoMap.get(fad.algorithm);
+      if (algoEntry) {
+        algoEntry.advertiser = nodeInfo.hostname || systemId;
+        algoEntry.fad = fad;
+      }
+    }
+  }
+
+  const algorithms = Array.from(algoMap.values()).sort((a, b) => a.number - b.number);
+
   return {
     nodes: cyNodes,
     edges: cyEdges,
@@ -119,6 +151,7 @@ function buildGraph(nodesMap, adjacencies) {
       nodeCount: cyNodes.length,
       edgeCount: cyEdges.length,
       collectedAt: new Date().toISOString(),
+      algorithms,
     },
   };
 }

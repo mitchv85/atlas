@@ -149,6 +149,28 @@ const API = {
     });
   },
 
+  // ── FlexAlgo ──────────────────────────────────────────────────────
+  async getFlexAlgoSummary() {
+    const res = await fetch('/api/topology/flexalgo/summary');
+    if (!res.ok) return null;
+    return res.json();
+  },
+
+  async getFlexAlgoPaths(systemId, algo) {
+    const res = await fetch(`/api/topology/flexalgo/paths/${encodeURIComponent(systemId)}/${algo}`);
+    if (!res.ok) return null;
+    return res.json();
+  },
+
+  async getFlexAlgoPaths(systemId, algo) {
+    const res = await fetch(`/api/topology/flexalgo/paths/${encodeURIComponent(systemId)}/${algo}`);
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'FlexAlgo path query failed');
+    }
+    return res.json();
+  },
+
   // ── BGP ───────────────────────────────────────────────────────────
   async getBgpStatus() {
     const res = await fetch('/api/bgp/status');
