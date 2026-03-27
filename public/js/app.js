@@ -2088,6 +2088,9 @@
     btn.parentElement.appendChild(picker);
     activeTracePicker = picker;
 
+    // Stop clicks inside the picker from bubbling to the VRF row collapse handler
+    picker.addEventListener('click', (e) => e.stopPropagation());
+
     // Wire Go button
     picker.querySelector('.trace-picker-go').addEventListener('click', async () => {
       const source = picker.querySelector('.trace-picker-select').value;
