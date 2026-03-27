@@ -162,6 +162,15 @@ const API = {
     return res.json();
   },
 
+  async traceFlexAlgoPath(source, destination, algorithm) {
+    const res = await fetch('/api/topology/flexalgo/trace', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source, destination, algorithm }),
+    });
+    return res.json();
+  },
+
   async getFlexAlgoPaths(systemId, algo) {
     const res = await fetch(`/api/topology/flexalgo/paths/${encodeURIComponent(systemId)}/${algo}`);
     if (!res.ok) {

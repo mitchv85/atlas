@@ -267,6 +267,269 @@ router.get('/flexalgo/summary', (req, res) => {
 });
 
 /**
+ * POST /api/topology/flexalgo/trace
+ * Trace a FlexAlgo path hop-by-hop from source to destination.
+ * Queries each device along the way via eAPI to reconstruct the full path.
+ *
+ * Body: { source, destination, algorithm }
+ *   source/destination: systemId or hostname
+ *   algorithm: FlexAlgo number (128, 129, etc.)
+ *
+ * Returns: { hops: [{ hostname, systemId, nexthop, interface, metric }], totalMetric, algorithm, algorithmName }
+ */
+router.post('/flexalgo/trace', async (req, res) => {
+  const topology = getTopology(req);
+  if (!topology) {
+    return res.status(404).json({ error: 'No topology data available' });
+  }
+
+  const { source, destination, algorithm } = req.body;
+  const algoNum = parseInt(algorithm, 10);
+
+  if (!source || !destination || isNaN(algoNum)) {
+    return res.status(400).json({ error: 'source, destination, and algorithm are required' });
+  }
+
+  // Resolve hostnames and system IDs
+  const srcNode = topology.nodes.find(n =>
+    n.data.systemId === source || n.data.hostname?.toLowerCase() === source.toLowerCase()
+  );
+  const dstNode = topology.nodes.find(n =>
+    n.data.systemId === destination || n.data.hostname?.toLowerCase() === destination.toLowerCase()
+  );
+
+  if (!srcNode) return res.status(404).json({ error: `Source node ${source} not found` });
+  if (!dstNode) return res.status(404).json({ error: `Destination node ${destination} not found` });
+
+  // Build IP → node lookup from topology
+  const ipToNode = new Map();
+  for (const n of topology.nodes) {
+    const d = n.data;
+    if (d.routerCaps?.routerId) ipToNode.set(d.routerCaps.routerId, d);
+    for (const addr of (d.interfaceAddresses || [])) ipToNode.set(addr, d);
+    // Also map link addresses to nodes
+    for (const edge of topology.edges) {
+      const ed = edge.data;
+      if (ed.source === d.systemId && ed.localAddr) ipToNode.set(ed.localAddr, d);
+      if (ed.target === d.systemId && ed.neighborAddr) ipToNode.set(ed.neighborAddr, d);
+    }
+  }
+
+  // Map next-hop IPs to the node on the OTHER side of the link
+  const nhToNode = new Map();
+  for (const edge of topology.edges) {
+    const ed = edge.data;
+    // If I'm the source and my local addr is X, the nexthop from me would be the neighbor addr
+    // which belongs to the target node
+    if (ed.neighborAddr) {
+      const targetNode = topology.nodes.find(n => n.data.systemId === ed.target);
+      if (targetNode) nhToNode.set(ed.neighborAddr, targetNode.data);
+    }
+    if (ed.localAddr) {
+      const sourceNode = topology.nodes.find(n => n.data.systemId === ed.source);
+      if (sourceNode) nhToNode.set(ed.localAddr, sourceNode.data);
+    }
+    // Also reverse direction
+    if (ed.reverseNeighborAddr) {
+      const srcNodeData = topology.nodes.find(n => n.data.systemId === ed.source);
+      if (srcNodeData) nhToNode.set(ed.reverseNeighborAddr, srcNodeData.data);
+    }
+    if (ed.reverseLocalAddr) {
+      const tgtNodeData = topology.nodes.find(n => n.data.systemId === ed.target);
+      if (tgtNodeData) nhToNode.set(ed.reverseLocalAddr, tgtNodeData.data);
+    }
+  }
+
+  // Find the destination prefix (loopback/32) from the topology
+  const dstLoopback = dstNode.data.routerCaps?.routerId || dstNode.data.interfaceAddresses?.[0] || '';
+  const dstPrefix = `${dstLoopback}/32`;
+
+  const deviceStore = require('../store/devices');
+  const eapi = require('../services/eapi');
+  const allDevices = deviceStore.getAllRaw();
+
+  const hops = [];
+  const visited = new Set();
+  let currentNode = srcNode.data;
+  let totalMetric = null;
+  let algoName = '';
+  const maxHops = 15;
+
+  for (let i = 0; i < maxHops; i++) {
+    if (currentNode.systemId === dstNode.data.systemId) break;
+    if (visited.has(currentNode.systemId)) {
+      return res.status(500).json({ error: 'Loop detected in FlexAlgo path trace' });
+    }
+    visited.add(currentNode.systemId);
+
+    // Find device credentials for current node
+    const device = allDevices.find(d =>
+      d.name.toLowerCase() === (currentNode.hostname || '').toLowerCase()
+    );
+
+    if (!device) {
+      return res.status(404).json({
+        error: `No credentials for ${currentNode.hostname}. Add it in the Devices tab.`,
+        partialHops: hops,
+      });
+    }
+
+    // Query FlexAlgo paths from this device
+    try {
+      const result = await eapi.execute(device, ['show isis flexalgo path detail | json'], 'json');
+      const raw = result[0];
+      const vrfs = raw?.vrfs || {};
+
+      let foundVia = null;
+      let hopMetric = null;
+
+      // Search all topologies for our destination prefix
+      for (const vrfData of Object.values(vrfs)) {
+        const topos = vrfData.v4Info?.topologies || {};
+        for (const topoData of Object.values(topos)) {
+          const dests = topoData.destinations || {};
+          for (const [prefix, destData] of Object.entries(dests)) {
+            // Match destination by prefix or loopback
+            if (prefix !== dstPrefix && !prefix.startsWith(dstLoopback)) continue;
+            const pathData = destData.paths?.[String(algoNum)];
+            if (!pathData) continue;
+
+            algoName = pathData.algoName || `Algo ${algoNum}`;
+            if (pathData.vias?.length > 0) {
+              foundVia = pathData.vias[0];
+              hopMetric = pathData.details?.metric ?? null;
+            }
+            if (i === 0) totalMetric = hopMetric;
+            break;
+          }
+          if (foundVia) break;
+        }
+        if (foundVia) break;
+      }
+
+      if (!foundVia) {
+        hops.push({
+          hostname: currentNode.hostname,
+          systemId: currentNode.systemId,
+          nexthop: null,
+          interface: null,
+          note: 'No FlexAlgo path to destination',
+        });
+        return res.json({
+          source: srcNode.data.hostname,
+          destination: dstNode.data.hostname,
+          algorithm: algoNum,
+          algorithmName: algoName,
+          hops,
+          totalMetric,
+          reachable: false,
+        });
+      }
+
+      const nhIp = foundVia.nexthop;
+
+      // Resolve next-hop IP to the next node (try edge addresses first)
+      let nextNodeData = null;
+      for (const edge of topology.edges) {
+        const ed = edge.data;
+        // If we're the source of this edge and the NH matches the neighbor addr
+        if (ed.source === currentNode.systemId && ed.neighborAddr === nhIp) {
+          nextNodeData = topology.nodes.find(n => n.data.systemId === ed.target)?.data;
+          break;
+        }
+        // If we're the target of this edge and the NH matches the local addr (reverse direction)
+        if (ed.target === currentNode.systemId && ed.localAddr === nhIp) {
+          nextNodeData = topology.nodes.find(n => n.data.systemId === ed.source)?.data;
+          break;
+        }
+        // Also check reverse addresses
+        if (ed.source === currentNode.systemId && ed.reverseNeighborAddr === nhIp) {
+          nextNodeData = topology.nodes.find(n => n.data.systemId === ed.target)?.data;
+          break;
+        }
+        if (ed.target === currentNode.systemId && ed.reverseLocalAddr === nhIp) {
+          nextNodeData = topology.nodes.find(n => n.data.systemId === ed.source)?.data;
+          break;
+        }
+      }
+
+      // Fallback: check IP-to-node maps
+      if (!nextNodeData) {
+        const mapped = nhToNode.get(nhIp) || ipToNode.get(nhIp);
+        if (mapped && mapped.systemId !== currentNode.systemId) {
+          nextNodeData = mapped;
+        }
+      }
+
+      if (!nextNodeData) {
+        hops.push({
+          hostname: currentNode.hostname,
+          systemId: currentNode.systemId,
+          nexthop: nhIp,
+          interface: foundVia.intf || '',
+          note: `Cannot resolve next-hop ${nhIp}`,
+        });
+        return res.json({
+          source: srcNode.data.hostname,
+          destination: dstNode.data.hostname,
+          algorithm: algoNum,
+          algorithmName: algoName,
+          hops,
+          totalMetric,
+          reachable: false,
+          error: `Cannot resolve next-hop ${nhIp} to a topology node`,
+        });
+      }
+
+      // Find the edge between currentNode and nextNode by system IDs
+      let edgeId = null;
+      for (const edge of topology.edges) {
+        const ed = edge.data;
+        if ((ed.source === currentNode.systemId && ed.target === nextNodeData.systemId) ||
+            (ed.target === currentNode.systemId && ed.source === nextNodeData.systemId)) {
+          edgeId = ed.id;
+          break;
+        }
+      }
+
+      hops.push({
+        hostname: currentNode.hostname,
+        systemId: currentNode.systemId,
+        nexthop: nhIp,
+        interface: foundVia.intf || '',
+        edgeId,
+      });
+
+      currentNode = nextNodeData;
+    } catch (err) {
+      return res.status(500).json({
+        error: `eAPI query to ${currentNode.hostname} failed: ${err.message}`,
+        partialHops: hops,
+      });
+    }
+  }
+
+  // Add final destination hop
+  hops.push({
+    hostname: dstNode.data.hostname,
+    systemId: dstNode.data.systemId,
+    nexthop: null,
+    interface: null,
+  });
+
+  res.json({
+    source: srcNode.data.hostname,
+    destination: dstNode.data.hostname,
+    algorithm: algoNum,
+    algorithmName: algoName,
+    hops,
+    hopCount: hops.length - 1,
+    totalMetric,
+    reachable: true,
+  });
+});
+
+/**
  * GET /api/topology/flexalgo/paths/:systemId/:algo
  * Query FlexAlgo paths from a specific device for a given algorithm.
  * Uses eAPI: `show isis flexalgo path detail | json`

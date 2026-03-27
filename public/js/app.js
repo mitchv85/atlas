@@ -1280,6 +1280,7 @@
     const dest = pathDest.value;
     const failNode = pathFailNode.value;
     const failLink = pathFailLink.value;
+    const algo = parseInt(pathAlgo.value, 10) || 0;
 
     if (!source || !dest) {
       setStatus('error', 'Select both source and destination');
@@ -1295,6 +1296,13 @@
     btnComputePath.classList.add('loading');
 
     try {
+      // ── FlexAlgo path (algo >= 128) — query device via eAPI ──
+      if (algo >= 128) {
+        await handleFlexAlgoPath(source, dest, algo);
+        return;
+      }
+
+      // ── Algo 0 — standard SPF/ECMP ──
       // No failure selected — check for ECMP first
       if (!failNode && !failLink) {
         const ecmpResult = await API.computeECMP(source, dest);
@@ -1380,6 +1388,123 @@
       btnComputePath.disabled = false;
       btnComputePath.classList.remove('loading');
     }
+  }
+
+  /**
+   * Handle FlexAlgo path computation.
+   * Traces the constrained path hop-by-hop by querying each device via eAPI.
+   */
+  async function handleFlexAlgoPath(source, dest, algo) {
+    try {
+      const result = await API.traceFlexAlgoPath(source, dest, algo);
+
+      if (result.error && !result.hops) {
+        setStatus('error', result.error);
+        return;
+      }
+
+      btnClearPath.style.display = 'inline-flex';
+
+      if (result.reachable && result.hops?.length > 1) {
+        // Build a path-like structure for the topology highlighter
+        const pathHops = [];
+        for (let i = 0; i < result.hops.length - 1; i++) {
+          const hop = result.hops[i];
+          const nextHop = result.hops[i + 1];
+          pathHops.push({
+            from: hop.systemId,
+            to: nextHop.systemId,
+            fromHostname: hop.hostname,
+            toHostname: nextHop.hostname,
+            edgeId: hop.edgeId || null,
+          });
+        }
+
+        const faPath = {
+          source: result.hops[0].systemId,
+          destination: result.hops[result.hops.length - 1].systemId,
+          sourceHostname: result.source,
+          destinationHostname: result.destination,
+          hops: pathHops,
+          hopCount: result.hopCount,
+          totalMetric: result.totalMetric,
+          algorithm: algo,
+        };
+
+        topo.highlightPath(faPath, [], []);
+        showFlexAlgoDetail(result, algo);
+        setStatus('live', `FlexAlgo ${algo} (${result.algorithmName}): ${result.hopCount} hops, metric ${result.totalMetric ?? '—'}`);
+      } else {
+        topo.clearPath();
+        showFlexAlgoDetail(result, algo);
+        setStatus('error', `FlexAlgo ${algo}: ${result.source} → ${result.destination} — ${result.error || 'unreachable'}`);
+      }
+    } catch (err) {
+      setStatus('error', `FlexAlgo error: ${err.message}`);
+    } finally {
+      btnComputePath.disabled = false;
+      btnComputePath.classList.remove('loading');
+    }
+  }
+
+  /**
+   * Show FlexAlgo path detail in the side panel.
+   */
+  function showFlexAlgoDetail(result, algo) {
+    const srcName = result.source || getHostname(pathSource.value);
+    const dstName = result.destination || getHostname(pathDest.value);
+
+    detailTitle.textContent = `${srcName} → ${dstName} (Algo ${algo})`;
+
+    let html = '';
+
+    // Back button
+    if (lastViewedNode) {
+      html += `<button class="btn btn-ghost btn-sm btn-back-to-node" style="margin-bottom:10px;display:inline-flex;align-items:center;gap:4px;">← Back to ${esc(lastViewedNode.hostname || lastViewedNode.label)}</button>`;
+    }
+
+    // Result banner
+    const bannerColor = result.reachable ? 'var(--accent)' : 'var(--red)';
+    html += `
+      <div class="path-result-banner" style="border-left:3px solid ${bannerColor};">
+        <span class="path-result-text">
+          <strong>FlexAlgo ${algo} — ${esc(result.algorithmName || '')}</strong><br>
+          ${result.reachable
+            ? `${result.hopCount} hops, metric ${result.totalMetric ?? '—'}`
+            : (result.error || 'Destination unreachable via this algorithm')}
+        </span>
+      </div>`;
+
+    // Hop-by-hop path
+    if (result.hops && result.hops.length > 0) {
+      html += `<div class="detail-section"><h4>Hop-by-Hop Path</h4>`;
+      html += '<ul class="path-hops">';
+
+      for (let i = 0; i < result.hops.length; i++) {
+        const hop = result.hops[i];
+        const isFirst = i === 0;
+        const isLast = i === result.hops.length - 1;
+        const dotClass = isFirst ? 'source' : isLast ? 'dest' : '';
+
+        html += `<li class="path-hop">
+          <div class="path-hop-dot ${dotClass}">${isFirst ? '<div class="path-hop-dot-inner"></div>' : ''}</div>
+          <div class="path-hop-info">
+            <div class="path-hop-name">${esc(hop.hostname)}</div>
+            <div class="path-hop-detail">${isFirst ? 'source' : isLast ? 'destination' : `via ${esc(hop.nexthop || '?')} (${esc(hop.interface || '?')})`}</div>
+            ${hop.note ? `<div class="path-hop-detail" style="color:var(--amber);">${esc(hop.note)}</div>` : ''}
+          </div>
+        </li>`;
+      }
+
+      html += '</ul></div>';
+    }
+
+    detailBody.innerHTML = html;
+    detailPanel.classList.add('open');
+
+    // Wire back button
+    const btnBack = detailBody.querySelector('.btn-back-to-node');
+    if (btnBack) btnBack.addEventListener('click', backToNode);
   }
 
   function handleClearPath() {
