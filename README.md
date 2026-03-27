@@ -1,8 +1,8 @@
 # ATLAS
 
-**Network topology visualization, path analysis, and operations platform.**
+**Network topology visualization, path analysis, and service assurance platform.**
 
-ATLAS reads the IS-IS link-state database from Arista EOS devices, builds an interactive topology map, and provides Segment Routing path analysis with TI-LFA backup visualization, ECMP path enumeration, real label stacks from the tunnel FIB, adjacency health monitoring, device management with SSH terminals, and right-click context menus for rapid path analysis — all from your browser.
+ATLAS reads the IS-IS link-state database from Arista EOS devices, builds an interactive topology map, and provides Segment Routing path analysis with TI-LFA backup visualization, FlexAlgo-aware traffic engineering, BGP IPVPN service path tracing with Color community steering detection, ECMP enumeration, real label stacks, adjacency health monitoring, device management with SSH terminals, and right-click context menus — all from your browser.
 
 ---
 
@@ -13,18 +13,47 @@ ATLAS reads the IS-IS link-state database from Arista EOS devices, builds an int
 - Cytoscape.js force-directed layout with persistent node positions
 - Directional per-node IS-IS metrics on edge labels
 - Parallel link support between same node pairs
+- Per-algorithm metric overlay: switch edge labels between IS-IS / delay / TE metric
 
 ### Segment Routing Path Analysis
 - SPF-computed shortest paths with real tunnel FIB label stacks
 - TI-LFA backup paths with node and link failure simulation
 - ECMP path enumeration with 4-color visualization and hover-to-isolate
-- Label stack decoding: Prefix-SIDs, Adj-SIDs, Implicit Null (PHP)
+- Label stack decoding: Prefix-SIDs, Adj-SIDs (Implicit Null filtered from display)
 - Right-click context menus: set source/dest, fail nodes/links — auto-computes
 - Remote Node SID Reachability dashboard with protection status badges
+- No-PHP and Explicit-Null flag badges on prefix SIDs
+
+### FlexAlgo & Traffic Engineering (v0.5.0)
+- FlexAlgo Definition (FAD) parsing: metric type, calc type, priority, constraints
+- Per-node FlexAlgo participation and FA prefix SID display
+- FAD advertiser identification with full definition cards
+- FlexAlgo path computation via eAPI with per-destination metrics
+- Per-algorithm topology overlay: dropdown switches edge labels to delay or TE metric
+- TE link detail: delay (ms), TE metric, admin groups per interface per direction
+- FlexAlgo label stack display in path computation results
+
+### Service Path Tracing (v0.5.0)
+- End-to-end service path visualization from source PE to VPN prefix
+- Automatic Color extended community detection and FlexAlgo steering
+- Full label stack: transport label (Prefix-SID or FA-SID) + VPN label
+- Trace from BGP tab (per-prefix Trace button) or Topology tab (Service Trace bar)
+- BGP attribute display: extended communities, standard communities, cluster list
+- Topology highlight + algo overlay switch on trace execution
+
+### BGP Integration (v0.4.0)
+- FRR-managed BGP speaker with config generation and service lifecycle
+- VPNv4 unicast address family with vtysh JSON collection
+- VRF-centric view grouped by Route Target (not RD) with PE mapping
+- Scalable prefix search with click-to-expand full path attributes
+- BGP neighbor session monitoring with state, uptime, prefix count
+- Route Target enrichment via per-prefix detail queries
+- Deploy-to-FRR workflow with config preview and frr.conf generation
 
 ### Operational Health
 - Adjacency health overlay: state, uptime, hold timers, BFD, MTU, SR, GR
 - Link health badges (healthy/degraded/down) on every edge
+- Traffic engineering metrics on links (delay, TE metric, admin groups)
 - Per-device connectivity testing (individual and bulk)
 
 ### Device Management
@@ -43,22 +72,13 @@ ATLAS reads the IS-IS link-state database from Arista EOS devices, builds an int
 - WebSocket real-time topology updates with polling fallback
 - Config-backed device store (atlas.config.json)
 - Server-side persistent node positions (atlas.positions.json)
+- Three-batch eAPI polling: core (LSDB), TE (traffic-engineering), FlexAlgo (best-effort)
 
-### BGP Integration (v0.4.0)
-- FRR-managed BGP speaker with config generation and service lifecycle
-- gRPC northbound client for real-time BGP data (event-driven)
-- VPNv4 unicast + BGP-LS address family support
-- VRF-centric view: per-VRF prefix tables mapped to PE nodes
-- Full VPNv4 RIB browser with RD/RT/PE filtering and pagination
-- BGP neighbor session monitoring
-- eAPI enrichment: VRF names, RT policies from Arista devices
-
-### Phase 1 — IS-IS Topology Visualization ✅
 ### Roadmap
-- FlexAlgo awareness (FAD parsing, per-algo overlays)
-- BGP IPVPN: gRPC collection implementation, VRF UI tab
-- BGP-LS topology enrichment (TE metrics, cross-validation)
+- gNMI streaming telemetry (replace eAPI polling)
+- sFlow collection (traffic flow overlays on topology)
 - EVPN + NG-MVPN address families
+- BGP-LS topology enrichment (requires FRR with --enable-link-state)
 
 ---
 

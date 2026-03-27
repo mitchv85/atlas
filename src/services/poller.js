@@ -9,8 +9,7 @@
 const EventEmitter = require('events');
 const deviceStore = require('../store/devices');
 const eapi = require('../services/eapi');
-const { parseLSDB } = require('../services/isisParser');
-const { parseFlexAlgoPaths, parseFlexAlgoRouters } = require('../services/flexAlgo');
+const { parseLSDB, parseFlexAlgoPaths, parseFlexAlgoRouters } = require('../services/isisParser');
 const { buildGraph } = require('../services/topologyBuilder');
 const { parseTunnelFib } = require('../services/tunnelParser');
 const { parseNeighborDetail, formatUptime } = require('../services/neighborParser');

@@ -28,15 +28,6 @@ const API = {
     return res.json();
   },
 
-  async addDevice(device) {
-    const res = await fetch('/api/devices', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(device),
-    });
-    return res.json();
-  },
-
   async updateDevice(id, fields) {
     const res = await fetch(`/api/devices/${id}`, {
       method: 'PUT',

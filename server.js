@@ -241,7 +241,7 @@ sshWss.on('connection', (ws, req) => {
 // ---------------------------------------------------------------------------
 server.listen(PORT, () => {
   console.log(`\n  ╔══════════════════════════════════════╗`);
-  console.log(`  ║          A T L A S   v0.4.0          ║`);
+  console.log(`  ║          A T L A S   v0.5.0          ║`);
   console.log(`  ║   Network Topology & Operations       ║`);
   console.log(`  ╠══════════════════════════════════════╣`);
   console.log(`  ║  http://localhost:${PORT}               ║`);

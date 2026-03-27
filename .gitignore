@@ -12,3 +12,7 @@ atlas.positions.json
 
 # FRR proto files (copy from your local FRR installation)
 src/proto/*.proto
+
+# Stale test/capture data
+command_output.json
+tunnel_fib_live.json
