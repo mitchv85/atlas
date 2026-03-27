@@ -376,7 +376,7 @@ router.post('/flexalgo/trace', async (req, res) => {
 
     // Query FlexAlgo paths from this device
     try {
-      const result = await eapi.execute(device, ['show isis flexalgo path detail | json'], 'json');
+      const result = await eapi.execute(device, ['show isis flexalgo path detail'], 'json');
       const raw = result[0];
       const vrfs = raw?.vrfs || {};
 
@@ -532,7 +532,7 @@ router.post('/flexalgo/trace', async (req, res) => {
 /**
  * GET /api/topology/flexalgo/paths/:systemId/:algo
  * Query FlexAlgo paths from a specific device for a given algorithm.
- * Uses eAPI: `show isis flexalgo path detail | json`
+ * Uses eAPI: `show isis flexalgo path detail`
  *
  * Returns pre-computed FlexAlgo paths from the device to all destinations,
  * including next-hop, interface, metric, and constraint type.
@@ -567,7 +567,7 @@ router.get('/flexalgo/paths/:systemId/:algo', async (req, res) => {
 
   try {
     const eapi = require('../services/eapi');
-    const result = await eapi.execute(device, ['show isis flexalgo path detail | json']);
+    const result = await eapi.execute(device, ['show isis flexalgo path detail']);
     const raw = result[0];
 
     // Parse FlexAlgo paths for the requested algorithm
@@ -591,7 +591,7 @@ router.get('/flexalgo/paths/:systemId/:algo', async (req, res) => {
  *   vrfs.default.v4Info.topologies.{topoId}.destinations.{prefix}.paths.{algo}
  *     .algoName, .vias[{ nexthop, intf }], .details.{ metric, constraint }
  *
- * @param {Object} raw - eAPI result for `show isis flexalgo path detail | json`
+ * @param {Object} raw - eAPI result for `show isis flexalgo path detail`
  * @param {number} algoNum - The algorithm number to extract (128, 129, etc.)
  * @param {Object} topology - Current ATLAS topology for hostname resolution
  * @returns {Object[]} Parsed paths
