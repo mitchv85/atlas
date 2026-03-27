@@ -392,10 +392,10 @@ function resolveNextHopToPE(ip, topology) {
  *   4. Computes the transport path (FlexAlgo or standard IGP)
  *   5. Returns the full service path with label stacks
  *
- * Body: { sourceNode: "PE-1", prefix: "92.1.1.2/32" }
+ * Body: { sourceNode: "PE-1", prefix: "92.1.1.2/32", vrf: "91:91", algoOverride: 128 }
  */
 router.post('/trace', async (req, res) => {
-  const { sourceNode, prefix } = req.body;
+  const { sourceNode, prefix, vrf, algoOverride } = req.body;
 
   if (!sourceNode || !prefix) {
     return res.status(400).json({ error: 'sourceNode and prefix are required' });
@@ -417,8 +417,26 @@ router.post('/trace', async (req, res) => {
       return res.json({ error: `Prefix ${prefix} not found in VPNv4 RIB` });
     }
 
+    // If VRF (RT) is specified, filter to only matching RDs
+    let candidates = details;
+    if (vrf) {
+      const matchingRDs = new Set();
+      for (const v of bgpStore.vrfs.values()) {
+        if (v.rtImport.includes(vrf) || v.rtExport.includes(vrf)) {
+          matchingRDs.add(v.rd);
+        }
+      }
+      if (matchingRDs.size > 0) {
+        candidates = details.filter(d => matchingRDs.has(d.rd));
+      }
+    }
+
+    if (candidates.length === 0) {
+      return res.json({ error: `Prefix ${prefix} not found in VRF ${vrf}` });
+    }
+
     // Use the best path
-    const best = details.find(d => d.bestpath) || details[0];
+    const best = candidates.find(d => d.bestpath) || candidates[0];
 
     // 2. Resolve destination PE
     const destPE = topology ? resolveNextHopToPE(best.nextHop, topology) : best.nextHop;
@@ -428,7 +446,9 @@ router.post('/trace', async (req, res) => {
 
     // 3. Extract color community → transport algorithm
     const colorComm = (best.extCommunities || []).find(c => c.type === 'Color');
-    const transportAlgo = colorComm ? colorComm.value : 0;
+    const actualAlgo = colorComm ? colorComm.value : 0;
+    const transportAlgo = (algoOverride != null) ? algoOverride : actualAlgo;
+    const isWhatIf = algoOverride != null && algoOverride !== actualAlgo;
     const algoName = transportAlgo === 0 ? 'IGP (SPF)'
       : transportAlgo === 128 ? 'MIN_DELAY'
       : transportAlgo === 129 ? 'TE_METRIC'
@@ -544,10 +564,16 @@ router.post('/trace', async (req, res) => {
       }
     }
 
+    // Collect available algorithms from topology for "What if" buttons
+    const availableAlgos = topology?.metadata?.algorithms
+      ?.filter(a => a.number >= 128)
+      ?.map(a => ({ number: a.number, name: a.name })) || [];
+
     // 8. Build the response
     res.json({
       prefix,
       rd: best.rd,
+      vrf: vrf || null,
       sourceNode: srcNode.data.hostname,
       destinationPE: destPE || best.nextHop,
       destinationPEId: destNode?.data.id || null,
@@ -556,6 +582,9 @@ router.post('/trace', async (req, res) => {
       colorCommunity: colorComm ? colorComm.value : null,
       transportAlgorithm: transportAlgo,
       transportAlgorithmName: algoName,
+      isWhatIf,
+      actualAlgorithm: actualAlgo,
+      availableAlgos,
       labelStack,
       transportPath,
       bgpAttributes: {

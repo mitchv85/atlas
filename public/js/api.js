@@ -234,11 +234,14 @@ const API = {
     return res.json();
   },
 
-  async traceServicePath(sourceNode, prefix) {
+  async traceServicePath(sourceNode, prefix, vrf, algoOverride) {
+    const body = { sourceNode, prefix };
+    if (vrf) body.vrf = vrf;
+    if (algoOverride != null) body.algoOverride = algoOverride;
     const res = await fetch('/api/bgp/trace', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sourceNode, prefix }),
+      body: JSON.stringify(body),
     });
     return res.json();
   },

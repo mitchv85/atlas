@@ -54,9 +54,7 @@
   <div class="path-bar" id="pathBar" style="display:none;">
     <div class="path-bar-section">
       <label class="path-label">Source</label>
-      <select class="path-select" id="pathSource">
-        <option value="">Select node...</option>
-      </select>
+      <div class="combo-container" id="comboPathSource"></div>
     </div>
     <div class="path-bar-arrow">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -65,22 +63,16 @@
     </div>
     <div class="path-bar-section">
       <label class="path-label">Destination</label>
-      <select class="path-select" id="pathDest">
-        <option value="">Select node...</option>
-      </select>
+      <div class="combo-container" id="comboPathDest"></div>
     </div>
     <div class="path-bar-divider"></div>
     <div class="path-bar-section">
       <label class="path-label">Node Failure</label>
-      <select class="path-select" id="pathFailNode">
-        <option value="">None</option>
-      </select>
+      <div class="combo-container" id="comboPathFailNode"></div>
     </div>
     <div class="path-bar-section">
       <label class="path-label">Link Failure</label>
-      <select class="path-select" id="pathFailLink">
-        <option value="">None</option>
-      </select>
+      <div class="combo-container" id="comboPathFailLink"></div>
     </div>
     <div class="path-bar-section">
       <label class="path-label">Algorithm</label>
@@ -104,14 +96,16 @@
   <div class="svc-trace-bar" id="svcTraceBar" style="display:none;">
     <div class="path-bar-section">
       <label class="path-label">Source PE</label>
-      <select class="path-select" id="svcTraceSource">
-        <option value="">Select PE...</option>
-      </select>
+      <div class="combo-container" id="comboSvcSource"></div>
     </div>
     <div class="path-bar-arrow">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <path d="M5 12h14M12 5l7 7-7 7"/>
       </svg>
+    </div>
+    <div class="path-bar-section">
+      <label class="path-label">VRF</label>
+      <div class="combo-container" id="comboSvcVrf"></div>
     </div>
     <div class="path-bar-section" style="flex:2;">
       <label class="path-label">VPN Prefix</label>
@@ -476,6 +470,7 @@
   <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.30.4/cytoscape.min.js"></script>
+  <script src="/js/combo.js"></script>
   <script src="/js/api.js"></script>
   <script src="/js/socket.js"></script>
   <script src="/js/topology.js"></script>

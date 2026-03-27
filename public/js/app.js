@@ -88,23 +88,34 @@
   const devicesFileInput = $('#devicesFileInput');
   const importStatus = $('#importStatus');
 
-  // Path analysis
+  // Path analysis — SearchableCombo instances with .value proxy
   const pathBar = $('#pathBar');
-  const pathSource = $('#pathSource');
-  const pathDest = $('#pathDest');
-  const pathFailNode = $('#pathFailNode');
-  const pathFailLink = $('#pathFailLink');
   const pathAlgo = $('#pathAlgo');
   const btnComputePath = $('#btnComputePath');
   const btnClearPath = $('#btnClearPath');
 
+  // Create searchable combos — proxy objects mimic select.value for backward compat
+  const comboPathSource = new SearchableCombo($('#comboPathSource'), { placeholder: 'Search source...' });
+  const comboPathDest = new SearchableCombo($('#comboPathDest'), { placeholder: 'Search destination...' });
+  const comboPathFailNode = new SearchableCombo($('#comboPathFailNode'), { placeholder: 'None' });
+  const comboPathFailLink = new SearchableCombo($('#comboPathFailLink'), { placeholder: 'None' });
+
+  // Proxy objects so existing code like pathSource.value = 'x' still works
+  const pathSource = { get value() { return comboPathSource.getValue(); }, set value(v) { comboPathSource.setValue(v); } };
+  const pathDest = { get value() { return comboPathDest.getValue(); }, set value(v) { comboPathDest.setValue(v); } };
+  const pathFailNode = { get value() { return comboPathFailNode.getValue(); }, set value(v) { comboPathFailNode.setValue(v); } };
+  const pathFailLink = { get value() { return comboPathFailLink.getValue(); }, set value(v) { comboPathFailLink.setValue(v); } };
+
   // Service trace bar
   const svcTraceBar = $('#svcTraceBar');
-  const svcTraceSource = $('#svcTraceSource');
   const svcTracePrefix = $('#svcTracePrefix');
   const btnSvcTrace = $('#btnSvcTrace');
   const btnSvcModeToggle = $('#btnSvcModeToggle');
   const btnSvcTraceToggle = $('#btnSvcTraceToggle');
+
+  const comboSvcSource = new SearchableCombo($('#comboSvcSource'), { placeholder: 'Search PE...' });
+  const comboSvcVrf = new SearchableCombo($('#comboSvcVrf'), { placeholder: 'All VRFs' });
+  const svcTraceSource = { get value() { return comboSvcSource.getValue(); }, set value(v) { comboSvcSource.setValue(v); } };
 
   // ── Tab Switching ───────────────────────────────────────────────
   let activeTab = 'topology';
@@ -1112,11 +1123,11 @@
     btnComputePath.addEventListener('click', handleComputePath);
     btnClearPath.addEventListener('click', handleClearPath);
 
-    // All dropdown changes update selection markers on topology
-    pathSource.addEventListener('change', () => updateSelectionMarkers());
-    pathDest.addEventListener('change', () => updateSelectionMarkers());
-    pathFailNode.addEventListener('change', () => updateSelectionMarkers());
-    pathFailLink.addEventListener('change', () => updateSelectionMarkers());
+    // Combo selection changes update topology markers
+    comboPathSource.onSelect = () => updateSelectionMarkers();
+    comboPathDest.onSelect = () => updateSelectionMarkers();
+    comboPathFailNode.onSelect = () => updateSelectionMarkers();
+    comboPathFailLink.onSelect = () => updateSelectionMarkers();
 
     // Algorithm dropdown switches edge metric overlay
     pathAlgo.addEventListener('change', () => {
@@ -1261,37 +1272,32 @@
     const prevFail = pathFailNode.value;
     const prevFailLink = pathFailLink.value;
 
-    // Clear and rebuild node dropdowns
-    pathSource.innerHTML = '<option value="">Select source...</option>';
-    pathDest.innerHTML = '<option value="">Select destination...</option>';
-    pathFailNode.innerHTML = '<option value="">None</option>';
+    // Build node options
+    const nodeOpts = nodes.map(n => ({ value: n.id, label: n.label }));
 
-    for (const node of nodes) {
-      const optSrc = new Option(node.label, node.id);
-      const optDst = new Option(node.label, node.id);
-      const optFail = new Option(node.label, node.id);
-      pathSource.add(optSrc);
-      pathDest.add(optDst);
-      pathFailNode.add(optFail);
-    }
+    // Populate combos
+    comboPathSource.setOptions(nodeOpts);
+    comboPathDest.setOptions(nodeOpts);
+    comboPathFailNode.setOptions([{ value: '', label: 'None' }, ...nodeOpts]);
 
-    // Populate service trace source dropdown
-    svcTraceSource.innerHTML = '<option value="">Select PE...</option>';
-    for (const node of nodes) {
-      svcTraceSource.add(new Option(node.label, node.label));
-    }
+    // Service trace source (uses hostnames as values)
+    const peOpts = nodes.map(n => ({ value: n.label, label: n.label }));
+    comboSvcSource.setOptions(peOpts);
 
-    // Populate link failure dropdown from topology edges
-    pathFailLink.innerHTML = '<option value="">None</option>';
-    if (topologyData && topologyData.edges) {
+    // Service trace VRF (populated from BGP store)
+    refreshSvcTraceVrfs();
+
+    // Link failure dropdown
+    const linkOpts = [{ value: '', label: 'None' }];
+    if (topologyData?.edges) {
       for (const edge of topologyData.edges) {
         const d = edge.data;
         const label = `${d.sourceLabel} ↔ ${d.targetLabel}`;
         const detail = d.localAddr ? ` (${d.localAddr})` : '';
-        const opt = new Option(label + detail, d.id);
-        pathFailLink.add(opt);
+        linkOpts.push({ value: d.id, label: label + detail });
       }
     }
+    comboPathFailLink.setOptions(linkOpts);
 
     // Restore selections if still valid
     if (prevSrc && nodes.some(n => n.id === prevSrc)) pathSource.value = prevSrc;
@@ -1916,12 +1922,12 @@
         });
       });
 
-      // Wire Trace buttons
+      // Wire Trace buttons (pass VRF RT for disambiguation)
       container.querySelectorAll('.btn-trace-svc').forEach((btn) => {
         btn.addEventListener('click', (e) => {
           e.stopPropagation();
           const pfx = btn.dataset.prefix;
-          showTraceSourcePicker(btn, pfx, peOptions);
+          showTraceSourcePicker(btn, pfx, peOptions, rt);
         });
       });
     } catch (err) {
@@ -2026,6 +2032,7 @@
   async function handleSvcTrace() {
     const source = svcTraceSource.value;
     const prefix = svcTracePrefix.value.trim();
+    const vrf = comboSvcVrf.getValue(); // RT value, or empty for all
 
     if (!source) {
       setStatus('error', 'Select a source PE');
@@ -2036,20 +2043,36 @@
       return;
     }
 
-    await executeServiceTrace(source, prefix);
+    await executeServiceTrace(source, prefix, vrf);
+  }
+
+  /**
+   * Populate the VRF combo in the service trace bar from BGP data.
+   */
+  async function refreshSvcTraceVrfs() {
+    try {
+      const vrfs = await API.getBgpVrfsByRT();
+      const opts = [{ value: '', label: 'All VRFs' }];
+      for (const v of (vrfs || [])) {
+        opts.push({ value: v.rt, label: `RT ${v.rt}` });
+      }
+      comboSvcVrf.setOptions(opts);
+    } catch {
+      comboSvcVrf.setOptions([{ value: '', label: 'All VRFs' }]);
+    }
   }
 
   /**
    * Show a small popup to pick the source PE for a service path trace.
    */
-  function showTraceSourcePicker(btn, prefix, peOptions) {
+  function showTraceSourcePicker(btn, prefix, peOptions, vrfRt) {
     // Remove any existing picker
     if (activeTracePicker) { activeTracePicker.remove(); activeTracePicker = null; }
 
     const picker = document.createElement('div');
     picker.className = 'trace-picker';
     picker.innerHTML = `
-      <div class="trace-picker-title">Trace service path to <strong>${esc(prefix)}</strong></div>
+      <div class="trace-picker-title">Trace service path to <strong>${esc(prefix)}</strong>${vrfRt ? ` <span class="detail-badge cyan" style="font-size:0.6rem;">RT ${esc(vrfRt)}</span>` : ''}</div>
       <div class="trace-picker-row">
         <label>From:</label>
         <select class="trace-picker-select">${peOptions}</select>
@@ -2067,7 +2090,7 @@
       const source = picker.querySelector('.trace-picker-select').value;
       picker.remove();
       activeTracePicker = null;
-      await executeServiceTrace(source, prefix);
+      await executeServiceTrace(source, prefix, vrfRt || '');
     });
 
     // Close on outside click
@@ -2085,11 +2108,12 @@
   /**
    * Execute a service path trace and switch to topology view.
    */
-  async function executeServiceTrace(sourceNode, prefix) {
-    setStatus('collecting', `Tracing ${prefix} from ${sourceNode}...`);
+  async function executeServiceTrace(sourceNode, prefix, vrf, algoOverride) {
+    const algoLabel = algoOverride != null ? ` (What if Algo ${algoOverride}?)` : '';
+    setStatus('collecting', `Tracing ${prefix} from ${sourceNode}${algoLabel}...`);
 
     try {
-      const result = await API.traceServicePath(sourceNode, prefix);
+      const result = await API.traceServicePath(sourceNode, prefix, vrf, algoOverride);
 
       if (result.error) {
         setStatus('error', result.error);
@@ -2108,21 +2132,22 @@
       pathFailNode.value = '';
       pathFailLink.value = '';
 
+      // Determine effective algo (override or from trace)
+      const effectiveAlgo = algoOverride ?? result.transportAlgorithm;
+
       // Set algo overlay
-      if (result.transportAlgorithm >= 128) {
-        pathAlgo.value = String(result.transportAlgorithm);
-        topo.setAlgorithmOverlay(result.transportAlgorithm);
+      if (effectiveAlgo >= 128) {
+        pathAlgo.value = String(effectiveAlgo);
+        topo.setAlgorithmOverlay(effectiveAlgo);
       } else {
         pathAlgo.value = '0';
         topo.setAlgorithmOverlay(0);
       }
 
       // Use existing path computation for highlighting
-      // This reuses the proven FlexAlgo trace or SPF path computation
-      if (result.transportAlgorithm >= 128 && srcNode && dstNode) {
-        // FlexAlgo — use existing trace which gives full hop chain + edge IDs
+      if (effectiveAlgo >= 128 && srcNode && dstNode) {
         try {
-          const faResult = await API.traceFlexAlgoPath(srcNode.data.id, dstNode.data.id, result.transportAlgorithm);
+          const faResult = await API.traceFlexAlgoPath(srcNode.data.id, dstNode.data.id, effectiveAlgo);
           if (faResult.reachable && faResult.hops?.length > 1) {
             const pathHops = [];
             for (let i = 0; i < faResult.hops.length - 1; i++) {
@@ -2141,10 +2166,9 @@
             }, [], []);
           }
         } catch {
-          // FlexAlgo highlight failed — show detail panel anyway
+          // FlexAlgo highlight failed
         }
       } else if (srcNode && dstNode) {
-        // Standard IGP — use existing SPF path
         try {
           const analysis = await API.analyzePath(srcNode.data.id, dstNode.data.id);
           if (analysis?.primary) {
@@ -2155,12 +2179,13 @@
         }
       }
 
-      // Show the service path detail panel (with label stack, BGP attrs, etc.)
-      showServicePathDetail(result);
+      // Show the service path detail panel with "What if" buttons
+      showServicePathDetail(result, algoOverride);
       btnClearPath.style.display = 'inline-flex';
 
-      const algoLabel = result.colorCommunity ? `Color:${result.colorCommunity} → ${result.transportAlgorithmName}` : 'IGP';
-      setStatus('live', `Service path: ${result.sourceNode} → ${result.prefix} via ${result.destinationPE} (${algoLabel})`);
+      const displayAlgo = algoOverride ?? result.colorCommunity;
+      const algoStatus = displayAlgo != null ? `Algo ${displayAlgo} → ${effectiveAlgo >= 128 ? result.transportAlgorithmName || `Algo ${effectiveAlgo}` : 'IGP'}` : 'IGP';
+      setStatus('live', `Service path: ${result.sourceNode} → ${result.prefix} via ${result.destinationPE} (${algoStatus})`);
     } catch (err) {
       setStatus('error', `Trace failed: ${err.message}`);
     }
@@ -2169,7 +2194,7 @@
   /**
    * Render the service path detail panel.
    */
-  function showServicePathDetail(result) {
+  function showServicePathDetail(result, algoOverride) {
     detailTitle.textContent = `${result.sourceNode} → ${result.prefix}`;
 
     let html = '';
@@ -2179,9 +2204,18 @@
       html += `<button class="btn btn-ghost btn-sm btn-back-to-node" style="margin-bottom:10px;display:inline-flex;align-items:center;gap:4px;">← Back to ${esc(lastViewedNode.hostname || lastViewedNode.label)}</button>`;
     }
 
+    // What-If banner
+    if (result.isWhatIf) {
+      html += `
+        <div style="background:var(--accent-glow);border:1px solid var(--accent-dim);border-radius:var(--radius-sm);padding:8px 12px;margin-bottom:10px;font-size:0.78rem;">
+          <strong style="color:var(--accent);">⚡ What-If Simulation</strong><br>
+          <span style="color:var(--text-secondary);">Showing path as if prefix had <strong>Color:${result.transportAlgorithm}</strong> (actual: ${result.actualAlgorithm ? `Color:${result.actualAlgorithm}` : 'no color'})</span>
+        </div>`;
+    }
+
     // Service path banner
-    const hasColor = result.colorCommunity != null;
-    const bannerColor = hasColor ? 'var(--amber)' : 'var(--accent)';
+    const hasColor = result.colorCommunity != null && !result.isWhatIf;
+    const bannerColor = result.isWhatIf ? 'var(--accent)' : hasColor ? 'var(--amber)' : 'var(--accent)';
     html += `
       <div class="path-result-banner" style="border-left:3px solid ${bannerColor};">
         <span class="path-result-text">
@@ -2260,12 +2294,40 @@
       html += `</div>`;
     }
 
+    // "What if" algo simulation buttons
+    const algos = result.availableAlgos || [];
+    if (algos.length > 0) {
+      html += `<div class="detail-section"><h4>What If…</h4>`;
+      html += `<div style="font-size:0.72rem;color:var(--text-muted);margin-bottom:8px;">Preview the transport path this prefix would take with a different Color community:</div>`;
+      html += `<div style="display:flex;gap:6px;flex-wrap:wrap;">`;
+
+      // IGP (no color) button
+      const isIgpActive = result.transportAlgorithm === 0;
+      html += `<button class="btn ${isIgpActive ? 'btn-primary' : 'btn-ghost'} btn-sm btn-whatif" data-algo="0" ${isIgpActive ? 'disabled' : ''}>No Color (IGP)</button>`;
+
+      // FlexAlgo buttons
+      for (const a of algos) {
+        const isActive = result.transportAlgorithm === a.number;
+        html += `<button class="btn ${isActive ? 'btn-primary' : 'btn-ghost'} btn-sm btn-whatif" data-algo="${a.number}" ${isActive ? 'disabled' : ''}>Color:${a.number} (${esc(a.name)})</button>`;
+      }
+
+      html += `</div></div>`;
+    }
+
     detailBody.innerHTML = html;
     detailPanel.classList.add('open');
 
     // Wire back button
     const btnBack = detailBody.querySelector('.btn-back-to-node');
     if (btnBack) btnBack.addEventListener('click', backToNode);
+
+    // Wire "What if" buttons
+    detailBody.querySelectorAll('.btn-whatif').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const algo = parseInt(btn.dataset.algo, 10);
+        executeServiceTrace(result.sourceNode, result.prefix, result.vrf, algo === 0 ? 0 : algo);
+      });
+    });
   }
 
   function populateBgpForm(config) {
