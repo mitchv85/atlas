@@ -114,4 +114,27 @@ router.get('/config/eos', (req, res) => {
   });
 });
 
+// ── Diagnostics ───────────────────────────────────────────────────────────
+
+router.get('/debug', (req, res) => {
+  const aggregator = req.app.get('sflowAggregator');
+  if (!aggregator) {
+    return res.status(503).json({ error: 'sFlow aggregator not initialized' });
+  }
+
+  res.json({
+    srgbBase: aggregator._srgbBase,
+    srgbRange: aggregator._srgbRange,
+    agentMapSize: aggregator._agentMap.size,
+    agentMap: Object.fromEntries(aggregator._agentMap),
+    sidToNodeSize: aggregator._sidToNode.size,
+    sidToNode: Object.fromEntries(
+      Array.from(aggregator._sidToNode.entries()).slice(0, 20)
+    ),
+    adjSidMapSize: aggregator._adjSidMap.size,
+    faSidMapSize: aggregator._faSidToNode.size,
+    stats: aggregator.getStats(),
+  });
+});
+
 module.exports = router;

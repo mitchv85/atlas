@@ -122,14 +122,16 @@ class SflowAggregator extends EventEmitter {
       const caps = d.routerCaps;
 
       // SRGB (should be consistent across all nodes in the domain)
-      if (caps?.srgbBase && !this._srgbBase) {
-        this._srgbBase = caps.srgbBase;
-        this._srgbRange = caps.srgbRange || 65536;
+      const srgbEntry = caps?.srgb?.[0];
+      if (srgbEntry?.base && !this._srgbBase) {
+        this._srgbBase = srgbEntry.base;
+        this._srgbRange = srgbEntry.range || 65536;
       }
 
       // Prefix SIDs → node mapping
       for (const sid of (d.srPrefixSids || [])) {
-        this._sidToNode.set(sid.index, {
+        const sidIndex = sid.sid;  // SID index from isisParser
+        this._sidToNode.set(sidIndex, {
           hostname,
           systemId: d.systemId,
           routerId: caps?.routerId,
@@ -139,13 +141,13 @@ class SflowAggregator extends EventEmitter {
 
         // Also map the absolute label (SRGB base + SID index)
         if (this._srgbBase) {
-          const absLabel = this._srgbBase + sid.index;
+          const absLabel = this._srgbBase + sidIndex;
           if (sid.algorithm && sid.algorithm >= 128) {
             // FlexAlgo SID
             this._faSidToNode.set(absLabel, {
               hostname,
               algo: sid.algorithm,
-              sidIndex: sid.index,
+              sidIndex,
             });
           }
         }
@@ -153,12 +155,11 @@ class SflowAggregator extends EventEmitter {
 
       // Adjacency SIDs
       for (const adjSid of (d.srAdjSids || [])) {
-        if (adjSid.label) {
-          this._adjSidMap.set(adjSid.label, {
+        if (adjSid.sid) {
+          this._adjSidMap.set(adjSid.sid, {
             from: hostname,
             fromSystemId: d.systemId,
-            neighborSystemId: adjSid.neighborSystemId,
-            interface: adjSid.interface,
+            neighborHostname: adjSid.neighbor,   // isisParser stores hostname
           });
         }
       }
@@ -307,15 +308,8 @@ class SflowAggregator extends EventEmitter {
     if (!destNode) {
       const adjInfo = this._adjSidMap.get(transportLabel);
       if (adjInfo) {
-        // Adj-SID means traffic to the direct neighbor
-        destNode = adjInfo.from; // The node that owns the adj-SID
-        // Look up the neighbor hostname from system ID
-        for (const node of (this._topology?.nodes || [])) {
-          if (node.data.systemId === adjInfo.neighborSystemId) {
-            destNode = node.data.hostname || node.data.label;
-            break;
-          }
-        }
+        // Adj-SID: the destination is the neighbor of the node that owns this SID
+        destNode = adjInfo.neighborHostname || adjInfo.from;
       }
     }
 
