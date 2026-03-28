@@ -9,6 +9,7 @@
 //   /api/devices     — Device management (CRUD, test, bulk import)
 //   /api/topology    — Topology graph, path analysis, FlexAlgo
 //   /api/bgp         — BGP state, VRFs, prefix detail, service path trace
+//   /api/sflow       — sFlow collector status, flow data, configuration
 //   /ws              — WebSocket for topology change notifications
 //   /ssh             — WebSocket-to-SSH proxy for terminal access
 // ---------------------------------------------------------------------------
@@ -22,7 +23,11 @@ const { WebSocketServer } = require('ws');
 const deviceRoutes = require('./src/routes/devices');
 const topologyRoutes = require('./src/routes/topology');
 const bgpRoutes = require('./src/routes/bgp');
+const sflowRoutes = require('./src/routes/sflow');
 const poller = require('./src/services/poller');
+const { SflowCollector } = require('./src/services/sflowCollector');
+const SflowAggregator = require('./src/services/sflowAggregator');
+const sflowStore = require('./src/store/sflow');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -44,6 +49,7 @@ app.set('poller', poller);
 app.use('/api/devices', deviceRoutes);
 app.use('/api/topology', topologyRoutes);
 app.use('/api/bgp', bgpRoutes);
+app.use('/api/sflow', sflowRoutes);
 
 // Poller status endpoint
 app.get('/api/status', (_req, res) => {
@@ -170,6 +176,40 @@ bgpStore.on('status:changed', (status) => {
 });
 
 // ---------------------------------------------------------------------------
+// sFlow Collector + Aggregator — LSP-level traffic visibility
+// ---------------------------------------------------------------------------
+const sflowCollector = new SflowCollector({ port: 6343 });
+const sflowAggregator = new SflowAggregator();
+
+// Share aggregator with routes for LSP/edge detail queries
+app.set('sflowAggregator', sflowAggregator);
+
+// Wire collector → aggregator
+sflowCollector.on('flow', (flowSample) => {
+  sflowAggregator.processFlow(flowSample);
+});
+
+// Wire aggregator → store → WebSocket
+sflowAggregator.on('flows:updated', (snapshot) => {
+  sflowStore.updateSnapshot(snapshot);
+  sflowStore.updateCollectorStats(sflowCollector.getStats());
+  sflowStore.updateAggregatorStats(sflowAggregator.getStats());
+  broadcast({ type: 'sflow:flows:updated', data: snapshot });
+});
+
+// Feed topology updates into the aggregator's correlation engine
+poller.on('topology:changed', (topology) => {
+  sflowAggregator.updateTopology(topology);
+});
+
+// Also update on regular polls (ensures aggregator has data on first cycle)
+poller.on('topology:updated', (topology) => {
+  if (typeof topology === 'object' && topology.nodes) {
+    sflowAggregator.updateTopology(topology);
+  }
+});
+
+// ---------------------------------------------------------------------------
 // WebSocket SSH Proxy — /ssh?device=<name>
 // ---------------------------------------------------------------------------
 const { Client: SshClient } = require('ssh2');
@@ -256,14 +296,21 @@ sshWss.on('connection', (ws, req) => {
 // ---------------------------------------------------------------------------
 server.listen(PORT, () => {
   console.log(`\n  ╔══════════════════════════════════════╗`);
-  console.log(`  ║          A T L A S   v0.5.0          ║`);
+  console.log(`  ║          A T L A S   v0.6.0          ║`);
   console.log(`  ║   Network Topology & Operations       ║`);
   console.log(`  ╠══════════════════════════════════════╣`);
   console.log(`  ║  http://localhost:${PORT}               ║`);
   console.log(`  ║  WebSocket: ws://localhost:${PORT}/ws    ║`);
   console.log(`  ║  SSH Proxy: ws://localhost:${PORT}/ssh   ║`);
+  console.log(`  ║  sFlow:    udp://0.0.0.0:6343        ║`);
   console.log(`  ╚══════════════════════════════════════╝\n`);
 
   // Start the background poller
   poller.start();
+
+  // Start sFlow collector + aggregator
+  sflowCollector.start();
+  sflowAggregator.start();
+  sflowStore.setConfig({ enabled: true, port: 6343 });
+  console.log('  sFlow collector + aggregator started');
 });

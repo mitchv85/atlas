@@ -10,6 +10,8 @@
   let topologyData = null;
   let currentPathResult = null;
   let lastViewedNode = null; // Track node for "back" navigation from path views
+  let lastFlowSnapshot = null; // Latest sFlow flow data
+  let flowOverlayActive = false; // Is the heatmap overlay on?
   const topo = new TopologyRenderer('cy');
   const socket = new AtlasSocket();
 
@@ -75,6 +77,7 @@
   const viewTopology = $('#viewTopology');
   const viewDevices = $('#viewDevices');
   const viewBgp = $('#viewBgp');
+  const viewFlows = $('#viewFlows');
 
   // Devices page — use containers, re-query children as needed
   const devicesTableView = $('#devicesTableView');
@@ -132,6 +135,7 @@
     viewTopology.classList.toggle('active', tabName === 'topology');
     viewDevices.classList.toggle('active', tabName === 'devices');
     viewBgp.classList.toggle('active', tabName === 'bgp');
+    viewFlows.classList.toggle('active', tabName === 'flows');
 
     // Show/hide path bar and collect button based on tab
     // Only show the path bar OR service trace bar — whichever was active
@@ -145,6 +149,9 @@
     }
     if (tabName === 'bgp') {
       refreshBgpPage();
+    }
+    if (tabName === 'flows') {
+      refreshFlowsPage();
     }
   }
 
@@ -1047,6 +1054,7 @@
 
     bindEvents();
     initBgpPage();
+    initFlowsPage();
     await refreshDevices();
 
     // Load saved positions before loading topology
@@ -1100,6 +1108,18 @@
     });
 
     socket.connect();
+
+    // sFlow flow updates (real-time)
+    socket.on('sflow:flows:updated', (snapshot) => {
+      lastFlowSnapshot = snapshot;
+      if (activeTab === 'flows') {
+        renderFlowsTable(snapshot);
+      }
+      // Update heatmap if overlay is active
+      if (flowOverlayActive && activeTab === 'topology') {
+        topo.applyFlowHeatmap(snapshot);
+      }
+    });
   }
 
   // ── Event Binding ─────────────────────────────────────────────────
@@ -3994,6 +4014,223 @@
     }
 
     return { description: `Label ${label}`, color: 'cyan' };
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // sFlow — Flows Tab + Topology Overlay
+  // ═══════════════════════════════════════════════════════════════════════
+
+  /**
+   * Format bits per second into a human-readable rate string.
+   */
+  function formatRate(bps) {
+    if (bps >= 1_000_000_000) return `${(bps / 1_000_000_000).toFixed(2)} Gbps`;
+    if (bps >= 1_000_000) return `${(bps / 1_000_000).toFixed(1)} Mbps`;
+    if (bps >= 1_000) return `${(bps / 1_000).toFixed(1)} Kbps`;
+    return `${bps} bps`;
+  }
+
+  /**
+   * Refresh the Flows tab with current sFlow data.
+   */
+  async function refreshFlowsPage() {
+    try {
+      const [status, flows] = await Promise.all([
+        API.getSflowStatus(),
+        API.getSflowFlows(),
+      ]);
+
+      // Update status cards
+      const collectorEl = document.getElementById('sflowCollectorStatus');
+      const datagramEl = document.getElementById('sflowDatagramCount');
+      const flowEl = document.getElementById('sflowFlowCount');
+      const mplsEl = document.getElementById('sflowMplsCount');
+      const lspEl = document.getElementById('sflowLspCount');
+
+      if (collectorEl) {
+        const running = status.collector?.running;
+        collectorEl.textContent = running ? `UDP :${status.config?.port || 6343}` : 'Stopped';
+        collectorEl.style.color = running ? 'var(--status-healthy)' : 'var(--text-muted)';
+      }
+      if (datagramEl) datagramEl.textContent = (status.collector?.datagramsValid || 0).toLocaleString();
+      if (flowEl) flowEl.textContent = (status.collector?.flowSamples || 0).toLocaleString();
+      if (mplsEl) mplsEl.textContent = (status.collector?.mplsFlows || 0).toLocaleString();
+      if (lspEl) lspEl.textContent = (status.aggregator?.activeLsps || 0).toLocaleString();
+
+      // Update flow table
+      lastFlowSnapshot = flows;
+      renderFlowsTable(flows);
+    } catch (err) {
+      console.error('Failed to refresh flows page:', err);
+    }
+  }
+
+  /**
+   * Render the per-LSP flow table.
+   */
+  function renderFlowsTable(snapshot) {
+    const tbody = document.getElementById('sflowLspTableBody');
+    const countEl = document.getElementById('sflowLspTableCount');
+    if (!tbody) return;
+
+    const lsps = snapshot?.lspFlows || [];
+    if (countEl) countEl.textContent = `${lsps.length} LSP${lsps.length !== 1 ? 's' : ''}`;
+
+    if (lsps.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted">No flow data yet — configure sFlow on your Arista devices</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = lsps.map((lsp) => {
+      const algoTag = lsp.algorithm > 0
+        ? `<span class="badge badge-algo">FA ${lsp.algorithm}</span>`
+        : '<span class="badge">SPF</span>';
+
+      const topTalker = lsp.topTalkers && lsp.topTalkers.length > 0
+        ? `<span class="text-muted" style="font-size:10px;">${lsp.topTalkers[0].srcIP} → ${lsp.topTalkers[0].dstIP}</span>`
+        : '—';
+
+      const rateClass = lsp.bitsPerSec >= 100_000_000 ? 'text-warn'
+        : lsp.bitsPerSec >= 10_000_000 ? 'text-amber' : '';
+
+      return `<tr class="sflow-lsp-row" data-lsp-key="${encodeURIComponent(lsp.lspKey)}">
+        <td class="font-mono" style="font-size:11px;">${lsp.lspKey}</td>
+        <td>${lsp.sourceNode}</td>
+        <td>${lsp.destNode}</td>
+        <td>${algoTag}</td>
+        <td class="${rateClass}" style="font-weight:600;">${formatRate(lsp.bitsPerSec)}</td>
+        <td class="text-muted">${(lsp.packetsPerSec || 0).toLocaleString()}</td>
+        <td>${topTalker}</td>
+        <td><button class="btn btn-ghost btn-sm btn-trace-lsp" data-lsp-key="${encodeURIComponent(lsp.lspKey)}">Trace</button></td>
+      </tr>`;
+    }).join('');
+
+    // Bind trace buttons
+    tbody.querySelectorAll('.btn-trace-lsp').forEach((btn) => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const lspKey = decodeURIComponent(btn.dataset.lspKey);
+        const detail = await API.getSflowLspDetail(lspKey);
+        if (detail) {
+          topo.highlightLspFlow(detail, topologyData);
+          topo.startFlowAnimation();
+          switchTab('topology');
+        }
+      });
+    });
+
+    // Bind row click to show LSP detail
+    tbody.querySelectorAll('.sflow-lsp-row').forEach((row) => {
+      row.addEventListener('click', async () => {
+        const lspKey = decodeURIComponent(row.dataset.lspKey);
+        const detail = await API.getSflowLspDetail(lspKey);
+        if (detail) {
+          showLspDetailPanel(detail);
+        }
+      });
+    });
+  }
+
+  /**
+   * Show detailed info for a specific LSP in the detail panel.
+   */
+  function showLspDetailPanel(detail) {
+    detailTitle.textContent = 'LSP Flow Detail';
+
+    let html = `
+      <div class="detail-section">
+        <div class="detail-row"><span class="detail-label">LSP</span><span class="detail-value font-mono">${detail.lspKey}</span></div>
+        <div class="detail-row"><span class="detail-label">Source</span><span class="detail-value">${detail.sourceNode}</span></div>
+        <div class="detail-row"><span class="detail-label">Destination</span><span class="detail-value">${detail.destNode}</span></div>
+        <div class="detail-row"><span class="detail-label">Algorithm</span><span class="detail-value">${detail.algorithm > 0 ? 'FlexAlgo ' + detail.algorithm : 'SPF (algo 0)'}</span></div>
+        <div class="detail-row"><span class="detail-label">Rate</span><span class="detail-value" style="font-weight:600; color:var(--accent);">${formatRate(detail.bitsPerSec)}</span></div>
+        <div class="detail-row"><span class="detail-label">Packets/sec</span><span class="detail-value">${(detail.packetsPerSec || 0).toLocaleString()}</span></div>
+        <div class="detail-row"><span class="detail-label">Labels</span><span class="detail-value font-mono">${(detail.labels || []).join(' → ') || '—'}</span></div>
+      </div>`;
+
+    // Top talkers
+    if (detail.topTalkers && detail.topTalkers.length > 0) {
+      html += `<div class="detail-section">
+        <h4 class="detail-section-title">Top Talkers</h4>
+        <table class="detail-mini-table">
+          <thead><tr><th>Source</th><th>Destination</th><th>Proto</th><th>Bytes</th></tr></thead>
+          <tbody>`;
+
+      for (const t of detail.topTalkers.slice(0, 10)) {
+        const proto = t.ipProtocol === 6 ? 'TCP' : t.ipProtocol === 17 ? 'UDP' : (t.ipProtocol || '—');
+        const port = t.dstPort ? `:${t.dstPort}` : '';
+        html += `<tr>
+          <td class="font-mono" style="font-size:10px;">${t.srcIP || '—'}${t.srcPort ? ':' + t.srcPort : ''}</td>
+          <td class="font-mono" style="font-size:10px;">${t.dstIP || '—'}${port}</td>
+          <td>${proto}</td>
+          <td>${formatRate(t.bytes * 8 / 30)}</td>
+        </tr>`;
+      }
+
+      html += '</tbody></table></div>';
+    }
+
+    detailBody.innerHTML = html;
+    detailPanel.classList.add('open');
+  }
+
+  /**
+   * Toggle the flow heatmap overlay on the topology.
+   */
+  function toggleFlowOverlay() {
+    flowOverlayActive = !flowOverlayActive;
+
+    const btnTopo = document.getElementById('btnTopoFlowOverlay');
+    const btnFlows = document.getElementById('btnToggleFlowOverlay');
+
+    if (flowOverlayActive) {
+      if (btnTopo) btnTopo.classList.add('topo-btn-active');
+      if (btnFlows) btnFlows.textContent = '🔥 Overlay On';
+      // Apply heatmap if we have data
+      if (lastFlowSnapshot) {
+        topo.applyFlowHeatmap(lastFlowSnapshot);
+        topo.startFlowAnimation();
+      }
+    } else {
+      if (btnTopo) btnTopo.classList.remove('topo-btn-active');
+      if (btnFlows) btnFlows.textContent = '🔥 Overlay Off';
+      topo.clearFlowOverlay();
+    }
+  }
+
+  /**
+   * Initialize sFlow page event bindings.
+   */
+  function initFlowsPage() {
+    // Refresh button
+    document.getElementById('btnSflowRefresh')?.addEventListener('click', refreshFlowsPage);
+
+    // Overlay toggle (both the flows tab button and topo toolbar button)
+    document.getElementById('btnToggleFlowOverlay')?.addEventListener('click', toggleFlowOverlay);
+    document.getElementById('btnTopoFlowOverlay')?.addEventListener('click', toggleFlowOverlay);
+
+    // EOS config panel
+    document.getElementById('btnSflowEosConfig')?.addEventListener('click', () => {
+      const panel = document.getElementById('sflowEosConfigPanel');
+      if (panel) panel.style.display = panel.style.display === 'none' ? '' : 'none';
+    });
+
+    document.getElementById('btnCloseSflowEos')?.addEventListener('click', () => {
+      const panel = document.getElementById('sflowEosConfigPanel');
+      if (panel) panel.style.display = 'none';
+    });
+
+    document.getElementById('btnGenerateSflowEos')?.addEventListener('click', async () => {
+      const ip = document.getElementById('sflowCollectorIP')?.value || '';
+      const rate = document.getElementById('sflowSamplingRate')?.value || 1024;
+      try {
+        const result = await API.getSflowEosConfig(ip, rate);
+        const output = document.getElementById('sflowEosConfigOutput');
+        if (output) output.textContent = result.eosConfig || 'Error generating config';
+      } catch (err) {
+        console.error('EOS config generation failed:', err);
+      }
+    });
   }
 
   // ── Boot ──────────────────────────────────────────────────────────

@@ -473,6 +473,167 @@ class TopologyRenderer {
     });
   }
 
+  // ═══════════════════════════════════════════════════════════════════════
+  // sFlow Overlay Methods
+  // ═══════════════════════════════════════════════════════════════════════
+
+  /**
+   * Heat level thresholds for edge coloring (bits per second).
+   * 5 tiers: light teal → teal → amber → orange → red.
+   */
+  static FLOW_HEAT_THRESHOLDS = [
+    100_000,       // Level 1: > 100 Kbps
+    1_000_000,     // Level 2: > 1 Mbps
+    10_000_000,    // Level 3: > 10 Mbps
+    100_000_000,   // Level 4: > 100 Mbps
+    1_000_000_000, // Level 5: > 1 Gbps
+  ];
+
+  /**
+   * Apply flow heatmap overlay to the topology.
+   * Colors edges based on traffic volume from sFlow data.
+   *
+   * @param {Object} flowSnapshot - { edgeFlows: [{ edgeId, bitsPerSec }] }
+   */
+  applyFlowHeatmap(flowSnapshot) {
+    if (!this.cy) return;
+
+    // Clear previous flow classes
+    this.clearFlowOverlay();
+
+    if (!flowSnapshot || !flowSnapshot.edgeFlows || flowSnapshot.edgeFlows.length === 0) return;
+
+    // Find the max rate for relative scaling
+    const activeNodeIds = new Set();
+
+    for (const ef of flowSnapshot.edgeFlows) {
+      const edge = this.cy.getElementById(ef.edgeId);
+      if (!edge.length) continue;
+
+      // Determine heat level
+      const bps = ef.bitsPerSec || 0;
+      let level = 0;
+      for (let i = 0; i < TopologyRenderer.FLOW_HEAT_THRESHOLDS.length; i++) {
+        if (bps >= TopologyRenderer.FLOW_HEAT_THRESHOLDS[i]) level = i + 1;
+      }
+
+      if (level > 0) {
+        edge.addClass(`flow-heat-${level}`);
+        // Also mark connected nodes as active
+        activeNodeIds.add(edge.data('source'));
+        activeNodeIds.add(edge.data('target'));
+      }
+    }
+
+    // Mark active nodes
+    for (const nodeId of activeNodeIds) {
+      const node = this.cy.getElementById(nodeId);
+      if (node.length) node.addClass('flow-active');
+    }
+  }
+
+  /**
+   * Highlight a specific LSP path on the topology.
+   *
+   * @param {Object} lspDetail - { sourceNode, destNode, edgePath, lspKey }
+   * @param {Object} topology  - Current topology data for node ID resolution
+   */
+  highlightLspFlow(lspDetail, topology) {
+    if (!this.cy || !lspDetail) return;
+
+    this._clearHighlight();
+    this.clearFlowOverlay();
+
+    // Dim everything
+    this.cy.elements().addClass('flow-dimmed');
+
+    // Find source and dest node IDs from hostnames
+    const srcId = this._findNodeIdByHostname(lspDetail.sourceNode, topology);
+    const dstId = this._findNodeIdByHostname(lspDetail.destNode, topology);
+
+    // Highlight LSP edges
+    for (const edgeId of (lspDetail.edgePath || [])) {
+      const edge = this.cy.getElementById(edgeId);
+      if (edge.length) {
+        edge.removeClass('flow-dimmed');
+        edge.addClass('flow-lsp-highlight flow-animated');
+        // Mark connected nodes
+        edge.connectedNodes().forEach((n) => {
+          n.removeClass('flow-dimmed');
+          n.addClass('flow-lsp-node');
+        });
+      }
+    }
+
+    // Mark source and dest explicitly
+    if (srcId) {
+      const src = this.cy.getElementById(srcId);
+      if (src.length) {
+        src.removeClass('flow-dimmed');
+        src.addClass('flow-lsp-node');
+      }
+    }
+    if (dstId) {
+      const dst = this.cy.getElementById(dstId);
+      if (dst.length) {
+        dst.removeClass('flow-dimmed');
+        dst.addClass('flow-lsp-node');
+      }
+    }
+  }
+
+  /**
+   * Start animated flow on edges that have the flow-animated class.
+   * Uses requestAnimationFrame to animate the dash offset.
+   */
+  startFlowAnimation() {
+    if (this._flowAnimFrame) return; // Already running
+
+    let offset = 0;
+    const animate = () => {
+      offset = (offset + 1) % 28; // 8+6 = 14, cycle through 2 full patterns
+      this.cy.edges('.flow-animated').style('line-dash-offset', -offset);
+      this._flowAnimFrame = requestAnimationFrame(animate);
+    };
+    this._flowAnimFrame = requestAnimationFrame(animate);
+  }
+
+  /**
+   * Stop flow animation.
+   */
+  stopFlowAnimation() {
+    if (this._flowAnimFrame) {
+      cancelAnimationFrame(this._flowAnimFrame);
+      this._flowAnimFrame = null;
+    }
+  }
+
+  /**
+   * Clear all flow overlay classes.
+   */
+  clearFlowOverlay() {
+    if (!this.cy) return;
+    this.cy.elements().removeClass(
+      'flow-heat-1 flow-heat-2 flow-heat-3 flow-heat-4 flow-heat-5 ' +
+      'flow-active flow-lsp-highlight flow-lsp-node flow-dimmed flow-animated'
+    );
+    this.stopFlowAnimation();
+  }
+
+  /**
+   * Find a Cytoscape node ID by hostname.
+   * @private
+   */
+  _findNodeIdByHostname(hostname, topology) {
+    if (!topology || !topology.nodes) return null;
+    for (const node of topology.nodes) {
+      if (node.data.hostname === hostname || node.data.label === hostname) {
+        return node.data.id;
+      }
+    }
+    return null;
+  }
+
   /**
    * Cytoscape.js stylesheet — the visual identity of the topology.
    */
@@ -812,6 +973,96 @@ class TopologyRenderer {
           color: '#fb7185',
           opacity: 1,
           'z-index': 20,
+        },
+      },
+      // ── sFlow: Edge with traffic (heat levels) ──
+      {
+        selector: 'edge.flow-heat-1',
+        style: {
+          'line-color': '#0d9488',
+          width: 3,
+          'z-index': 12,
+        },
+      },
+      {
+        selector: 'edge.flow-heat-2',
+        style: {
+          'line-color': '#14b8a6',
+          width: 4,
+          'z-index': 13,
+        },
+      },
+      {
+        selector: 'edge.flow-heat-3',
+        style: {
+          'line-color': '#f59e0b',
+          width: 5,
+          'z-index': 14,
+        },
+      },
+      {
+        selector: 'edge.flow-heat-4',
+        style: {
+          'line-color': '#f97316',
+          width: 6,
+          'z-index': 15,
+        },
+      },
+      {
+        selector: 'edge.flow-heat-5',
+        style: {
+          'line-color': '#ef4444',
+          width: 7,
+          'z-index': 16,
+        },
+      },
+      // ── sFlow: Node generating/receiving flow ──
+      {
+        selector: 'node.flow-active',
+        style: {
+          'border-color': '#14b8a6',
+          'border-width': 3,
+          'border-opacity': 1,
+        },
+      },
+      // ── sFlow: LSP highlight (specific LSP selected) ──
+      {
+        selector: 'edge.flow-lsp-highlight',
+        style: {
+          'line-color': '#22d3ee',
+          width: 5,
+          'target-arrow-color': '#22d3ee',
+          'target-arrow-shape': 'triangle',
+          'arrow-scale': 1.2,
+          opacity: 1,
+          'z-index': 25,
+        },
+      },
+      {
+        selector: 'node.flow-lsp-node',
+        style: {
+          'background-color': '#0e7490',
+          'border-color': '#22d3ee',
+          'border-width': 3,
+          color: '#e8edf5',
+          'font-weight': 600,
+          opacity: 1,
+          'z-index': 25,
+        },
+      },
+      {
+        selector: '.flow-dimmed',
+        style: {
+          opacity: 0.15,
+        },
+      },
+      // ── sFlow: Animated directional flow indicator ──
+      {
+        selector: 'edge.flow-animated',
+        style: {
+          'line-style': 'dashed',
+          'line-dash-pattern': [8, 6],
+          'line-dash-offset': 0,
         },
       },
     ];

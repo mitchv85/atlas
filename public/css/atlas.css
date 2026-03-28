@@ -2076,3 +2076,97 @@ body {
   text-align: center;
   border-top: 1px solid var(--border);
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════ */
+/* sFlow / Flows Tab                                                          */
+/* ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Generic badge */
+.badge {
+  display: inline-block;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.62rem;
+  font-weight: 600;
+  background: rgba(148, 163, 184, 0.15);
+  color: var(--text-secondary);
+  letter-spacing: 0.02em;
+}
+
+.badge-algo {
+  background: rgba(167, 139, 250, 0.2);
+  color: #a78bfa;
+}
+
+/* Topology toolbar active button */
+.topo-btn-active {
+  background: rgba(20, 184, 166, 0.2) !important;
+  border-color: #14b8a6 !important;
+  color: #14b8a6 !important;
+}
+
+/* Utility text classes */
+.text-warn { color: #ef4444; }
+.text-amber { color: #f59e0b; }
+.font-mono { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+.text-center { text-align: center; }
+.text-muted { color: var(--text-muted); }
+
+/* sFlow LSP row hover */
+.sflow-lsp-row {
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.sflow-lsp-row:hover {
+  background: rgba(34, 211, 238, 0.06);
+}
+
+/* Detail panel — mini table for top talkers */
+.detail-mini-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.7rem;
+  margin-top: 6px;
+}
+.detail-mini-table th {
+  text-align: left;
+  padding: 4px 8px;
+  font-weight: 500;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.detail-mini-table td {
+  padding: 4px 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+  color: var(--text-secondary);
+}
+.detail-mini-table tr:last-child td {
+  border-bottom: none;
+}
+
+.detail-section-title {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin: 12px 0 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* Input field for sFlow config form */
+.input-field {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 4px 8px;
+  color: var(--text-primary);
+  font-size: 12px;
+  font-family: inherit;
+}
+.input-field:focus {
+  outline: none;
+  border-color: var(--accent);
+}

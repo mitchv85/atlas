@@ -2,7 +2,7 @@
 
 **Network topology visualization, path analysis, and service assurance platform.**
 
-ATLAS reads the IS-IS link-state database from Arista EOS devices, builds an interactive topology map, and provides Segment Routing path analysis with TI-LFA backup visualization, FlexAlgo-aware traffic engineering, BGP IPVPN service path tracing with Color community steering detection, ECMP enumeration, real label stacks, adjacency health monitoring, device management with SSH terminals, and right-click context menus — all from your browser.
+ATLAS reads the IS-IS link-state database from Arista EOS devices, builds an interactive topology map, and provides Segment Routing path analysis with TI-LFA backup visualization, FlexAlgo-aware traffic engineering, BGP IPVPN service path tracing with Color community steering detection, sFlow-based per-LSP traffic visualization, ECMP enumeration, real label stacks, adjacency health monitoring, device management with SSH terminals, and right-click context menus — all from your browser.
 
 ---
 
@@ -41,6 +41,18 @@ ATLAS reads the IS-IS link-state database from Arista EOS devices, builds an int
 - BGP attribute display: extended communities, standard communities, cluster list
 - Topology highlight + algo overlay switch on trace execution
 
+### sFlow Traffic Visualization (v0.6.0)
+- Built-in sFlow v5 collector on UDP 6343 — no external collector required
+- MPLS label stack extraction from flow samples (Extended MPLS + raw header fallback)
+- LSP correlation engine: maps sampled labels to SR Prefix-SIDs, Adj-SIDs, FlexAlgo SIDs
+- Per-LSP traffic table: rate (bps), packets/sec, top talkers with 5-tuple drill-down
+- Edge heatmap overlay: 5-tier color scale (teal → amber → red) based on traffic volume
+- Animated directional flow indicators on topology edges
+- Per-LSP trace: click any LSP to highlight its path on the topology
+- Per-edge flow detail: which LSPs ride each link and how much traffic each carries
+- Arista EOS sFlow config generator with customizable sampling rate
+- Real-time WebSocket push of flow updates to all connected clients
+
 ### BGP Integration (v0.4.0)
 - FRR-managed BGP speaker with config generation and service lifecycle
 - VPNv4 unicast address family with vtysh JSON collection
@@ -76,9 +88,10 @@ ATLAS reads the IS-IS link-state database from Arista EOS devices, builds an int
 
 ### Roadmap
 - gNMI streaming telemetry (replace eAPI polling)
-- sFlow collection (traffic flow overlays on topology)
 - EVPN + NG-MVPN address families
 - BGP-LS topology enrichment (requires FRR with --enable-link-state)
+- Internet deployment (GCP + WireGuard VPN)
+- User management with GitHub SSO
 
 ---
 
@@ -171,19 +184,37 @@ rc-update add frr
 
 BGP settings are managed in `atlas.config.json` under the `bgp` key, or via the BGP settings UI. ATLAS generates `frr.conf` and manages the FRR service lifecycle.
 
+### sFlow Traffic Visualization (optional)
+
+ATLAS includes a built-in sFlow v5 collector that listens on UDP port 6343. To see per-LSP traffic flows on the topology, configure sFlow on your Arista EOS devices:
+
+```
+! On each Arista device:
+sflow sample 1024
+sflow destination <ATLAS_SERVER_IP> 6343
+sflow source-interface Loopback0
+sflow run
+
+! Enable on core-facing interfaces:
+interface Ethernet1-8
+   sflow enable
+```
+
+ATLAS can also generate this config for you from the Flows tab (📋 EOS Config button). The correlation engine automatically maps sampled MPLS label stacks to SR Prefix-SIDs, Adjacency SIDs, and FlexAlgo SIDs using the topology data ATLAS already collects.
+
 ---
 
 ## Architecture
 
 ```
 atlas/
-├── server.js                    # Express entry point + WebSocket hub
+├── server.js                    # Express entry point + WebSocket hub + sFlow bootstrap
 ├── public/                      # Frontend (static)
 │   ├── index.html               # SPA shell
 │   ├── css/atlas.css            # Dark NOC-inspired theme
 │   └── js/
 │       ├── api.js               # Frontend API client
-│       ├── topology.js          # Cytoscape.js renderer
+│       ├── topology.js          # Cytoscape.js renderer + flow overlay
 │       └── app.js               # Main application logic
 └── src/                         # Backend
     ├── proto/                   # FRR gRPC proto definitions
@@ -191,6 +222,7 @@ atlas/
     ├── routes/
     │   ├── bgp.js               # BGP API (config, VRFs, RIB, neighbors)
     │   ├── devices.js           # Device CRUD + connectivity test
+    │   ├── sflow.js             # sFlow API (status, flows, LSP/edge detail)
     │   └── topology.js          # LSDB collection + graph serving
     ├── services/
     │   ├── bgpGrpc.js           # FRR northbound gRPC client
@@ -198,10 +230,14 @@ atlas/
     │   ├── eapi.js              # Arista eAPI client (JSON-RPC/HTTPS)
     │   ├── frrManager.js        # FRR config generation + lifecycle
     │   ├── isisParser.js        # IS-IS LSDB TLV parser
+    │   ├── sflowAggregator.js   # Flow aggregation + LSP correlation engine
+    │   ├── sflowCollector.js    # sFlow v5 UDP collector + binary parser
     │   └── topologyBuilder.js   # LSDB → Cytoscape.js graph builder
     └── store/
         ├── bgp.js               # In-memory BGP state (VRFs, RIB, neighbors)
-        └── devices.js           # In-memory device store
+        ├── devices.js           # In-memory device store
+        ├── positions.js         # Persistent node position store
+        └── sflow.js             # In-memory sFlow state
 ```
 
 ---
@@ -226,6 +262,12 @@ atlas/
 | `GET` | `/api/bgp/vrfs` | VRF list with prefix counts |
 | `GET` | `/api/bgp/vrfs/:rd` | Prefixes for a specific VRF |
 | `GET` | `/api/bgp/rib` | Full VPNv4 RIB with filtering |
+| `GET` | `/api/sflow/status` | sFlow collector + aggregator status |
+| `GET` | `/api/sflow/flows` | Current flow snapshot (all LSPs + edges) |
+| `GET` | `/api/sflow/lsp/:lspKey` | Detailed flow data for a specific LSP |
+| `GET` | `/api/sflow/edge/:edgeId` | Flow data for a specific topology edge |
+| `POST` | `/api/sflow/config` | Update sFlow configuration |
+| `GET` | `/api/sflow/config/eos` | Generate Arista EOS sFlow config snippet |
 
 ---
 

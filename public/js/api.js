@@ -286,4 +286,41 @@ const API = {
     });
     return res.json();
   },
+
+  // ── sFlow ─────────────────────────────────────────────────────────
+
+  /** Fetch sFlow collector + aggregator status. */
+  async getSflowStatus() {
+    const res = await fetch('/api/sflow/status');
+    return res.json();
+  },
+
+  /** Fetch current flow snapshot (all LSPs + edge flows). */
+  async getSflowFlows() {
+    const res = await fetch('/api/sflow/flows');
+    return res.json();
+  },
+
+  /** Fetch detailed flow data for a specific LSP. */
+  async getSflowLspDetail(lspKey) {
+    const res = await fetch(`/api/sflow/lsp/${encodeURIComponent(lspKey)}`);
+    if (!res.ok) return null;
+    return res.json();
+  },
+
+  /** Fetch flow data for a specific topology edge. */
+  async getSflowEdgeDetail(edgeId) {
+    const res = await fetch(`/api/sflow/edge/${encodeURIComponent(edgeId)}`);
+    if (!res.ok) return null;
+    return res.json();
+  },
+
+  /** Generate Arista EOS sFlow config snippet. */
+  async getSflowEosConfig(collectorIP, samplingRate = 1024) {
+    const params = new URLSearchParams();
+    if (collectorIP) params.set('collectorIP', collectorIP);
+    if (samplingRate) params.set('samplingRate', samplingRate);
+    const res = await fetch(`/api/sflow/config/eos?${params}`);
+    return res.json();
+  },
 };

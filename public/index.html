@@ -31,6 +31,7 @@
         <button class="topbar-tab active" data-tab="topology">Topology</button>
         <button class="topbar-tab" data-tab="devices">Devices</button>
         <button class="topbar-tab" data-tab="bgp">BGP</button>
+        <button class="topbar-tab" data-tab="flows">Flows</button>
       </nav>
     </div>
 
@@ -161,6 +162,10 @@
           <div class="topo-divider"></div>
           <button class="topo-btn" id="btnLayoutCose" title="Force-directed layout">
             <svg viewBox="0 0 20 20" fill="currentColor"><path d="M5 3a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2V5a2 2 0 00-2-2H5zm0 8a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2v-2a2 2 0 00-2-2H5zm6-6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V5zm2 6a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2v-2a2 2 0 00-2-2h-2z"/></svg>
+          </button>
+          <div class="topo-divider"></div>
+          <button class="topo-btn" id="btnTopoFlowOverlay" title="Toggle sFlow heatmap overlay">
+            <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M12.395 2.553a1 1 0 00-1.45-.385c-.345.23-.614.558-.822.88-.214.33-.403.713-.57 1.116-.334.804-.614 1.768-.84 2.734a31.365 31.365 0 00-.613 3.58 2.64 2.64 0 01-.945-1.067c-.328-.68-.398-1.534-.398-2.654A1 1 0 005.05 6.05 6.981 6.981 0 003 11a7 7 0 1011.95-4.95c-.592-.591-.98-.985-1.348-1.467-.363-.476-.724-1.063-1.207-2.03zM12.12 15.12A3 3 0 017 13s.879.5 2.5.5c0-1 .5-4 1.25-4.5.5 1 .786 1.293 1.371 1.879A2.99 2.99 0 0113 13a2.99 2.99 0 01-.879 2.121z" clip-rule="evenodd"/></svg>
           </button>
         </div>
       </div>
@@ -419,6 +424,104 @@
               </div>
               <pre class="bgp-preview-code" id="bgpPreviewCode"></pre>
             </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================================= -->
+    <!-- Tab: Flows (sFlow)                                             -->
+    <!-- ============================================================= -->
+    <div class="tab-view" id="viewFlows">
+      <div class="bgp-page">
+        <!-- ── sFlow Status Section ── -->
+        <div class="bgp-status-section" id="sflowStatusSection">
+          <div class="devices-toolbar">
+            <div class="devices-toolbar-left">
+              <h2 class="devices-heading">sFlow Collector</h2>
+            </div>
+            <div class="devices-toolbar-right">
+              <button class="btn btn-ghost btn-sm" id="btnSflowRefresh">⟳ Refresh</button>
+              <button class="btn btn-ghost btn-sm" id="btnSflowEosConfig" title="Generate EOS config">📋 EOS Config</button>
+              <button class="btn btn-sm" id="btnToggleFlowOverlay">🔥 Overlay Off</button>
+            </div>
+          </div>
+          <div class="bgp-status-cards" id="sflowStatusCards">
+            <div class="bgp-status-card">
+              <div class="bgp-status-label">Collector</div>
+              <div class="bgp-status-value" id="sflowCollectorStatus">—</div>
+            </div>
+            <div class="bgp-status-card">
+              <div class="bgp-status-label">Datagrams</div>
+              <div class="bgp-status-value" id="sflowDatagramCount">—</div>
+            </div>
+            <div class="bgp-status-card">
+              <div class="bgp-status-label">Flow Samples</div>
+              <div class="bgp-status-value" id="sflowFlowCount">—</div>
+            </div>
+            <div class="bgp-status-card">
+              <div class="bgp-status-label">MPLS Flows</div>
+              <div class="bgp-status-value" id="sflowMplsCount">—</div>
+            </div>
+            <div class="bgp-status-card">
+              <div class="bgp-status-label">Active LSPs</div>
+              <div class="bgp-status-value" id="sflowLspCount">—</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── LSP Flow Table ── -->
+        <div class="bgp-vrf-section" id="sflowLspSection">
+          <div class="devices-toolbar">
+            <div class="devices-toolbar-left">
+              <h2 class="devices-heading">Per-LSP Traffic</h2>
+              <span class="devices-count" id="sflowLspTableCount">0 LSPs</span>
+            </div>
+          </div>
+          <div class="bgp-vrf-table-wrap">
+            <table class="devices-table" id="sflowLspTable">
+              <thead>
+                <tr>
+                  <th>LSP</th>
+                  <th>Source</th>
+                  <th>Destination</th>
+                  <th>Algo</th>
+                  <th>Rate</th>
+                  <th>pps</th>
+                  <th>Top Talkers</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="sflowLspTableBody">
+                <tr><td colspan="8" class="text-center text-muted">No flow data yet — configure sFlow on your Arista devices</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- ── EOS Config Panel (hidden by default) ── -->
+        <div class="bgp-vrf-section" id="sflowEosConfigPanel" style="display:none;">
+          <div class="devices-toolbar">
+            <div class="devices-toolbar-left">
+              <h2 class="devices-heading">Arista EOS sFlow Configuration</h2>
+            </div>
+            <div class="devices-toolbar-right">
+              <button class="btn btn-ghost btn-sm" id="btnCloseSflowEos">&times; Close</button>
+            </div>
+          </div>
+          <div style="padding: 0 16px 16px;">
+            <div class="sflow-config-form" style="display: flex; gap: 12px; margin-bottom: 12px;">
+              <label style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-secondary);">
+                Collector IP:
+                <input type="text" id="sflowCollectorIP" class="input-field" placeholder="e.g. 172.31.0.100" style="width: 160px;">
+              </label>
+              <label style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-secondary);">
+                Sampling Rate:
+                <input type="number" id="sflowSamplingRate" class="input-field" value="1024" style="width: 80px;">
+              </label>
+              <button class="btn btn-sm btn-primary" id="btnGenerateSflowEos">Generate</button>
+            </div>
+            <pre class="config-output" id="sflowEosConfigOutput" style="background: var(--bg-surface); border: 1px solid var(--border); border-radius: 6px; padding: 12px; font-size: 11px; overflow-x: auto; color: var(--text-secondary);"></pre>
           </div>
         </div>
       </div>
