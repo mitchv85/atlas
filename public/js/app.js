@@ -11,6 +11,7 @@
   let currentPathResult = null;
   let lastViewedNode = null; // Track node for "back" navigation from path views
   let lastFlowSnapshot = null; // Latest sFlow flow data
+  let lastTunnelRates = [];    // Latest tunnel counter rates (deterministic)
   let flowOverlayActive = false; // Is the heatmap overlay on?
   const topo = new TopologyRenderer('cy');
   const socket = new AtlasSocket();
@@ -1113,11 +1114,19 @@
     socket.on('sflow:flows:updated', (snapshot) => {
       lastFlowSnapshot = snapshot;
       if (activeTab === 'flows') {
-        renderFlowsTable(snapshot);
+        renderFlowsTable(lastTunnelRates, snapshot);
       }
       // Update heatmap if overlay is active
       if (flowOverlayActive && activeTab === 'topology') {
         topo.applyFlowHeatmap(snapshot);
+      }
+    });
+
+    // Tunnel counter rate updates (deterministic, every poll cycle)
+    socket.on('sflow:tunnelRates:updated', (rates) => {
+      lastTunnelRates = rates || [];
+      if (activeTab === 'flows') {
+        renderFlowsTable(lastTunnelRates, lastFlowSnapshot);
       }
     });
   }
@@ -4035,9 +4044,10 @@
    */
   async function refreshFlowsPage() {
     try {
-      const [status, flows] = await Promise.all([
+      const [status, flows, tunnelData] = await Promise.all([
         API.getSflowStatus(),
         API.getSflowFlows(),
+        API.getTunnelRates(),
       ]);
 
       // Update status cards
@@ -4055,11 +4065,17 @@
       if (datagramEl) datagramEl.textContent = (status.collector?.datagramsValid || 0).toLocaleString();
       if (flowEl) flowEl.textContent = (status.collector?.flowSamples || 0).toLocaleString();
       if (mplsEl) mplsEl.textContent = (status.collector?.mplsFlows || 0).toLocaleString();
-      if (lspEl) lspEl.textContent = (status.aggregator?.activeLsps || 0).toLocaleString();
 
-      // Update flow table
+      // Active LSPs = tunnel counter entries with non-zero rates + sFlow LSPs
+      const tunnelRates = tunnelData?.rates || [];
+      lastTunnelRates = tunnelRates;
+      const activeTunnels = tunnelRates.filter((r) => r.bitsPerSec > 0 || r.counterInUse).length;
+      const sflowLsps = flows?.lspFlows?.length || 0;
+      if (lspEl) lspEl.textContent = Math.max(activeTunnels, sflowLsps).toLocaleString();
+
+      // Update flow table — tunnel rates are the primary source
       lastFlowSnapshot = flows;
-      renderFlowsTable(flows);
+      renderFlowsTable(tunnelRates, flows);
     } catch (err) {
       console.error('Failed to refresh flows page:', err);
     }
@@ -4067,41 +4083,116 @@
 
   /**
    * Render the per-LSP flow table.
+   * Primary rate source: tunnel counters (deterministic from eAPI).
+   * Enrichment: sFlow top talkers for drill-down detail.
+   *
+   * @param {Array} tunnelRates - Tunnel counter rate records from poller
+   * @param {Object} sflowSnapshot - sFlow flow snapshot (for top talkers)
    */
-  function renderFlowsTable(snapshot) {
+  function renderFlowsTable(tunnelRates, sflowSnapshot) {
     const tbody = document.getElementById('sflowLspTableBody');
     const countEl = document.getElementById('sflowLspTableCount');
     if (!tbody) return;
 
-    const lsps = snapshot?.lspFlows || [];
-    if (countEl) countEl.textContent = `${lsps.length} LSP${lsps.length !== 1 ? 's' : ''}`;
+    tunnelRates = tunnelRates || [];
+    const sflowLsps = sflowSnapshot?.lspFlows || [];
 
-    if (lsps.length === 0) {
+    // Build a lookup from sFlow LSPs by "sourceNode→destNode:algoN"
+    const sflowByKey = new Map();
+    for (const lsp of sflowLsps) {
+      sflowByKey.set(lsp.lspKey, lsp);
+    }
+
+    // Merge: tunnel counter rows enriched with sFlow top talkers
+    const rows = [];
+
+    for (const tc of tunnelRates) {
+      // Build the sFlow-compatible LSP key for matching
+      // tc.device = source PE, tc.destHostname = destination PE
+      const sflowKey0 = `${tc.device}→${tc.destHostname}:${tc.algoTag}`;
+      const sflowMatch = sflowByKey.get(sflowKey0);
+
+      rows.push({
+        lspKey: sflowKey0,
+        source: tc.device,
+        dest: tc.destHostname,
+        endpoint: tc.endpoint,
+        tunnelType: tc.tunnelType,
+        algoTag: tc.algoTag,
+        bitsPerSec: tc.bitsPerSec,
+        bytesPerSec: tc.bytesPerSec,
+        packetsPerSec: tc.packetsPerSec,
+        txBytes: tc.txBytes,
+        txPackets: tc.txPackets,
+        counterInUse: tc.counterInUse,
+        vias: tc.vias,
+        // sFlow enrichment
+        topTalkers: sflowMatch?.topTalkers || [],
+        sflowBps: sflowMatch?.bitsPerSec || 0,
+        rateSource: 'counter',
+      });
+
+      // Remove matched sFlow entry so we don't double-show it
+      if (sflowMatch) sflowByKey.delete(sflowKey0);
+    }
+
+    // Include sFlow-only LSPs that don't have tunnel counter matches
+    for (const [key, lsp] of sflowByKey) {
+      rows.push({
+        lspKey: key,
+        source: lsp.sourceNode,
+        dest: lsp.destNode,
+        endpoint: '',
+        tunnelType: '',
+        algoTag: lsp.algorithm > 0 ? `algo${lsp.algorithm}` : 'algo0',
+        bitsPerSec: lsp.bitsPerSec || 0,
+        bytesPerSec: lsp.bytesPerSec || 0,
+        packetsPerSec: lsp.packetsPerSec || 0,
+        txBytes: 0,
+        txPackets: 0,
+        counterInUse: false,
+        vias: [],
+        topTalkers: lsp.topTalkers || [],
+        sflowBps: lsp.bitsPerSec || 0,
+        rateSource: 'sflow',
+      });
+    }
+
+    // Sort by rate descending
+    rows.sort((a, b) => b.bitsPerSec - a.bitsPerSec);
+
+    if (countEl) countEl.textContent = `${rows.length} tunnel${rows.length !== 1 ? 's' : ''}`;
+
+    if (rows.length === 0) {
       tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted">No flow data yet — configure sFlow on your Arista devices</td></tr>';
       return;
     }
 
-    tbody.innerHTML = lsps.map((lsp) => {
-      const algoTag = lsp.algorithm > 0
-        ? `<span class="badge badge-algo">FA ${lsp.algorithm}</span>`
+    tbody.innerHTML = rows.map((row) => {
+      const isFA = row.algoTag.startsWith('flex') || (row.algoTag !== 'algo0' && row.algoTag.startsWith('algo'));
+      const algoTag = isFA
+        ? `<span class="badge badge-algo">FA</span>`
         : '<span class="badge">SPF</span>';
 
-      const topTalker = lsp.topTalkers && lsp.topTalkers.length > 0
-        ? `<span class="text-muted" style="font-size:10px;">${lsp.topTalkers[0].srcIP} → ${lsp.topTalkers[0].dstIP}</span>`
+      const topTalker = row.topTalkers && row.topTalkers.length > 0
+        ? `<span class="text-muted" style="font-size:10px;">${row.topTalkers[0].srcIP} → ${row.topTalkers[0].dstIP}</span>`
         : '—';
 
-      const rateClass = lsp.bitsPerSec >= 100_000_000 ? 'text-warn'
-        : lsp.bitsPerSec >= 10_000_000 ? 'text-amber' : '';
+      const rateClass = row.bitsPerSec >= 100_000_000 ? 'text-warn'
+        : row.bitsPerSec >= 10_000_000 ? 'text-amber' : '';
 
-      return `<tr class="sflow-lsp-row" data-lsp-key="${encodeURIComponent(lsp.lspKey)}">
-        <td class="font-mono" style="font-size:11px;">${lsp.lspKey}</td>
-        <td>${lsp.sourceNode}</td>
-        <td>${lsp.destNode}</td>
+      // Rate source indicator
+      const rateIcon = row.rateSource === 'counter' ? '' : '<span title="Sampled (sFlow)" style="opacity:0.5;">~</span>';
+
+      return `<tr class="sflow-lsp-row" data-lsp-key="${encodeURIComponent(row.lspKey)}">
+        <td class="font-mono" style="font-size:11px;">${row.source} → ${row.dest}</td>
+        <td>${row.source}</td>
+        <td>${row.dest}</td>
         <td>${algoTag}</td>
-        <td class="${rateClass}" style="font-weight:600;">${formatRate(lsp.bitsPerSec)}</td>
-        <td class="text-muted">${(lsp.packetsPerSec || 0).toLocaleString()}</td>
+        <td class="${rateClass}" style="font-weight:600;">${rateIcon}${formatRate(row.bitsPerSec)}</td>
+        <td class="text-muted">${(row.packetsPerSec || 0).toLocaleString()}</td>
         <td>${topTalker}</td>
-        <td><button class="btn btn-ghost btn-sm btn-trace-lsp" data-lsp-key="${encodeURIComponent(lsp.lspKey)}">Trace</button></td>
+        <td><button class="btn btn-ghost btn-sm btn-trace-lsp" data-lsp-key="${encodeURIComponent(row.lspKey)}">Trace</button></td>
       </tr>`;
     }).join('');
 
@@ -4119,13 +4210,29 @@
       });
     });
 
-    // Bind row click to show LSP detail
+    // Bind row click to show detail
     tbody.querySelectorAll('.sflow-lsp-row').forEach((row) => {
       row.addEventListener('click', async () => {
         const lspKey = decodeURIComponent(row.dataset.lspKey);
+        // Try sFlow detail first, then build from tunnel counter data
         const detail = await API.getSflowLspDetail(lspKey);
         if (detail) {
           showLspDetailPanel(detail);
+        } else {
+          // Build a basic detail panel from the tunnel counter row data
+          const match = rows.find((r) => r.lspKey === lspKey);
+          if (match) showLspDetailPanel({
+            lspKey: match.lspKey,
+            sourceNode: match.source,
+            destNode: match.dest,
+            algorithm: match.algoTag === 'algo0' ? 0 : 128,
+            bitsPerSec: match.bitsPerSec,
+            bytesPerSec: match.bytesPerSec,
+            packetsPerSec: match.packetsPerSec,
+            labels: [],
+            topTalkers: match.topTalkers,
+            edgePath: [],
+          });
         }
       });
     });

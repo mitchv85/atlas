@@ -209,6 +209,11 @@ poller.on('topology:updated', (topology) => {
   }
 });
 
+// Tunnel counter rates → WebSocket broadcast
+poller.on('tunnelCounters:updated', (rates) => {
+  broadcast({ type: 'sflow:tunnelRates:updated', data: rates });
+});
+
 // ---------------------------------------------------------------------------
 // WebSocket SSH Proxy — /ssh?device=<name>
 // ---------------------------------------------------------------------------

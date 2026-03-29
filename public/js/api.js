@@ -301,6 +301,12 @@ const API = {
     return res.json();
   },
 
+  /** Fetch deterministic tunnel counter rates from eAPI polling. */
+  async getTunnelRates() {
+    const res = await fetch('/api/sflow/tunnel-rates');
+    return res.json();
+  },
+
   /** Fetch detailed flow data for a specific LSP. */
   async getSflowLspDetail(lspKey) {
     const res = await fetch(`/api/sflow/lsp/${encodeURIComponent(lspKey)}`);

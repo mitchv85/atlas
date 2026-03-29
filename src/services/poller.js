@@ -23,6 +23,14 @@ class TopologyPoller extends EventEmitter {
     this._lastHash = null;
     this._lastError = null;
     this._collectCount = 0;
+
+    // ── Tunnel Counter Rate Tracking ──
+    // Previous poll's raw counters for delta calculation
+    // Map<"device:endpoint:type", { txBytes, txPackets, timestamp }>
+    this._prevTunnelCounters = new Map();
+    // Current computed rates
+    // Map<"device:endpoint:type", { bytesPerSec, packetsPerSec, bitsPerSec, ... }>
+    this._tunnelRates = new Map();
   }
 
   /**
@@ -152,7 +160,7 @@ class TopologyPoller extends EventEmitter {
           try {
             const teResults = await eapi.execute(
               device,
-              ['show traffic-engineering interfaces'],
+              ['show traffic-engineering interfaces', 'show mpls tunnel counters'],
               'json'
             );
             if (teResults[0]) {
@@ -170,6 +178,11 @@ class TopologyPoller extends EventEmitter {
                   maxResvBw: te.maxResvBw?.value ?? null,
                 });
               }
+            }
+
+            // Parse tunnel counters and compute rates via delta from previous poll
+            if (teResults[1]) {
+              this._processTunnelCounters(device.name, teResults[1]);
             }
           } catch {
             // TE not supported on this device — OK
@@ -394,6 +407,9 @@ class TopologyPoller extends EventEmitter {
       const hash = this._computeHash(topology);
       const changed = hash !== this._lastHash;
 
+      // Attach tunnel counter rates to topology
+      topology.tunnelCounterRates = this._serializeTunnelRates();
+
       this._topology = topology;
       this._lastHash = hash;
       this._lastError = null;
@@ -405,6 +421,11 @@ class TopologyPoller extends EventEmitter {
         this.emit('topology:changed', topology);
       }
       this.emit('topology:updated', topology);
+
+      // Emit tunnel counter rates separately for sFlow integration
+      if (this._tunnelRates.size > 0) {
+        this.emit('tunnelCounters:updated', this._serializeTunnelRates());
+      }
 
     } catch (err) {
       this._lastError = err.message;
@@ -423,6 +444,136 @@ class TopologyPoller extends EventEmitter {
     // Include metrics so metric changes are detected
     const metrics = topology.edges.map((e) => `${e.data.id}:${e.data.metric}`).join(',');
     return `${topology.metadata.nodeCount}|${topology.metadata.edgeCount}|${nodeIds}|${edgeIds}|${metrics}`;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // Tunnel Counter Rate Calculation
+  // ═══════════════════════════════════════════════════════════════════════
+
+  /**
+   * Process raw tunnel counter output from `show mpls tunnel counters`.
+   * Computes rates by diffing against the previous poll's counters.
+   *
+   * Tunnel types we care about:
+   *   "IS-IS SR IPv4"  → algo 0 (SPF)
+   *   "IS-IS FlexAlgo" → FlexAlgo (128+)
+   *   "TI-LFA"         → repair tunnels (skip for LSP table)
+   *
+   * @param {string} deviceName - Device hostname
+   * @param {Object} raw - Raw eAPI JSON from `show mpls tunnel counters`
+   */
+  _processTunnelCounters(deviceName, raw) {
+    const now = Date.now();
+    const entries = raw.entries || [];
+
+    for (const entry of entries) {
+      const { tunnelType, endpoint, txBytes, txPackets } = entry;
+
+      // Skip TI-LFA repair tunnels and entries without a real endpoint
+      if (tunnelType === 'TI-LFA' || !endpoint || endpoint === '::/0') continue;
+
+      // Determine algorithm from tunnel type
+      let algoTag;
+      if (tunnelType === 'IS-IS SR IPv4') {
+        algoTag = 'algo0';
+      } else if (tunnelType === 'IS-IS FlexAlgo') {
+        algoTag = 'flexalgo'; // We'll resolve the specific algo number later
+      } else {
+        continue; // Unknown type
+      }
+
+      const counterKey = `${deviceName}:${endpoint}:${algoTag}`;
+
+      // Look up previous counters for rate calculation
+      const prev = this._prevTunnelCounters.get(counterKey);
+
+      if (prev) {
+        const elapsedMs = now - prev.timestamp;
+        if (elapsedMs > 0 && txBytes >= prev.txBytes) {
+          const deltaBytes = txBytes - prev.txBytes;
+          const deltaPackets = txPackets - prev.txPackets;
+          const elapsedSec = elapsedMs / 1000;
+
+          this._tunnelRates.set(counterKey, {
+            device: deviceName,
+            endpoint,
+            tunnelType,
+            algoTag,
+            bytesPerSec: Math.round(deltaBytes / elapsedSec),
+            packetsPerSec: Math.round(deltaPackets / elapsedSec),
+            bitsPerSec: Math.round((deltaBytes * 8) / elapsedSec),
+            txBytes,
+            txPackets,
+            vias: entry.vias || [],
+            counterInUse: entry.counterInUse,
+            lastUpdated: new Date(now).toISOString(),
+          });
+        }
+      }
+
+      // Store current counters for next poll's delta
+      this._prevTunnelCounters.set(counterKey, {
+        txBytes,
+        txPackets,
+        timestamp: now,
+      });
+    }
+  }
+
+  /**
+   * Serialize tunnel rates for API/WebSocket consumption.
+   * Resolves endpoints to hostnames using the current topology.
+   *
+   * @returns {Array} - Serialized tunnel rate records
+   */
+  _serializeTunnelRates() {
+    const rates = [];
+    const topo = this._topology;
+
+    // Build a router-ID → hostname map from topology
+    const ridToHostname = new Map();
+    if (topo) {
+      for (const node of topo.nodes) {
+        const rid = node.data.routerCaps?.routerId;
+        if (rid) {
+          ridToHostname.set(rid, node.data.hostname || node.data.label);
+          // Also index with /32 suffix since endpoints are "100.0.0.X/32"
+          ridToHostname.set(`${rid}/32`, node.data.hostname || node.data.label);
+        }
+      }
+    }
+
+    for (const [key, rate] of this._tunnelRates) {
+      const destHostname = ridToHostname.get(rate.endpoint) || rate.endpoint;
+
+      rates.push({
+        key,
+        device: rate.device,
+        endpoint: rate.endpoint,
+        destHostname,
+        tunnelType: rate.tunnelType,
+        algoTag: rate.algoTag,
+        bytesPerSec: rate.bytesPerSec,
+        packetsPerSec: rate.packetsPerSec,
+        bitsPerSec: rate.bitsPerSec,
+        txBytes: rate.txBytes,
+        txPackets: rate.txPackets,
+        vias: rate.vias,
+        counterInUse: rate.counterInUse,
+        lastUpdated: rate.lastUpdated,
+      });
+    }
+
+    // Sort by bitsPerSec descending
+    rates.sort((a, b) => b.bitsPerSec - a.bitsPerSec);
+    return rates;
+  }
+
+  /**
+   * Get current tunnel counter rates (public API).
+   */
+  getTunnelRates() {
+    return this._serializeTunnelRates();
   }
 }
 

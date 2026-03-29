@@ -29,6 +29,16 @@ router.get('/flows', (_req, res) => {
   res.json(snapshot);
 });
 
+// ── Tunnel Counter Rates (deterministic, from eAPI polling) ───────────────
+
+router.get('/tunnel-rates', (req, res) => {
+  const poller = req.app.get('poller');
+  if (!poller) {
+    return res.status(503).json({ error: 'Poller not initialized' });
+  }
+  res.json({ rates: poller.getTunnelRates() });
+});
+
 // ── LSP Detail ────────────────────────────────────────────────────────────
 
 router.get('/lsp/:lspKey', (req, res) => {
