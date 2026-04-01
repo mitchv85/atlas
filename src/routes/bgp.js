@@ -334,12 +334,27 @@ router.get('/prefix-list', (req, res) => {
     seen.add(`${e.prefix}/${e.prefixLen}`);
   }
   const list = [...seen].sort((a, b) => {
-    // Sort numerically by first octet, then lexicographically
     const [aOct] = a.split('.').map(Number);
     const [bOct] = b.split('.').map(Number);
     return aOct !== bOct ? aOct - bOct : a.localeCompare(b);
   });
   res.json(list);
+});
+
+/**
+ * GET /api/bgp/debug-rib
+ * Returns the first 5 RIB entries with full raw extCommunities — lets us
+ * confirm exactly what the bulk FRR collection stores vs. per-prefix detail.
+ * Temporary diagnostic — remove once Color community format is confirmed.
+ */
+router.get('/debug-rib', (req, res) => {
+  const { entries } = bgpStore.getRib({ limit: 5 });
+  res.json(entries.map(e => ({
+    prefix:         `${e.prefix}/${e.prefixLen}`,
+    extCommunities: e.extCommunities,
+    communities:    e.communities,
+    label:          e.label,
+  })));
 });
 
 /**

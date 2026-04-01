@@ -186,10 +186,12 @@ function parseExtCommunities(raw) {
       continue;
     }
 
-    // Color Extended Community: "Color:00:128" → algo/color 128
-    const colorMatch = str.match(/^Color:(\d+):(\d+)$/i);
+    // Color Extended Community — two known FRR formats:
+    //   "Color:00:128"  (two-colon with leading zero sub-type)
+    //   "Color:128"     (single-value, seen in some FRR versions / bulk output)
+    const colorMatch = str.match(/^Color:(?:\d+:)?(\d+)$/i);
     if (colorMatch) {
-      results.push({ type: 'Color', value: parseInt(colorMatch[2], 10) });
+      results.push({ type: 'Color', value: parseInt(colorMatch[1], 10) });
       continue;
     }
 
