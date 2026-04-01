@@ -345,16 +345,48 @@ router.get('/prefix-list', (req, res) => {
  * GET /api/bgp/debug-rib
  * Returns the first 5 RIB entries with full raw extCommunities — lets us
  * confirm exactly what the bulk FRR collection stores vs. per-prefix detail.
+ * Also probes the top-level FRR JSON structure to diagnose parsing mismatches.
  * Temporary diagnostic — remove once Color community format is confirmed.
  */
 router.get('/debug-rib', (req, res) => {
   const { entries } = bgpStore.getRib({ limit: 5 });
-  res.json(entries.map(e => ({
-    prefix:         `${e.prefix}/${e.prefixLen}`,
-    extCommunities: e.extCommunities,
-    communities:    e.communities,
-    label:          e.label,
-  })));
+
+  // Also probe the live FRR JSON structure so we can see if the parser
+  // is targeting the right field path (raw.routes?.routeDistinguishers)
+  let frrStructure = null;
+  try {
+    const { execSync } = require('child_process');
+    const raw = JSON.parse(
+      execSync('vtysh -c "show bgp ipv4 vpn json"', { encoding: 'utf-8', timeout: 15000 })
+    );
+    // Return the top-level keys and one level of nesting — don't dump the full table
+    frrStructure = {
+      topLevelKeys: Object.keys(raw),
+      routesKeys:   raw.routes      ? Object.keys(raw.routes)      : null,
+      vrfsKeys:     raw.vrfs        ? Object.keys(raw.vrfs)        : null,
+      hasRouteDist: !!(raw.routes?.routeDistinguishers),
+      hasBareRouteDist: !!(raw.routeDistinguishers),
+      // Show one sample RD key if we can find the route distinguishers anywhere
+      sampleRD: Object.keys(raw.routes?.routeDistinguishers
+                         || raw.routeDistinguishers
+                         || raw.vrfs?.default?.routes?.routeDistinguishers
+                         || {})[0] || null,
+    };
+  } catch (e) {
+    frrStructure = { error: e.message };
+  }
+
+  res.json({
+    ribLength: bgpStore.rib.length,
+    vrfCount:  bgpStore.vrfs.size,
+    frrStructure,
+    sampleEntries: entries.map(e => ({
+      prefix:         `${e.prefix}/${e.prefixLen}`,
+      extCommunities: e.extCommunities,
+      communities:    e.communities,
+      label:          e.label,
+    })),
+  });
 });
 
 /**
