@@ -360,17 +360,28 @@ router.get('/debug-rib', (req, res) => {
       execSync('vtysh -c "show bgp ipv4 vpn json"', { encoding: 'utf-8', timeout: 15000 })
     );
     // Return the top-level keys and one level of nesting — don't dump the full table
+    const rds = raw.routes?.routeDistinguishers || {};
+    const firstRD = Object.keys(rds)[0];
+    const firstRDData = firstRD ? rds[firstRD] : null;
+    const firstPfxKey = firstRDData ? Object.keys(firstRDData)[0] : null;
+    const firstPfxVal = (firstRDData && firstPfxKey) ? firstRDData[firstPfxKey] : null;
+
     frrStructure = {
-      topLevelKeys: Object.keys(raw),
-      routesKeys:   raw.routes      ? Object.keys(raw.routes)      : null,
-      vrfsKeys:     raw.vrfs        ? Object.keys(raw.vrfs)        : null,
-      hasRouteDist: !!(raw.routes?.routeDistinguishers),
-      hasBareRouteDist: !!(raw.routeDistinguishers),
-      // Show one sample RD key if we can find the route distinguishers anywhere
-      sampleRD: Object.keys(raw.routes?.routeDistinguishers
-                         || raw.routeDistinguishers
-                         || raw.vrfs?.default?.routes?.routeDistinguishers
-                         || {})[0] || null,
+      topLevelKeys:       Object.keys(raw),
+      routesKeys:         raw.routes      ? Object.keys(raw.routes)      : null,
+      vrfsKeys:           raw.vrfs        ? Object.keys(raw.vrfs)        : null,
+      hasRouteDist:       !!(raw.routes?.routeDistinguishers),
+      hasBareRouteDist:   !!(raw.routeDistinguishers),
+      sampleRD:           firstRD || null,
+      // What shape is the value under the first prefix key?
+      // Parser expects: Array of path objects  [{ nexthops, remoteLabel, ... }]
+      // If FRR returns:  { paths: [...] }  the parser will silently miss everything
+      firstPrefixKey:     firstPfxKey,
+      firstPrefixValType: Array.isArray(firstPfxVal) ? 'ARRAY' : (firstPfxVal && typeof firstPfxVal === 'object') ? 'OBJECT:' + Object.keys(firstPfxVal).join(',') : String(firstPfxVal),
+      // Show the raw first path entry so we can see field names
+      firstPathSample:    Array.isArray(firstPfxVal)
+                            ? firstPfxVal[0]
+                            : (firstPfxVal?.paths?.[0] ?? firstPfxVal),
     };
   } catch (e) {
     frrStructure = { error: e.message };
