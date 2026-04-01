@@ -1634,7 +1634,17 @@
     // Reset algo overlay to default IS-IS metrics
     topo.setAlgorithmOverlay(0);
     pathAlgo.value = '0';
-    // Clear selection markers too
+    // Clear all dropdown values — path analysis combos
+    comboPathSource.clear();
+    comboPathDest.clear();
+    comboPathFailNode.setValue('');   // has an empty 'None' option
+    comboPathFailLink.setValue('');   // has an empty 'None' option
+    // Clear service trace inputs
+    comboSvcSource.clear();
+    comboSvcVrf.clear();
+    svcTracePrefix.value = '';
+    prefixAutocomplete._close();
+    // Clear selection markers
     topo.updateSelectionMarkers({ source: null, dest: null, failNode: null, failEdge: null });
     if (topologyData) {
       setStatus('live', `${topologyData.metadata.nodeCount} nodes, ${topologyData.metadata.edgeCount} links`);
@@ -1909,6 +1919,7 @@
             <th>Next-Hop</th>
             <th>Origin PE</th>
             <th>AS Path</th>
+            <th>FlexAlgo</th>
             <th>Service Label</th>
             <th>Local Pref</th>
             <th></th>
@@ -1927,17 +1938,26 @@
         const pfxKey = `${e.prefix}/${e.prefixLen}`;
         const detailId = `pfx-detail-${containerId}-${i}`;
 
+        // Resolve FlexAlgo from Color extended community
+        const colorComm = (e.extCommunities || []).find(c => c.type === 'Color');
+        const algoNum   = colorComm ? colorComm.value : 0;
+        const algoIsFA  = algoNum >= 128;
+        const algoCell  = algoIsFA
+          ? `<span class="detail-badge red"   title="Color community ${algoNum} → FlexAlgo ${algoNum}">Algo ${algoNum}</span>`
+          : `<span class="detail-badge green" title="No Color community — standard SPF">Algo 0</span>`;
+
         html += `<tr class="bgp-pfx-row" data-prefix="${esc(pfxKey)}" data-detail-id="${detailId}" title="Click for full path details">
           <td style="font-family:'JetBrains Mono',monospace;font-size:0.78rem;">${esc(pfxKey)}</td>
           <td style="font-family:'JetBrains Mono',monospace;font-size:0.78rem;">${esc(e.nextHop)}</td>
           <td>${esc(peLabel)}</td>
           <td style="font-family:'JetBrains Mono',monospace;font-size:0.78rem;">${esc(e.asPath || '—')}</td>
+          <td>${algoCell}</td>
           <td>${e.label ? `<span class="detail-badge blue">${e.label}</span>` : '<span style="color:var(--text-muted);">—</span>'}</td>
           <td>${e.locPref}</td>
           <td><button class="btn btn-ghost btn-sm btn-trace-svc" data-prefix="${esc(pfxKey)}" title="Trace service path across transport">⤴ Trace</button></td>
         </tr>
         <tr class="bgp-pfx-expand" id="${detailId}" style="display:none;">
-          <td colspan="7"><div class="bgp-pfx-detail-body"></div></td>
+          <td colspan="8"><div class="bgp-pfx-detail-body"></div></td>
         </tr>`;
       }
 
