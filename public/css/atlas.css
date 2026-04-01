@@ -440,6 +440,7 @@ body {
 .detail-badge.amber { background: rgba(251, 191, 36, 0.15); color: var(--amber); }
 .detail-badge.cyan  { background: var(--accent-glow); color: var(--accent); }
 .detail-badge.red   { background: rgba(248, 113, 113, 0.15); color: var(--red); }
+.detail-badge.blue  { background: rgba(99, 179, 237, 0.15); color: #63b3ed; }
 
 /* Prefix list in detail panel */
 .prefix-list {
@@ -508,6 +509,50 @@ body {
   padding: 6px 10px !important;
   appearance: auto !important;
   cursor: text !important;
+}
+
+/* ── Prefix autocomplete dropdown ── */
+.prefix-autocomplete-wrap {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.prefix-autocomplete-dropdown {
+  position: absolute;
+  top: calc(100% + 2px);
+  left: 0;
+  min-width: 200px;
+  max-height: 220px;
+  overflow-y: auto;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+  z-index: 9999;
+}
+
+.prefix-autocomplete-item {
+  padding: 6px 10px;
+  font-size: 0.78rem;
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.prefix-autocomplete-item:hover,
+.prefix-autocomplete-item.active {
+  background: var(--accent-glow);
+  color: var(--accent);
+}
+
+.prefix-autocomplete-empty {
+  padding: 8px 10px;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-style: italic;
 }
 
 .path-bar-section {

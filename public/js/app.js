@@ -121,6 +121,12 @@
   const comboSvcVrf = new SearchableCombo($('#comboSvcVrf'), { placeholder: 'All VRFs' });
   const svcTraceSource = { get value() { return comboSvcSource.getValue(); }, set value(v) { comboSvcSource.setValue(v); } };
 
+  // Prefix autocomplete — feeds from /api/bgp/prefix-list
+  const prefixAutocomplete = new PrefixAutocomplete(
+    $('#svcTracePrefix'),
+    $('#prefixAutocompleteDropdown')
+  );
+
   // ── Tab Switching ───────────────────────────────────────────────
   let activeTab = 'topology';
   const deviceTestResults = new Map(); // id → 'ok' | 'fail' | 'testing'
@@ -1640,6 +1646,8 @@
 
   /** Refresh the BGP tab — collect from FRR, then update status/VRFs/neighbors. */
   async function refreshBgpPage() {
+    // Bust the prefix autocomplete cache so new prefixes appear
+    prefixAutocomplete.invalidateCache();
     // Trigger collection from FRR first
     try {
       await API.collectBgp();
@@ -1901,7 +1909,7 @@
             <th>Next-Hop</th>
             <th>Origin PE</th>
             <th>AS Path</th>
-            <th>Label</th>
+            <th>Service Label</th>
             <th>Local Pref</th>
             <th></th>
           </tr>
@@ -1924,7 +1932,7 @@
           <td style="font-family:'JetBrains Mono',monospace;font-size:0.78rem;">${esc(e.nextHop)}</td>
           <td>${esc(peLabel)}</td>
           <td style="font-family:'JetBrains Mono',monospace;font-size:0.78rem;">${esc(e.asPath || '—')}</td>
-          <td>${e.label ? `<span class="detail-badge green">${e.label}</span>` : '<span style="color:var(--text-muted);">—</span>'}</td>
+          <td>${e.label ? `<span class="detail-badge blue">${e.label}</span>` : '<span style="color:var(--text-muted);">—</span>'}</td>
           <td>${e.locPref}</td>
           <td><button class="btn btn-ghost btn-sm btn-trace-svc" data-prefix="${esc(pfxKey)}" title="Trace service path across transport">⤴ Trace</button></td>
         </tr>
@@ -2281,7 +2289,7 @@
       html += `<div class="detail-section"><h4>Label Stack (outer → inner)</h4>`;
       html += `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;">`;
       for (const lbl of result.labelStack) {
-        const color = lbl.type === 'VPN Label' ? 'green' : 'cyan';
+        const color = labelTypeColor(lbl.type);
         html += `<span class="detail-badge ${color}" title="${esc(lbl.description)}" style="cursor:help;font-size:0.85rem;padding:4px 10px;">${lbl.label}</span>`;
       }
       html += `</div>`;
@@ -3951,6 +3959,19 @@
 
   // ── Utility ───────────────────────────────────────────────────────
   /** Escape HTML entities to prevent XSS in dynamic content. */
+  /**
+   * Map a label type string to a badge color class.
+   *   blue  = Service Label (VPN/MPLS label carried in BGP)
+   *   green = Transport Label, Algo 0 (standard SPF Prefix-SID)
+   *   red   = Transport Label, FlexAlgo (algo 128-255 Prefix-SID)
+   *   amber = Adjacency SID (used as label but not a service or prefix label)
+   */
+  function labelTypeColor(type) {
+    if (type === 'VPN Label') return 'blue';
+    if (/^FlexAlgo/.test(type)) return 'red';
+    return 'green';
+  }
+
   function esc(str) {
     if (str == null) return '';
     const div = document.createElement('div');
@@ -3984,31 +4005,34 @@
       return { description: 'Implicit Null (PHP)', color: 'green' };
     }
 
-    // SRGB range — Prefix-SID
+    // SRGB range — Prefix-SID (algo 0 = green/transport, algo 128+ = red/FlexAlgo)
     if (label >= srgbBase && label < srgbEnd) {
       const sid = label - srgbBase;
-      // Try to find the node with this prefix-SID
+      // Try to find the node with this prefix-SID and determine its algorithm
       let nodeName = '';
+      let isFlexAlgo = false;
       if (topologyData) {
         for (const node of topologyData.nodes) {
           const match = (node.data.srPrefixSids || []).find((s) => s.sid === sid);
           if (match) {
             nodeName = ` (${node.data.hostname})`;
+            isFlexAlgo = (match.algorithm || 0) >= 128;
             break;
           }
         }
       }
-      return { description: `Prefix-SID ${sid}${nodeName}`, color: 'cyan' };
+      const color = isFlexAlgo ? 'red' : 'green';
+      const algoLabel = isFlexAlgo ? ` Algo ${(topologyData?.nodes || []).flatMap(n => n.data.srPrefixSids || []).find(s => s.sid === sid)?.algorithm || '?'}` : '';
+      return { description: `Prefix-SID ${sid}${algoLabel}${nodeName}`, color };
     }
 
     // SRLB range — likely Adj-SID (dynamic)
     if (label >= srlbBase && label < srlbEnd) {
-      return { description: `Adj-SID ${label} (SRLB)`, color: 'green' };
+      return { description: `Adj-SID ${label} (SRLB)`, color: 'amber' };
     }
 
     // Below SRGB — likely a dynamic Adj-SID from the local label space
     if (label > 15 && label < srgbBase) {
-      // Try to identify by looking up adj-SIDs in the topology
       let adjInfo = '';
       if (topologyData) {
         for (const node of topologyData.nodes) {
@@ -4019,7 +4043,7 @@
           }
         }
       }
-      return { description: `Adj-SID ${label}${adjInfo}`, color: 'green' };
+      return { description: `Adj-SID ${label}${adjInfo}`, color: 'amber' };
     }
 
     return { description: `Label ${label}`, color: 'cyan' };

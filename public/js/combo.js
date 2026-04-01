@@ -207,3 +207,127 @@ class SearchableCombo {
     return div.innerHTML;
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PrefixAutocomplete
+// Lightweight autocomplete for the service-trace prefix input.
+// Fetches the prefix list from /api/bgp/prefix-list once and caches it.
+// ─────────────────────────────────────────────────────────────────────────────
+class PrefixAutocomplete {
+  /**
+   * @param {HTMLInputElement} input      - The text input element
+   * @param {HTMLElement}      dropdown   - The dropdown container element
+   */
+  constructor(input, dropdown) {
+    this.input      = input;
+    this.dropdown   = dropdown;
+    this.cache      = null;   // null = not loaded yet
+    this.activeIdx  = -1;
+    this.MAX        = 12;     // Max suggestions shown at once
+
+    this._bind();
+  }
+
+  _bind() {
+    this.input.addEventListener('input',   () => this._onInput());
+    this.input.addEventListener('keydown', (e) => this._onKey(e));
+    this.input.addEventListener('focus',   () => { if (this.input.value.trim()) this._onInput(); });
+
+    // Close on outside click
+    document.addEventListener('mousedown', (e) => {
+      if (!this.dropdown.contains(e.target) && e.target !== this.input) {
+        this._close();
+      }
+    });
+  }
+
+  async _onInput() {
+    const q = this.input.value.trim();
+    if (!q) { this._close(); return; }
+
+    if (!this.cache) await this._fetchList();
+    if (!this.cache) return;   // fetch failed
+
+    const matches = this.cache.filter(p => p.includes(q)).slice(0, this.MAX);
+    this._render(matches, q);
+  }
+
+  async _fetchList() {
+    try {
+      const res = await fetch('/api/bgp/prefix-list');
+      this.cache = res.ok ? await res.json() : [];
+    } catch {
+      this.cache = [];
+    }
+  }
+
+  _render(matches, q) {
+    this.activeIdx = -1;
+    if (!matches.length) {
+      this.dropdown.innerHTML = `<div class="prefix-autocomplete-empty">No matching prefixes</div>`;
+      this.dropdown.style.display = 'block';
+      return;
+    }
+    this.dropdown.innerHTML = matches.map((p, i) => {
+      // Bold the matching substring
+      const idx   = p.indexOf(q);
+      const safe  = (s) => s.replace(/&/g,'&amp;').replace(/</g,'&lt;');
+      const label = idx >= 0
+        ? safe(p.slice(0, idx)) + '<strong>' + safe(p.slice(idx, idx + q.length)) + '</strong>' + safe(p.slice(idx + q.length))
+        : safe(p);
+      return `<div class="prefix-autocomplete-item" data-idx="${i}" data-value="${safe(p)}">${label}</div>`;
+    }).join('');
+
+    this.dropdown.querySelectorAll('.prefix-autocomplete-item').forEach(el => {
+      el.addEventListener('mousedown', (e) => {
+        e.preventDefault();  // prevent blur before we read the value
+        this._select(el.dataset.value);
+      });
+    });
+
+    this.dropdown.style.display = 'block';
+  }
+
+  _onKey(e) {
+    const items = [...this.dropdown.querySelectorAll('.prefix-autocomplete-item')];
+    if (!items.length || this.dropdown.style.display === 'none') return;
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      this.activeIdx = Math.min(this.activeIdx + 1, items.length - 1);
+      this._highlight(items);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      this.activeIdx = Math.max(this.activeIdx - 1, 0);
+      this._highlight(items);
+    } else if (e.key === 'Enter' && this.activeIdx >= 0) {
+      e.preventDefault();   // prevent form submit / trace trigger until selected
+      this._select(items[this.activeIdx].dataset.value);
+    } else if (e.key === 'Escape') {
+      this._close();
+    }
+  }
+
+  _highlight(items) {
+    items.forEach((el, i) => el.classList.toggle('active', i === this.activeIdx));
+    if (this.activeIdx >= 0) items[this.activeIdx].scrollIntoView({ block: 'nearest' });
+  }
+
+  _select(value) {
+    this.input.value = value;
+    this._close();
+    // Invalidate cache so a fresh BGP poll picks up new prefixes
+    // (keep cache for the session — only reset on explicit BGP refresh)
+  }
+
+  _close() {
+    this.dropdown.style.display = 'none';
+    this.dropdown.innerHTML = '';
+    this.activeIdx = -1;
+  }
+
+  /** Call this after a BGP data refresh to bust the prefix cache. */
+  invalidateCache() {
+    this.cache = null;
+  }
+}

@@ -261,6 +261,12 @@ const API = {
     return res.json();
   },
 
+  /** Fetch a flat sorted list of all known VPN prefixes for autocomplete. */
+  async getBgpPrefixList() {
+    const res = await fetch('/api/bgp/prefix-list');
+    return res.json();
+  },
+
   /** Fetch full BGP path detail for a specific VPN prefix. */
   async getBgpPrefixDetail(prefix) {
     const res = await fetch(`/api/bgp/prefix/${encodeURIComponent(prefix)}`);

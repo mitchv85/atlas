@@ -108,9 +108,10 @@
       <label class="path-label">VRF</label>
       <div class="combo-container" id="comboSvcVrf"></div>
     </div>
-    <div class="path-bar-section" style="flex:2;">
+    <div class="path-bar-section prefix-autocomplete-wrap" style="flex:2;">
       <label class="path-label">VPN Prefix</label>
-      <input type="text" class="path-select svc-trace-input" id="svcTracePrefix" placeholder="e.g. 92.1.1.2/32" />
+      <input type="text" class="path-select svc-trace-input" id="svcTracePrefix" placeholder="e.g. 92.1.1.2/32" autocomplete="off" />
+      <div class="prefix-autocomplete-dropdown" id="prefixAutocompleteDropdown" style="display:none;"></div>
     </div>
     <button class="btn btn-primary" id="btnSvcTrace">
       <svg viewBox="0 0 20 20" fill="currentColor" class="btn-icon">

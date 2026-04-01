@@ -323,6 +323,26 @@ router.get('/rib', (req, res) => {
 // ---------------------------------------------------------------------------
 
 /**
+ * GET /api/bgp/prefix-list
+ * Return a flat, deduplicated, sorted list of all known VRF prefixes as
+ * "prefix/len" strings — used by the service-trace prefix autocomplete.
+ */
+router.get('/prefix-list', (req, res) => {
+  const { entries } = bgpStore.getRib({ limit: 10000 });
+  const seen = new Set();
+  for (const e of entries) {
+    seen.add(`${e.prefix}/${e.prefixLen}`);
+  }
+  const list = [...seen].sort((a, b) => {
+    // Sort numerically by first octet, then lexicographically
+    const [aOct] = a.split('.').map(Number);
+    const [bOct] = b.split('.').map(Number);
+    return aOct !== bOct ? aOct - bOct : a.localeCompare(b);
+  });
+  res.json(list);
+});
+
+/**
  * GET /api/bgp/prefix/:prefix
  * Fetch full BGP path detail for a specific prefix via vtysh.
  * Returns extended communities, standard communities, cluster list,
