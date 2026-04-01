@@ -511,7 +511,25 @@ body {
   cursor: text !important;
 }
 
-/* ── Prefix autocomplete dropdown ── */
+/* ── Label color legend ── */
+.label-legend {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin: 4px 0 10px;
+}
+
+.label-legend-title {
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-muted);
+  margin-right: 2px;
+}
+
+
 .prefix-autocomplete-wrap {
   position: relative;
   display: flex;

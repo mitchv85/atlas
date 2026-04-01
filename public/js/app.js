@@ -2286,7 +2286,16 @@
 
     // Label Stack — the crown jewel
     if (result.labelStack && result.labelStack.length > 0) {
-      html += `<div class="detail-section"><h4>Label Stack (outer → inner)</h4>`;
+      html += `<div class="detail-section">
+        <div style="display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:6px;margin-bottom:8px;">
+          <h4 style="margin:0;">Label Stack (outer → inner)</h4>
+          <div class="label-legend" style="margin:0;">
+            <span class="detail-badge green"  style="font-size:0.62rem;padding:2px 6px;" title="SR Prefix-SID, Algo 0">Transport · Algo 0</span>
+            <span class="detail-badge red"    style="font-size:0.62rem;padding:2px 6px;" title="SR Prefix-SID, FlexAlgo">Transport · FlexAlgo</span>
+            <span class="detail-badge blue"   style="font-size:0.62rem;padding:2px 6px;" title="VPN/MPLS service label">Service Label</span>
+            <span class="detail-badge amber"  style="font-size:0.62rem;padding:2px 6px;" title="Adjacency SID">Adj-SID</span>
+          </div>
+        </div>`;
       html += `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;">`;
       for (const lbl of result.labelStack) {
         const color = labelTypeColor(lbl.type);
