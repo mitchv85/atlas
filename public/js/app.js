@@ -3477,11 +3477,13 @@
         // FA Prefix SIDs
         const faSids = (d.srPrefixSids || []).filter(s => s.algorithm >= 128);
         if (faSids.length > 0) {
+          const srgbBase = d.routerCaps?.srgb?.[0]?.base || SRGB_BASE;
           html += `<div style="margin-top:8px;">`;
           for (const s of faSids) {
+            const globalLabel = srgbBase + s.sid;
             html += `<div class="detail-row">
               <span class="detail-label">Algo ${s.algorithm} SID</span>
-              <span class="detail-value">${esc(s.prefix)} <span class="detail-badge red" style="margin-left:4px;">SID ${s.sid}</span></span>
+              <span class="detail-value">${esc(s.prefix)} <span class="detail-badge red" style="margin-left:4px;">SID ${globalLabel}</span></span>
             </div>`;
           }
           html += `</div>`;
@@ -3512,7 +3514,9 @@
                   if (s.noPHP) flags += '<span class="detail-badge amber" style="margin-left:4px;font-size:0.65rem;">noPHP</span>';
                   if (s.explicitNull) flags += '<span class="detail-badge green" style="margin-left:4px;font-size:0.65rem;">E</span>';
                   const sidColor = (s.algorithm || 0) >= 128 ? 'red' : 'green';
-                  return `<li>${esc(s.prefix)}<span class="detail-badge ${sidColor}" style="margin-left:8px;">SID ${s.sid}</span><span class="prefix-metric">algo ${s.algorithm}</span>${flags}</li>`;
+                  const srgbBase = d.routerCaps?.srgb?.[0]?.base || SRGB_BASE;
+                  const globalLabel = srgbBase + s.sid;
+                  return `<li>${esc(s.prefix)}<span class="detail-badge ${sidColor}" style="margin-left:8px;">SID ${globalLabel}</span><span class="prefix-metric">algo ${s.algorithm}</span>${flags}</li>`;
                 }
               )
               .join('')}
@@ -3573,7 +3577,7 @@
 
         for (const nbr of neighbors) {
           const adjStr = nbr.adjSids.length > 0
-            ? nbr.adjSids.map((s) => `<span class="detail-badge green" style="font-size:0.65rem;">Adj ${s.sid}</span>`).join(' ')
+            ? nbr.adjSids.map((s) => `<span class="detail-badge amber" style="font-size:0.65rem;">Adj ${s.sid}</span>`).join(' ')
             : '';
           html += `
             <div style="padding:6px 0;border-bottom:1px solid var(--border);">
