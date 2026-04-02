@@ -40,13 +40,13 @@ class TopologyPoller extends EventEmitter {
     const config = deviceStore.getPollingConfig();
 
     if (!config.enabled) {
-      console.log('  Polling disabled in config.');
+      console.info('  [Poller] Disabled in config.');
       return;
     }
 
     const intervalMs = (config.intervalSeconds || 15) * 1000;
 
-    console.log(`  Polling every ${config.intervalSeconds}s`);
+    console.info(`  [Poller] Polling every ${config.intervalSeconds}s`);
 
     // Run immediately on start, then on interval
     this._collect();

@@ -4,15 +4,19 @@
 // REST endpoints for BGP data access and FRR configuration management.
 //
 // Endpoints:
-//   GET    /api/bgp/status          BGP subsystem status
-//   GET    /api/bgp/config          Current BGP config (sanitized)
-//   POST   /api/bgp/config          Update BGP config → deploy to FRR
-//   POST   /api/bgp/config/preview  Preview generated FRR config
-//   POST   /api/bgp/collect         Trigger manual RIB collection
-//   GET    /api/bgp/neighbors       BGP neighbor summary
-//   GET    /api/bgp/vrfs            VRF list with prefix counts
-//   GET    /api/bgp/vrfs/:rd        Prefixes for a specific VRF
-//   GET    /api/bgp/rib             Full VPNv4 RIB with filtering
+//   GET    /api/bgp/status              BGP subsystem status
+//   GET    /api/bgp/config              Current BGP config (sanitized)
+//   POST   /api/bgp/config              Update BGP config → deploy to FRR
+//   POST   /api/bgp/config/preview      Preview generated FRR config
+//   POST   /api/bgp/collect             Trigger manual RIB + Color enrichment
+//   GET    /api/bgp/neighbors           BGP neighbor summary
+//   GET    /api/bgp/vrfs                VRF list with prefix counts
+//   GET    /api/bgp/vrfs/by-rt          VRFs grouped by Route Target
+//   GET    /api/bgp/vrfs/:rd            Prefixes for a specific VRF (by RD)
+//   GET    /api/bgp/rib                 Full VPNv4 RIB with filtering/pagination
+//   GET    /api/bgp/prefix-list         Flat prefix list for autocomplete
+//   GET    /api/bgp/prefix/:prefix      Full per-prefix BGP path detail (vtysh)
+//   POST   /api/bgp/trace               Service path trace (Color→FlexAlgo→labels)
 // ---------------------------------------------------------------------------
 
 const express = require('express');
@@ -250,7 +254,7 @@ router.post('/collect', async (_req, res) => {
           console.error(`  [BGP] Color enrichment for ${pfxKey} failed:`, err.message);
         }
       }
-      console.log(`  [BGP] Color enrichment: ${uniquePrefixes.length} unique prefixes queried`);
+      console.info(`  [BGP] Color enrichment complete — ${uniquePrefixes.length} unique prefix(es) queried`);
 
       bgpStore.setVrfs(vrfs);
       bgpStore.setRib(rib);
@@ -377,87 +381,6 @@ router.get('/prefix-list', (req, res) => {
   res.json(list);
 });
 
-/**
- * GET /api/bgp/debug-rib
- * Returns the first 5 RIB entries with full raw extCommunities — lets us
- * confirm exactly what the bulk FRR collection stores vs. per-prefix detail.
- * Also probes the top-level FRR JSON structure to diagnose parsing mismatches.
- * Temporary diagnostic — remove once Color community format is confirmed.
- */
-router.get('/debug-rib', (req, res) => {
-  const { entries } = bgpStore.getRib({ limit: 5 });
-
-  // Also probe the live FRR JSON structure so we can see if the parser
-  // is targeting the right field path (raw.routes?.routeDistinguishers)
-  let frrStructure = null;
-  try {
-    const { execSync } = require('child_process');
-    const raw = JSON.parse(
-      execSync('vtysh -c "show bgp ipv4 vpn json"', { encoding: 'utf-8', timeout: 15000 })
-    );
-    // Return the top-level keys and one level of nesting — don't dump the full table
-    const rds = raw.routes?.routeDistinguishers || {};
-    const firstRD = Object.keys(rds)[0];
-    const firstRDData = firstRD ? rds[firstRD] : null;
-    const firstPfxKey = firstRDData ? Object.keys(firstRDData)[0] : null;
-    const firstPfxVal = (firstRDData && firstPfxKey) ? firstRDData[firstPfxKey] : null;
-
-    frrStructure = {
-      topLevelKeys:       Object.keys(raw),
-      routesKeys:         raw.routes      ? Object.keys(raw.routes)      : null,
-      vrfsKeys:           raw.vrfs        ? Object.keys(raw.vrfs)        : null,
-      hasRouteDist:       !!(raw.routes?.routeDistinguishers),
-      hasBareRouteDist:   !!(raw.routeDistinguishers),
-      sampleRD:           firstRD || null,
-      // What shape is the value under the first prefix key?
-      // Parser expects: Array of path objects  [{ nexthops, remoteLabel, ... }]
-      // If FRR returns:  { paths: [...] }  the parser will silently miss everything
-      firstPrefixKey:     firstPfxKey,
-      firstPrefixValType: Array.isArray(firstPfxVal) ? 'ARRAY' : (firstPfxVal && typeof firstPfxVal === 'object') ? 'OBJECT:' + Object.keys(firstPfxVal).join(',') : String(firstPfxVal),
-      // Show the raw first path entry so we can see field names
-      firstPathSample:    Array.isArray(firstPfxVal)
-                            ? firstPfxVal[0]
-                            : (firstPfxVal?.paths?.[0] ?? firstPfxVal),
-    };
-
-    // Run the parser directly against live data — if liveParseTest.vrfCount > 0
-    // but store vrfCount is 0, collect is broken. If parse throws or returns 0,
-    // the parser itself is the problem.
-    try {
-      const bgpParser = require('../services/bgpParser');
-      const { vrfs, rib } = bgpParser.parseVpnv4Rib(raw);
-      frrStructure.liveParseTest = {
-        vrfCount:  vrfs.size,
-        ribLength: rib.length,
-        sampleEntry: rib[0] ? {
-          prefix:         `${rib[0].prefix}/${rib[0].prefixLen}`,
-          nextHop:        rib[0].nextHop,
-          label:          rib[0].label,
-          extCommunities: rib[0].extCommunities,
-          bestpath:       rib[0].bestpath,
-        } : null,
-      };
-    } catch (parseErr) {
-      frrStructure.liveParseTest = { error: parseErr.message };
-    }
-  } catch (e) {
-    frrStructure = { error: e.message };
-  }
-
-  res.json({
-    note:      'Hit POST /api/bgp/collect or click BGP Refresh to populate the store, then revisit this endpoint',
-    collecting: bgpStore.collecting,
-    ribLength: bgpStore.rib.length,
-    vrfCount:  bgpStore.vrfs.size,
-    frrStructure,
-    sampleEntries: entries.map(e => ({
-      prefix:         `${e.prefix}/${e.prefixLen}`,
-      extCommunities: e.extCommunities,
-      communities:    e.communities,
-      label:          e.label,
-    })),
-  });
-});
 
 /**
  * GET /api/bgp/prefix/:prefix

@@ -609,7 +609,7 @@ class SflowCollector extends EventEmitter {
 
     this._socket.bind(this._port, this._bindAddress, () => {
       this._running = true;
-      console.log(`  [sFlow] Listening on UDP ${this._bindAddress}:${this._port}`);
+      console.info(`  [sFlow] Listening on UDP ${this._bindAddress}:${this._port}`);
       this.emit('listening');
     });
   }

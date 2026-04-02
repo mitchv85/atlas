@@ -3987,13 +3987,13 @@
   }
 
   // ── Utility ───────────────────────────────────────────────────────
-  /** Escape HTML entities to prevent XSS in dynamic content. */
+
   /**
    * Map a label type string to a badge color class.
    *   blue  = Service Label (VPN/MPLS label carried in BGP)
    *   green = Transport Label, Algo 0 (standard SPF Prefix-SID)
    *   red   = Transport Label, FlexAlgo (algo 128-255 Prefix-SID)
-   *   amber = Adjacency SID (used as label but not a service or prefix label)
+   *   amber = Adjacency SID
    */
   function labelTypeColor(type) {
     if (type === 'VPN Label') return 'blue';
@@ -4001,6 +4001,7 @@
     return 'green';
   }
 
+  /** Escape HTML entities to prevent XSS in dynamic content. */
   function esc(str) {
     if (str == null) return '';
     const div = document.createElement('div');
