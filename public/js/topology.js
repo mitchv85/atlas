@@ -75,8 +75,28 @@ class TopologyRenderer {
       if (this.onEdgeContext) this.onEdgeContext(evt.target.data(), evt.originalEvent);
     });
 
+    // macOS Ctrl+Click fallback — Cytoscape's cxttap only fires for
+    // button === 2 (real right-click). On macOS, Ctrl+Click sends button === 0
+    // with ctrlKey === true, so cxttap never fires. Catch it via tap instead.
+    this.cy.on('tap', 'node', (evt) => {
+      if (evt.originalEvent.ctrlKey) {
+        evt.originalEvent.preventDefault();
+        if (this.onNodeContext) this.onNodeContext(evt.target.data(), evt.originalEvent);
+      }
+    });
+
+    this.cy.on('tap', 'edge', (evt) => {
+      if (evt.originalEvent.ctrlKey) {
+        evt.originalEvent.preventDefault();
+        if (this.onEdgeContext) this.onEdgeContext(evt.target.data(), evt.originalEvent);
+      }
+    });
+
     // Dismiss context menu on left-click anywhere
-    this.cy.on('tap', () => {
+    // Skip dismissal on Ctrl+Click so the menu we just opened doesn't
+    // get immediately closed by the blanket tap handler
+    this.cy.on('tap', (evt) => {
+      if (evt.originalEvent && evt.originalEvent.ctrlKey) return;
       if (this.onDismissContext) this.onDismissContext();
     });
 
