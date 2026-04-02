@@ -1055,11 +1055,18 @@
 
   // ── Theme System ──────────────────────────────────────────────────
   const THEMES = [
-    { id: 'midnight',  label: 'Midnight',  swatches: ['#0a0e17', '#1e3a5f', '#22d3ee'] },
-    { id: 'ember',     label: 'Ember',     swatches: ['#10080a', '#3d1f0e', '#f59e0b'] },
-    { id: 'phosphor',  label: 'Phosphor',  swatches: ['#030a04', '#0a2e12', '#22c55e'] },
-    { id: 'horizon',   label: 'Horizon',   swatches: ['#f0f4f8', '#dbeafe', '#0284c7'] },
-    { id: 'nebula',    label: 'Nebula',    swatches: ['#0a0716', '#1e1450', '#a78bfa'] },
+    { group: 'Dark' },
+    { id: 'midnight',  label: 'Midnight',  swatches: ['#0d1220', '#1e3a5f', '#22d3ee'] },
+    { id: 'ember',     label: 'Ember',     swatches: ['#1a1210', '#3d2510', '#f59e0b'] },
+    { id: 'phosphor',  label: 'Phosphor',  swatches: ['#0a140c', '#0f3318', '#22c55e'] },
+    { id: 'nebula',    label: 'Nebula',    swatches: ['#110e22', '#241a58', '#a78bfa'] },
+    { id: 'monokai',   label: 'Monokai',   swatches: ['#1e1f1c', '#3b3c31', '#e6db74'] },
+    { group: 'Light' },
+    { id: 'horizon',   label: 'Horizon',   swatches: ['#f1f5f9', '#dbeafe', '#0284c7'] },
+    { id: 'solarized', label: 'Solarized', swatches: ['#fdf6e3', '#e0dbc5', '#2aa198'] },
+    { id: 'github',    label: 'GitHub',    swatches: ['#f6f8fa', '#ddf4ff', '#0969da'] },
+    { id: 'quiet',     label: 'Quiet',     swatches: ['#f5f3f7', '#ede9fe', '#7c3aed'] },
+    { id: 'sand',      label: 'Sand',      swatches: ['#f5f0e8', '#e8dcc8', '#b45309'] },
   ];
 
   function initThemePicker() {
@@ -1067,8 +1074,11 @@
     const btn = $('#themePickerBtn');
     const current = localStorage.getItem('atlas-theme') || 'midnight';
 
-    // Build dropdown options
+    // Build dropdown options with group dividers
     dropdown.innerHTML = THEMES.map(t => {
+      if (t.group) {
+        return `<div style="padding:4px 14px 2px;font-size:0.65rem;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);${t.group === 'Light' ? 'border-top:1px solid var(--border);margin-top:4px;padding-top:8px;' : ''}">${t.group}</div>`;
+      }
       const swatchHTML = t.swatches.map(c => `<span style="background:${c};"></span>`).join('');
       return `<div class="theme-option${t.id === current ? ' active' : ''}" data-theme="${t.id}">
         <div class="theme-option-swatch">${swatchHTML}</div>
