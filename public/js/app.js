@@ -34,6 +34,12 @@
     { label: 'show log last 50',                  fmt: 'text' },
   ];
 
+  // SR label range constants — lab SRGB 900000–965535, SRLB 965536–1031071
+  const SRGB_BASE = 900000;
+  const SRGB_END  = 965536;
+  const SRLB_BASE = 965536;
+  const SRLB_END  = 1031072;
+
   /**
    * Copy text to clipboard with fallback for non-HTTPS contexts.
    * Updates a button element with a brief "Copied!" flash.
@@ -1575,7 +1581,7 @@
       if (destNode) {
         const destData = destNode.data;
         const faSid = (destData.srPrefixSids || []).find(s => s.algorithm === algo);
-        const srgbBase = destData.routerCaps?.srgb?.[0]?.base || (srcNode?.data?.routerCaps?.srgb?.[0]?.base) || 900000;
+        const srgbBase = destData.routerCaps?.srgb?.[0]?.base || (srcNode?.data?.routerCaps?.srgb?.[0]?.base) || SRGB_BASE;
 
         if (faSid) {
           const globalLabel = srgbBase + faSid.sid;
@@ -1793,7 +1799,7 @@
 
         return `<tr class="bgp-vrf-row" data-rt="${esc(g.rt)}" data-row-id="${rowId}">
           <td class="bgp-vrf-chevron">▸</td>
-          <td><strong style="font-family:'JetBrains Mono',monospace;font-size:0.78rem;">${esc(g.rt)}</strong></td>
+          <td><strong class="mono-lg">${esc(g.rt)}</strong></td>
           <td>${peDisplay}</td>
           <td><span class="detail-badge cyan">${g.totalPrefixes}</span></td>
         </tr>
@@ -1947,10 +1953,10 @@
           : `<span class="detail-badge green" title="No Color community — standard SPF">Algo 0</span>`;
 
         html += `<tr class="bgp-pfx-row" data-prefix="${esc(pfxKey)}" data-detail-id="${detailId}" title="Click for full path details">
-          <td style="font-family:'JetBrains Mono',monospace;font-size:0.78rem;">${esc(pfxKey)}</td>
-          <td style="font-family:'JetBrains Mono',monospace;font-size:0.78rem;">${esc(e.nextHop)}</td>
+          <td class="mono-lg">${esc(pfxKey)}</td>
+          <td class="mono-lg">${esc(e.nextHop)}</td>
           <td>${esc(peLabel)}</td>
-          <td style="font-family:'JetBrains Mono',monospace;font-size:0.78rem;">${esc(e.asPath || '—')}</td>
+          <td class="mono-lg">${esc(e.asPath || '—')}</td>
           <td>${algoCell}</td>
           <td>${e.label ? `<span class="detail-badge blue">${e.label}</span>` : '<span style="color:var(--text-muted);">—</span>'}</td>
           <td>${e.locPref}</td>
@@ -2990,7 +2996,7 @@
       } else {
         // SPF-computed format: [{ label, type, prefix }]
         for (const label of pathData.labelStack) {
-          const srgbBase = 900000;
+          const srgbBase = SRGB_BASE;
           const globalLabel = srgbBase + label.label;
           html += `
             <div class="detail-row">
@@ -3098,7 +3104,7 @@
         }
         // SPF-computed format: { label: N }
         if (entry.label != null) {
-          const srgbBase = 900000;
+          const srgbBase = SRGB_BASE;
           labelSet.add(String(srgbBase + entry.label));
         }
       }
@@ -3203,9 +3209,9 @@
               : '<span class="detail-badge amber" style="font-size:0.65rem;">No Path</span>';
             const via = p.vias[0] || {};
             html += `<tr>
-              <td style="font-family:'JetBrains Mono',monospace;font-size:0.75rem;">${esc(p.destination)}</td>
+              <td class="mono-md">${esc(p.destination)}</td>
               <td>${esc(p.destinationHostname || '—')}</td>
-              <td style="font-family:'JetBrains Mono',monospace;font-size:0.75rem;">${esc(via.nexthop || '—')}</td>
+              <td class="mono-md">${esc(via.nexthop || '—')}</td>
               <td>${esc(via.interface || '—')}</td>
               <td>${p.metric !== null ? p.metric : '—'}</td>
               <td>${statusBadge}</td>
@@ -4025,19 +4031,16 @@
   /** Decode an SR label into its type (Prefix-SID, Adj-SID, etc.) with colors. */
   function decodeSrLabel(labelStr) {
     const label = parseInt(labelStr, 10);
-    const srgbBase = 900000;
-    const srgbEnd = 965536;
-    const srlbBase = 965536;
-    const srlbEnd = 1031072;
+    // Uses shared SRGB_BASE / SRGB_END / SRLB_BASE / SRLB_END constants
 
-    // Implicit null (PHP)
+    // Implicit null (PHP) — popped before the packet arrives, never on the wire
     if (label === 3) {
-      return { description: 'Implicit Null (PHP)', color: 'green' };
+      return { description: 'Implicit Null (PHP)', color: 'amber' };
     }
 
     // SRGB range — Prefix-SID (algo 0 = green/transport, algo 128+ = red/FlexAlgo)
-    if (label >= srgbBase && label < srgbEnd) {
-      const sid = label - srgbBase;
+    if (label >= SRGB_BASE && label < SRGB_END) {
+      const sid = label - SRGB_BASE;
       // Try to find the node with this prefix-SID and determine its algorithm
       let nodeName = '';
       let isFlexAlgo = false;
@@ -4057,12 +4060,12 @@
     }
 
     // SRLB range — likely Adj-SID (dynamic)
-    if (label >= srlbBase && label < srlbEnd) {
+    if (label >= SRLB_BASE && label < SRLB_END) {
       return { description: `Adj-SID ${label} (SRLB)`, color: 'amber' };
     }
 
     // Below SRGB — likely a dynamic Adj-SID from the local label space
-    if (label > 15 && label < srgbBase) {
+    if (label > 15 && label < SRGB_BASE) {
       let adjInfo = '';
       if (topologyData) {
         for (const node of topologyData.nodes) {
@@ -4079,9 +4082,7 @@
     return { description: `Label ${label}`, color: 'cyan' };
   }
 
-  // ═══════════════════════════════════════════════════════════════════════
-  // sFlow — Flows Tab + Topology Overlay
-  // ═══════════════════════════════════════════════════════════════════════
+  // ── sFlow — Flows Tab + Topology Overlay ────────────────────────
 
   /**
    * Format bits per second into a human-readable rate string.

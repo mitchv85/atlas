@@ -12,9 +12,10 @@
 //   GET  /api/sflow/config/eos      - Generate Arista EOS sFlow config snippet
 // ---------------------------------------------------------------------------
 
-const express = require('express');
-const router = express.Router();
-const sflowStore = require('../store/sflow');
+const express     = require('express');
+const router      = express.Router();
+const sflowStore  = require('../store/sflow');
+const deviceStore = require('../store/devices');
 
 // ── Status ────────────────────────────────────────────────────────────────
 
@@ -107,7 +108,6 @@ router.get('/config/eos', (req, res) => {
   ];
 
   // Add per-interface enable hints
-  const deviceStore = require('../store/devices');
   const devices = deviceStore.getAllRaw();
   if (devices.length > 0) {
     eosConfig.push('!');

@@ -19,11 +19,17 @@
 //   POST   /api/bgp/trace               Service path trace (Color→FlexAlgo→labels)
 // ---------------------------------------------------------------------------
 
-const express = require('express');
-const router = express.Router();
+const express    = require('express');
+const router     = express.Router();
+const { execSync } = require('child_process');
 const frrManager = require('../services/frrManager');
-const bgpGrpc = require('../services/bgpGrpc');
-const bgpStore = require('../store/bgp');
+const bgpGrpc    = require('../services/bgpGrpc');
+const bgpParser  = require('../services/bgpParser');
+const bgpStore   = require('../store/bgp');
+const deviceStore = require('../store/devices');
+const eapi       = require('../services/eapi');
+const poller     = require('../services/poller');
+const { computePath } = require('../services/spf');
 
 // ---------------------------------------------------------------------------
 // Status
@@ -153,8 +159,13 @@ router.post('/config/preview', (req, res) => {
 /**
  * POST /api/bgp/collect
  * Trigger a manual BGP data collection from FRR via vtysh JSON.
- * Collects neighbor summary and VPNv4 RIB, parses them, and
- * populates the BGP store.
+ * Four-step pipeline:
+ *   1. Neighbor summary    — `show bgp summary json`
+ *   2. VPNv4 RIB           — `show bgp ipv4 vpn json` (bulk, no ext-communities)
+ *   3. RT enrichment       — one per-prefix detail query per RD to resolve RTs
+ *   4. Color enrichment    — per-prefix detail queries for all unique bestpath
+ *                            prefixes to backfill Color ext-communities (used
+ *                            by the FlexAlgo column on the BGP tab)
  */
 router.post('/collect', async (_req, res) => {
   if (bgpStore.collecting) {
@@ -163,10 +174,6 @@ router.post('/collect', async (_req, res) => {
 
   try {
     bgpStore.setCollecting(true);
-
-    const { execSync } = require('child_process');
-    const bgpParser = require('../services/bgpParser');
-    const poller = require('../services/poller');
 
     // 1. Collect neighbor summary
     try {
@@ -399,8 +406,6 @@ router.get('/prefix/:prefix', (req, res) => {
   }
 
   try {
-    const { execSync } = require('child_process');
-    const bgpParser = require('../services/bgpParser');
 
     const raw = JSON.parse(
       execSync(`vtysh -c "show bgp ipv4 vpn ${prefix} json"`, { encoding: 'utf-8', timeout: 10000 })
@@ -409,7 +414,6 @@ router.get('/prefix/:prefix', (req, res) => {
     const details = bgpParser.parsePrefixDetail(raw);
 
     // Enrich with PE hostnames from topology
-    const poller = require('../services/poller');
     const topology = poller.getTopology();
     if (topology) {
       for (const d of details) {
@@ -462,9 +466,6 @@ router.post('/trace', async (req, res) => {
   }
 
   try {
-    const { execSync } = require('child_process');
-    const bgpParser = require('../services/bgpParser');
-    const poller = require('../services/poller');
     const topology = poller.getTopology();
 
     // 1. Fetch prefix detail from FRR
@@ -563,14 +564,12 @@ router.post('/trace', async (req, res) => {
     if (transportAlgo >= 128) {
       // FlexAlgo path — query from source device via eAPI
       try {
-        const deviceStore = require('../store/devices');
         const allDevices = deviceStore.getAllRaw();
         const device = allDevices.find(d =>
           d.name.toLowerCase() === srcNode.data.hostname.toLowerCase()
         );
 
         if (device) {
-          const eapi = require('../services/eapi');
           const faResult = await eapi.execute(device, ['show isis flex-algo path detail'], 'json');
           const faRaw = faResult[0];
 
@@ -607,7 +606,6 @@ router.post('/trace', async (req, res) => {
     } else {
       // Standard IGP path — use existing SPF computation
       try {
-        const { computePath } = require('../services/spf');
         const spfResult = computePath(topology, srcNode.data.id, destNode?.data.id);
         if (spfResult) {
           transportPath = {

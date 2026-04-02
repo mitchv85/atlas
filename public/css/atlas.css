@@ -27,6 +27,7 @@
   --green:  #34d399;
   --red:    #f87171;
   --amber:  #fbbf24;
+  --blue:   #63b3ed;
 
   /* Topology node/edge */
   --node-fill:    #1e3a5f;
@@ -52,6 +53,12 @@ body {
   display: flex;
   flex-direction: column;
 }
+
+/* ── Utility ───────────────────────────────────────────────────────── */
+/* Monospace size helpers — replaces repeated inline style declarations */
+.mono-sm  { font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; }
+.mono-md  { font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; }
+.mono-lg  { font-family: 'JetBrains Mono', monospace; font-size: 0.78rem; }
 
 /* ── Top Bar ───────────────────────────────────────────────────────── */
 .topbar {
@@ -221,15 +228,6 @@ body {
   background: var(--bg-hover);
   color: var(--text-primary);
   border-color: var(--border-light);
-}
-
-.btn-danger {
-  background: transparent;
-  color: var(--red);
-  border: 1px solid rgba(248, 113, 113, 0.3);
-}
-.btn-danger:hover {
-  background: rgba(248, 113, 113, 0.1);
 }
 
 .btn-sm {
@@ -440,7 +438,7 @@ body {
 .detail-badge.amber { background: rgba(251, 191, 36, 0.15); color: var(--amber); }
 .detail-badge.cyan  { background: var(--accent-glow); color: var(--accent); }
 .detail-badge.red   { background: rgba(248, 113, 113, 0.15); color: var(--red); }
-.detail-badge.blue  { background: rgba(99, 179, 237, 0.15); color: #63b3ed; }
+.detail-badge.blue  { background: rgba(99, 179, 237, 0.15); color: var(--blue); }
 
 /* Prefix list in detail panel */
 .prefix-list {
@@ -528,7 +526,6 @@ body {
   color: var(--text-muted);
   margin-right: 2px;
 }
-
 
 .prefix-autocomplete-wrap {
   position: relative;

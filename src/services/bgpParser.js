@@ -13,7 +13,12 @@
 //   RIB:     [{ prefix, prefixLen, rd, nextHop, label, originPE, asPath,
 //               communities, extCommunities, originatorId, clusterList }]
 //
-// Output model (BGP-LS) — Phase 4:
+//   Note: extCommunities (incl. Color communities for FlexAlgo steering)
+//   are NOT present in FRR's bulk VPNv4 JSON output. They are backfilled
+//   during collection via per-prefix detail queries (parsePrefixDetail).
+//   See POST /api/bgp/collect step 4 (Color enrichment pass).
+//
+// Output model (BGP-LS) — future: IS-IS topology enrichment via BGP-LS AF
 //   Nodes:   [{ routerId, asn, igpId, protocols, srCaps }]
 //   Links:   [{ localNode, remoteNode, igpMetric, teMetric, adjSids }]
 //   Prefixes:[{ prefix, igpMetric, srPrefixSid }]
@@ -352,7 +357,7 @@ function enrichWithTopology(rib, topology) {
 }
 
 // ---------------------------------------------------------------------------
-// BGP-LS Parsing (Phase 4 — structure ready, implementation deferred)
+// BGP-LS Parsing (future — BGP-LS AF for IS-IS topology enrichment)
 // ---------------------------------------------------------------------------
 
 /**
@@ -361,7 +366,6 @@ function enrichWithTopology(rib, topology) {
  * @returns {Object[]} Normalized BGP-LS node entries.
  */
 function parseBgpLsNodes(raw) {
-  // Phase 4 implementation
   return [];
 }
 
@@ -371,7 +375,6 @@ function parseBgpLsNodes(raw) {
  * @returns {Object[]} Normalized BGP-LS link entries.
  */
 function parseBgpLsLinks(raw) {
-  // Phase 4 implementation
   return [];
 }
 
@@ -381,7 +384,6 @@ function parseBgpLsLinks(raw) {
  * @returns {Object[]} Normalized BGP-LS prefix entries.
  */
 function parseBgpLsPrefixes(raw) {
-  // Phase 4 implementation
   return [];
 }
 

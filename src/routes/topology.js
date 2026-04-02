@@ -7,6 +7,9 @@
 const express = require('express');
 const router = express.Router();
 const { computePath, computePathWithBackups, computeECMPPaths, enrichECMPWithTunnelFib, lookupTunnelFibLabels } = require('../services/spf');
+const positionStore = require('../store/positions');
+const deviceStore   = require('../store/devices');
+const eapi          = require('../services/eapi');
 
 /**
  * Helper: get the poller from the Express app.
@@ -234,14 +237,12 @@ router.post('/path/ecmp', (req, res) => {
 
 // GET /api/topology/positions — Get saved node positions
 router.get('/positions', (_req, res) => {
-  const positionStore = require('../store/positions');
   res.json(positionStore.getAll());
 });
 
 // PUT /api/topology/positions — Save node positions
 // Body: { nodeId: { x, y }, ... }
 router.put('/positions', (req, res) => {
-  const positionStore = require('../store/positions');
   positionStore.update(req.body);
   res.json({ success: true });
 });
@@ -343,9 +344,6 @@ router.post('/flexalgo/trace', async (req, res) => {
   // Find the destination prefix (loopback/32) from the topology
   const dstLoopback = dstNode.data.routerCaps?.routerId || dstNode.data.interfaceAddresses?.[0] || '';
   const dstPrefix = `${dstLoopback}/32`;
-
-  const deviceStore = require('../store/devices');
-  const eapi = require('../services/eapi');
   const allDevices = deviceStore.getAllRaw();
 
   const hops = [];
@@ -553,7 +551,6 @@ router.get('/flexalgo/paths/:systemId/:algo', async (req, res) => {
   }
 
   // Find the device credentials
-  const deviceStore = require('../store/devices');
   const allDevices = deviceStore.getAllRaw();
   const device = allDevices.find(d =>
     d.name.toLowerCase() === (node.data.hostname || '').toLowerCase()
@@ -566,7 +563,6 @@ router.get('/flexalgo/paths/:systemId/:algo', async (req, res) => {
   }
 
   try {
-    const eapi = require('../services/eapi');
     const result = await eapi.execute(device, ['show isis flex-algo path detail']);
     const raw = result[0];
 
