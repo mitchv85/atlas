@@ -375,7 +375,10 @@ router.get('/rib', (req, res) => {
  * "prefix/len" strings — used by the service-trace prefix autocomplete.
  */
 router.get('/prefix-list', (req, res) => {
-  const { entries } = bgpStore.getRib({ limit: 10000 });
+  const filters = { limit: 10000 };
+  if (req.query.rt) filters.rt = req.query.rt;
+
+  const { entries } = bgpStore.getRib(filters);
   const seen = new Set();
   for (const e of entries) {
     seen.add(`${e.prefix}/${e.prefixLen}`);

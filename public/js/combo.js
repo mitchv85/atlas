@@ -217,11 +217,15 @@ class PrefixAutocomplete {
   /**
    * @param {HTMLInputElement} input      - The text input element
    * @param {HTMLElement}      dropdown   - The dropdown container element
+   * @param {Object}           [opts]     - Options
+   * @param {Function}         [opts.vrfGetter] - Returns current VRF RT string (empty = all)
    */
-  constructor(input, dropdown) {
+  constructor(input, dropdown, opts = {}) {
     this.input      = input;
     this.dropdown   = dropdown;
+    this.vrfGetter  = opts.vrfGetter || (() => '');
     this.cache      = null;   // null = not loaded yet
+    this.cachedRT   = null;   // RT value the cache was fetched for
     this.activeIdx  = -1;
     this.MAX        = 12;     // Max suggestions shown at once
 
@@ -245,7 +249,9 @@ class PrefixAutocomplete {
     const q = this.input.value.trim();
     if (!q) { this._close(); return; }
 
-    if (!this.cache) await this._fetchList();
+    // Refetch if VRF selection changed since last cache load
+    const currentRT = this.vrfGetter();
+    if (!this.cache || currentRT !== this.cachedRT) await this._fetchList();
     if (!this.cache) return;   // fetch failed
 
     const matches = this.cache.filter(p => p.includes(q)).slice(0, this.MAX);
@@ -254,10 +260,14 @@ class PrefixAutocomplete {
 
   async _fetchList() {
     try {
-      const res = await fetch('/api/bgp/prefix-list');
+      const rt = this.vrfGetter();
+      const qs = rt ? `?rt=${encodeURIComponent(rt)}` : '';
+      const res = await fetch(`/api/bgp/prefix-list${qs}`);
       this.cache = res.ok ? await res.json() : [];
+      this.cachedRT = rt;
     } catch {
       this.cache = [];
+      this.cachedRT = null;
     }
   }
 

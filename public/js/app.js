@@ -127,11 +127,15 @@
   const comboSvcVrf = new SearchableCombo($('#comboSvcVrf'), { placeholder: 'All VRFs' });
   const svcTraceSource = { get value() { return comboSvcSource.getValue(); }, set value(v) { comboSvcSource.setValue(v); } };
 
-  // Prefix autocomplete — feeds from /api/bgp/prefix-list
+  // Prefix autocomplete — feeds from /api/bgp/prefix-list, scoped by VRF
   const prefixAutocomplete = new PrefixAutocomplete(
     $('#svcTracePrefix'),
-    $('#prefixAutocompleteDropdown')
+    $('#prefixAutocompleteDropdown'),
+    { vrfGetter: () => comboSvcVrf.getValue() }
   );
+
+  // Bust prefix cache when VRF selection changes
+  comboSvcVrf.onSelect = () => prefixAutocomplete.invalidateCache();
 
   // ── Tab Switching ───────────────────────────────────────────────
   let activeTab = 'topology';
