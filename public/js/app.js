@@ -1865,11 +1865,15 @@
     if (!container) return;
 
     const searchId = `vrf-search-${rt.replace(/[:.]/g, '-')}`;
+    const dropdownId = `vrf-ac-${rt.replace(/[:.]/g, '-')}`;
     const resultsId = `vrf-results-${rt.replace(/[:.]/g, '-')}`;
 
     container.innerHTML = `
       <div class="bgp-vrf-search-bar">
-        <input type="text" class="bgp-vrf-search-input" id="${searchId}" placeholder="Search by prefix, next-hop, or origin PE..." />
+        <div class="prefix-autocomplete-wrap" style="flex:1;min-width:0;">
+          <input type="text" class="bgp-vrf-search-input" id="${searchId}" placeholder="Search by prefix, next-hop, or origin PE..." />
+          <div class="prefix-autocomplete-dropdown" id="${dropdownId}" style="display:none;"></div>
+        </div>
         <button class="btn btn-primary btn-sm" id="${searchId}-btn">Search</button>
         <button class="btn btn-ghost btn-sm" id="${searchId}-all">Show All (first 100)</button>
       </div>
@@ -1878,12 +1882,24 @@
       </div>`;
 
     const input = document.getElementById(searchId);
+    const dropdown = document.getElementById(dropdownId);
     const btnSearch = document.getElementById(`${searchId}-btn`);
     const btnAll = document.getElementById(`${searchId}-all`);
 
     const doSearch = () => {
       const query = input.value.trim();
       loadVrfPrefixes(rt, resultsId, query, 100);
+    };
+
+    // Wire prefix autocomplete scoped to this VRF
+    const ac = new PrefixAutocomplete(input, dropdown, {
+      vrfGetter: () => rt
+    });
+    // Override _select to also trigger the search when a prefix is picked
+    const origSelect = ac._select.bind(ac);
+    ac._select = (value) => {
+      origSelect(value);
+      loadVrfPrefixes(rt, resultsId, value, 100);
     };
 
     btnSearch.addEventListener('click', doSearch);
@@ -2319,11 +2335,12 @@
       html += `<div class="detail-section">
         <div style="display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:6px;margin-bottom:8px;">
           <h4 style="margin:0;">Label Stack (outer → inner)</h4>
-          <div class="label-legend" style="margin:0;">
-            <span class="detail-badge green"  style="font-size:0.62rem;padding:2px 6px;" title="SR Prefix-SID, Algo 0">Transport · Algo 0</span>
-            <span class="detail-badge red"    style="font-size:0.62rem;padding:2px 6px;" title="SR Prefix-SID, FlexAlgo">Transport · FlexAlgo</span>
-            <span class="detail-badge blue"   style="font-size:0.62rem;padding:2px 6px;" title="VPN/MPLS service label">Service Label</span>
-            <span class="detail-badge amber"  style="font-size:0.62rem;padding:2px 6px;" title="Adjacency SID">Adj-SID</span>
+          <div class="label-legend" style="margin:0;display:flex;align-items:center;gap:10px;padding:4px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg-elevated);font-size:0.62rem;color:var(--text-muted);">
+            <span style="font-weight:600;letter-spacing:0.03em;text-transform:uppercase;opacity:0.7;">Legend</span>
+            <span style="display:inline-flex;align-items:center;gap:3px;"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--green);"></span> Algo 0</span>
+            <span style="display:inline-flex;align-items:center;gap:3px;"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--red);"></span> FlexAlgo</span>
+            <span style="display:inline-flex;align-items:center;gap:3px;"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--blue);"></span> Service</span>
+            <span style="display:inline-flex;align-items:center;gap:3px;"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--amber);"></span> Adj-SID</span>
           </div>
         </div>`;
       html += `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;">`;
@@ -3432,7 +3449,7 @@
 
         // Algorithms this node participates in
         html += `<div class="detail-row"><span class="detail-label">Algorithms</span><span class="detail-value" style="display:flex;flex-wrap:wrap;gap:4px;">`;
-        html += faAlgos.map(a => `<span class="detail-badge cyan" style="font-size:0.65rem;">Algo ${a.number} — ${esc(a.name)}</span>`).join('');
+        html += faAlgos.map(a => `<span class="detail-badge red" style="font-size:0.65rem;">Algo ${a.number} — ${esc(a.name)}</span>`).join('');
         html += `</span></div>`;
 
         // FlexAlgo Definitions (if this node is the advertiser)
@@ -3464,7 +3481,7 @@
           for (const s of faSids) {
             html += `<div class="detail-row">
               <span class="detail-label">Algo ${s.algorithm} SID</span>
-              <span class="detail-value">${esc(s.prefix)} <span class="detail-badge cyan" style="margin-left:4px;">SID ${s.sid}</span></span>
+              <span class="detail-value">${esc(s.prefix)} <span class="detail-badge red" style="margin-left:4px;">SID ${s.sid}</span></span>
             </div>`;
           }
           html += `</div>`;
@@ -3494,7 +3511,8 @@
                   if (s.isNodeSid) flags += '<span class="detail-badge cyan" style="margin-left:4px;font-size:0.65rem;">N</span>';
                   if (s.noPHP) flags += '<span class="detail-badge amber" style="margin-left:4px;font-size:0.65rem;">noPHP</span>';
                   if (s.explicitNull) flags += '<span class="detail-badge green" style="margin-left:4px;font-size:0.65rem;">E</span>';
-                  return `<li>${esc(s.prefix)}<span class="detail-badge cyan" style="margin-left:8px;">SID ${s.sid}</span><span class="prefix-metric">algo ${s.algorithm}</span>${flags}</li>`;
+                  const sidColor = (s.algorithm || 0) >= 128 ? 'red' : 'green';
+                  return `<li>${esc(s.prefix)}<span class="detail-badge ${sidColor}" style="margin-left:8px;">SID ${s.sid}</span><span class="prefix-metric">algo ${s.algorithm}</span>${flags}</li>`;
                 }
               )
               .join('')}
@@ -3511,7 +3529,7 @@
             ${d.srAdjSids
               .map(
                 (s) =>
-                  `<li>→ ${esc(s.neighbor)}<span class="detail-badge green" style="margin-left:8px;">${s.sid}</span></li>`
+                  `<li>→ ${esc(s.neighbor)}<span class="detail-badge amber" style="margin-left:8px;">${s.sid}</span></li>`
               )
               .join('')}
           </ul>
@@ -3852,13 +3870,13 @@
         <div class="detail-section">
           <h4>Adjacency SIDs</h4>
           ${d.adjSids.map(s =>
-            `<div class="detail-row"><span class="detail-label">${esc(d.sourceLabel)} → ${esc(d.targetLabel)}</span><span class="detail-badge green">${s.sid}</span></div>`
+            `<div class="detail-row"><span class="detail-label">${esc(d.sourceLabel)} → ${esc(d.targetLabel)}</span><span class="detail-badge amber">${s.sid}</span></div>`
           ).join('')}`;
 
       // Reverse Adj-SIDs
       if (d.reverseAdjSids && d.reverseAdjSids.length > 0) {
         html += d.reverseAdjSids.map(s =>
-          `<div class="detail-row"><span class="detail-label">${esc(d.targetLabel)} → ${esc(d.sourceLabel)}</span><span class="detail-badge green">${s.sid}</span></div>`
+          `<div class="detail-row"><span class="detail-label">${esc(d.targetLabel)} → ${esc(d.sourceLabel)}</span><span class="detail-badge amber">${s.sid}</span></div>`
         ).join('');
       }
 
@@ -4008,6 +4026,7 @@
   function labelTypeColor(type) {
     if (type === 'VPN Label') return 'blue';
     if (/^FlexAlgo/.test(type)) return 'red';
+    if (/Adj.SID/.test(type)) return 'amber';
     return 'green';
   }
 

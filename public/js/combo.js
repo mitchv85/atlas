@@ -44,10 +44,11 @@ class SearchableCombo {
   }
 
   _wireEvents() {
-    // Focus → open dropdown
+    // Focus → clear input and open dropdown so user can type immediately
     this.input.addEventListener('focus', () => {
-      this.input.select();
-      this._filter(this.input.value);
+      this._prevLabel = this.input.value;   // stash so we can restore on blur
+      this.input.value = '';
+      this._filter('');
       this._open();
     });
 
@@ -84,9 +85,9 @@ class SearchableCombo {
     this.input.addEventListener('blur', () => {
       setTimeout(() => {
         this._close();
-        // If input doesn't match a selection, restore
+        // If input doesn't match a valid selection, restore previous value
         if (this.input.value !== this.selectedLabel) {
-          this.input.value = this.selectedLabel;
+          this.input.value = this.selectedLabel || this._prevLabel || '';
         }
       }, 200);
     });
