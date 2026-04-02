@@ -1056,17 +1056,17 @@
   // ── Theme System ──────────────────────────────────────────────────
   const THEMES = [
     { group: 'Dark' },
-    { id: 'midnight',  label: 'Midnight',  swatches: ['#0d1220', '#1e3a5f', '#22d3ee'] },
-    { id: 'ember',     label: 'Ember',     swatches: ['#1a1210', '#3d2510', '#f59e0b'] },
-    { id: 'phosphor',  label: 'Phosphor',  swatches: ['#0a140c', '#0f3318', '#22c55e'] },
-    { id: 'nebula',    label: 'Nebula',    swatches: ['#110e22', '#241a58', '#a78bfa'] },
-    { id: 'monokai',   label: 'Monokai',   swatches: ['#1e1f1c', '#3b3c31', '#e6db74'] },
+    { id: 'midnight',       label: 'Midnight',        swatches: ['#0d1220', '#1e3a5f', '#22d3ee'] },
+    { id: 'nord',           label: 'Nord',            swatches: ['#2e3440', '#3b4252', '#88c0d0'] },
+    { id: 'dracula',        label: 'Dracula',         swatches: ['#21222c', '#343746', '#bd93f9'] },
+    { id: 'solarized-dark', label: 'Solarized Dark',  swatches: ['#002b36', '#073642', '#2aa198'] },
+    { id: 'monokai',        label: 'Monokai',         swatches: ['#1e1f1c', '#32332c', '#66d9ef'] },
     { group: 'Light' },
-    { id: 'horizon',   label: 'Horizon',   swatches: ['#f1f5f9', '#dbeafe', '#0284c7'] },
-    { id: 'solarized', label: 'Solarized', swatches: ['#fdf6e3', '#e0dbc5', '#2aa198'] },
-    { id: 'github',    label: 'GitHub',    swatches: ['#f6f8fa', '#ddf4ff', '#0969da'] },
-    { id: 'quiet',     label: 'Quiet',     swatches: ['#f5f3f7', '#ede9fe', '#7c3aed'] },
-    { id: 'sand',      label: 'Sand',      swatches: ['#f5f0e8', '#e8dcc8', '#b45309'] },
+    { id: 'horizon',        label: 'Horizon',         swatches: ['#f1f5f9', '#dbeafe', '#0284c7'] },
+    { id: 'solarized',      label: 'Solarized Light', swatches: ['#fdf6e3', '#e0dbc5', '#2aa198'] },
+    { id: 'github',         label: 'GitHub Light',    swatches: ['#f6f8fa', '#ddf4ff', '#0969da'] },
+    { id: 'quiet',          label: 'Quiet Light',     swatches: ['#f5f3f7', '#ede9fe', '#7c3aed'] },
+    { id: 'sand',           label: 'Sand',            swatches: ['#f5f0e8', '#e8dcc8', '#b45309'] },
   ];
 
   function initThemePicker() {

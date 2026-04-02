@@ -2255,82 +2255,82 @@ body {
 
 /* ━━━━━━━━━━━━━━━━━━━ DARK THEMES ━━━━━━━━━━━━━━━━━━━ */
 
-/* ── Ember — Warm charcoal with orange/amber accents ── */
-[data-theme="ember"] {
-  --bg-deep:      #1a1210;
-  --bg-surface:   #231a16;
-  --bg-elevated:  #2e2420;
-  --bg-hover:     #3b2f29;
-  --border:       #4d3e36;
-  --border-light: #6b584d;
+/* ── Nord — Cool blue-gray with frost accents (VS Code Nord) ── */
+[data-theme="nord"] {
+  --bg-deep:      #2e3440;
+  --bg-surface:   #3b4252;
+  --bg-elevated:  #434c5e;
+  --bg-hover:     #4c566a;
+  --border:       #4c566a;
+  --border-light: #616e88;
 
-  --text-primary:   #f5ebe6;
-  --text-secondary: #c4a898;
-  --text-muted:     #8a7060;
+  --text-primary:   #eceff4;
+  --text-secondary: #d8dee9;
+  --text-muted:     #7b88a1;
 
-  --accent:             #f59e0b;
-  --accent-dim:         #b45309;
-  --accent-glow:        rgba(245, 158, 11, 0.15);
-  --accent-glow-strong: rgba(245, 158, 11, 0.3);
+  --accent:             #88c0d0;
+  --accent-dim:         #5e81ac;
+  --accent-glow:        rgba(136, 192, 208, 0.15);
+  --accent-glow-strong: rgba(136, 192, 208, 0.3);
 
-  --green:  #34d399;  --red: #f87171;  --amber: #fbbf24;  --blue: #63b3ed;
+  --green: #a3be8c;  --red: #bf616a;  --amber: #ebcb8b;  --blue: #81a1c1;
 
-  --node-fill:    #3d2510;
-  --node-border:  #f59e0b;
-  --edge-color:   #6b584d;
+  --node-fill:    #3b4252;
+  --node-border:  #88c0d0;
+  --edge-color:   #616e88;
 }
 
-/* ── Phosphor — Dark green terminal aesthetic ── */
-[data-theme="phosphor"] {
-  --bg-deep:      #0a140c;
-  --bg-surface:   #121f15;
-  --bg-elevated:  #1c2e20;
-  --bg-hover:     #263d2b;
-  --border:       #2f4d36;
-  --border-light: #42694a;
+/* ── Dracula — Purple-tinted dark with vibrant accents (VS Code Dracula) ── */
+[data-theme="dracula"] {
+  --bg-deep:      #21222c;
+  --bg-surface:   #282a36;
+  --bg-elevated:  #343746;
+  --bg-hover:     #3c3f52;
+  --border:       #44475a;
+  --border-light: #565970;
 
-  --text-primary:   #d5f0d8;
-  --text-secondary: #8dc094;
-  --text-muted:     #4f8458;
+  --text-primary:   #f8f8f2;
+  --text-secondary: #c0bfcc;
+  --text-muted:     #6272a4;
 
-  --accent:             #22c55e;
-  --accent-dim:         #15803d;
-  --accent-glow:        rgba(34, 197, 94, 0.15);
-  --accent-glow-strong: rgba(34, 197, 94, 0.3);
+  --accent:             #bd93f9;
+  --accent-dim:         #7c5cbf;
+  --accent-glow:        rgba(189, 147, 249, 0.15);
+  --accent-glow-strong: rgba(189, 147, 249, 0.3);
 
-  --green:  #4ade80;  --red: #f87171;  --amber: #fbbf24;  --blue: #63b3ed;
+  --green: #50fa7b;  --red: #ff5555;  --amber: #f1fa8c;  --blue: #8be9fd;
 
-  --node-fill:    #0f3318;
-  --node-border:  #22c55e;
-  --edge-color:   #42694a;
+  --node-fill:    #343746;
+  --node-border:  #bd93f9;
+  --edge-color:   #565970;
 }
 
-/* ── Nebula — Dark indigo with violet accents ── */
-[data-theme="nebula"] {
-  --bg-deep:      #110e22;
-  --bg-surface:   #1a1636;
-  --bg-elevated:  #252046;
-  --bg-hover:     #302a58;
-  --border:       #3d3568;
-  --border-light: #524a80;
+/* ── Solarized Dark — Deep blue with warm teal accents (VS Code Solarized Dark) ── */
+[data-theme="solarized-dark"] {
+  --bg-deep:      #002b36;
+  --bg-surface:   #073642;
+  --bg-elevated:  #0a4050;
+  --bg-hover:     #0f4d5e;
+  --border:       #1a5c6e;
+  --border-light: #586e75;
 
-  --text-primary:   #e8e3f8;
-  --text-secondary: #a99fcc;
-  --text-muted:     #6d6396;
+  --text-primary:   #fdf6e3;
+  --text-secondary: #93a1a1;
+  --text-muted:     #657b83;
 
-  --accent:             #a78bfa;
-  --accent-dim:         #7c3aed;
-  --accent-glow:        rgba(167, 139, 250, 0.15);
-  --accent-glow-strong: rgba(167, 139, 250, 0.3);
+  --accent:             #2aa198;
+  --accent-dim:         #1a7a72;
+  --accent-glow:        rgba(42, 161, 152, 0.15);
+  --accent-glow-strong: rgba(42, 161, 152, 0.3);
 
-  --green:  #34d399;  --red: #f87171;  --amber: #fbbf24;  --blue: #63b3ed;
+  --green: #859900;  --red: #dc322f;  --amber: #b58900;  --blue: #268bd2;
 
-  --node-fill:    #241a58;
-  --node-border:  #a78bfa;
-  --edge-color:   #524a80;
+  --node-fill:    #0a4050;
+  --node-border:  #2aa198;
+  --edge-color:   #586e75;
 }
 
-/* ── Monokai — Classic warm dark with golden yellow accents ── */
+/* ── Monokai — Warm dark with cyan accents (VS Code Monokai) ── */
 [data-theme="monokai"] {
   --bg-deep:      #1e1f1c;
   --bg-surface:   #272822;
@@ -2340,18 +2340,18 @@ body {
   --border-light: #696b5e;
 
   --text-primary:   #f8f8f2;
-  --text-secondary: #b8b8a8;
+  --text-secondary: #c0c0b0;
   --text-muted:     #75715e;
 
-  --accent:             #e6db74;
-  --accent-dim:         #a89d44;
-  --accent-glow:        rgba(230, 219, 116, 0.15);
-  --accent-glow-strong: rgba(230, 219, 116, 0.3);
+  --accent:             #66d9ef;
+  --accent-dim:         #3a7a8a;
+  --accent-glow:        rgba(102, 217, 239, 0.15);
+  --accent-glow-strong: rgba(102, 217, 239, 0.3);
 
-  --green:  #a6e22e;  --red: #f92672;  --amber: #fd971f;  --blue: #66d9ef;
+  --green: #a6e22e;  --red: #f92672;  --amber: #fd971f;  --blue: #66d9ef;
 
   --node-fill:    #3b3c31;
-  --node-border:  #e6db74;
+  --node-border:  #66d9ef;
   --edge-color:   #696b5e;
 }
 
