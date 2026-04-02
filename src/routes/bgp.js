@@ -216,6 +216,42 @@ router.post('/collect', async (_req, res) => {
         }
       }
 
+      // 4. Enrich Color extended communities from per-prefix detail queries.
+      //    The bulk VPNv4 JSON doesn't include extendedCommunity per path, so
+      //    Color communities (used for FlexAlgo steering) are always missing.
+      //    One detail call covers all RDs for that prefix, so we deduplicate
+      //    across all bestpath entries to minimise vtysh round-trips.
+      const uniquePrefixes = [
+        ...new Set(
+          rib
+            .filter(e => e.bestpath && e.extCommunities.length === 0)
+            .map(e => `${e.prefix}/${e.prefixLen}`)
+        ),
+      ];
+      for (const pfxKey of uniquePrefixes) {
+        try {
+          const detailRaw = JSON.parse(
+            execSync(`vtysh -c "show bgp ipv4 vpn ${pfxKey} json"`, { encoding: 'utf-8', timeout: 10000 })
+          );
+          const details = bgpParser.parsePrefixDetail(detailRaw);
+          // Merge extCommunities (incl. Color) back into matching RIB entries
+          for (const d of details) {
+            if (!d.extCommunities || d.extCommunities.length === 0) continue;
+            for (const entry of rib) {
+              if (
+                entry.rd === d.rd &&
+                `${entry.prefix}/${entry.prefixLen}` === pfxKey
+              ) {
+                entry.extCommunities = d.extCommunities;
+              }
+            }
+          }
+        } catch (err) {
+          console.error(`  [BGP] Color enrichment for ${pfxKey} failed:`, err.message);
+        }
+      }
+      console.log(`  [BGP] Color enrichment: ${uniquePrefixes.length} unique prefixes queried`);
+
       bgpStore.setVrfs(vrfs);
       bgpStore.setRib(rib);
     } catch (err) {
@@ -409,6 +445,8 @@ router.get('/debug-rib', (req, res) => {
   }
 
   res.json({
+    note:      'Hit POST /api/bgp/collect or click BGP Refresh to populate the store, then revisit this endpoint',
+    collecting: bgpStore.collecting,
     ribLength: bgpStore.rib.length,
     vrfCount:  bgpStore.vrfs.size,
     frrStructure,
