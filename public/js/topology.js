@@ -258,6 +258,11 @@ class TopologyRenderer {
       ele.connectedEdges().addClass('highlighted-edge');
       ele.neighborhood('node').addClass('neighbor');
     }
+
+    if (ele.isEdge()) {
+      ele.addClass('highlighted-edge');
+      ele.connectedNodes().addClass('neighbor');
+    }
   }
 
   _clearHighlight() {
