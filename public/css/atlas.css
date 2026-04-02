@@ -107,7 +107,7 @@ body {
 
 .topbar-tab.active {
   background: var(--accent-dim);
-  color: var(--text-primary);
+  color: #ffffff;
 }
 
 /* Tab views */
@@ -208,7 +208,7 @@ body {
 
 .btn-primary {
   background: var(--accent-dim);
-  color: var(--text-primary);
+  color: #ffffff;
 }
 .btn-primary:hover:not(:disabled) {
   background: var(--accent);
@@ -1006,7 +1006,7 @@ body {
   background: var(--accent-dim);
   border: none;
   border-radius: var(--radius-sm);
-  color: var(--text-primary);
+  color: #ffffff;
   font-family: 'JetBrains Mono', monospace;
   font-size: 0.7rem;
   padding: 4px 14px;
