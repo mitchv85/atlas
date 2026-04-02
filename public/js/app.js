@@ -3530,6 +3530,11 @@
       }
     }
 
+    // SID color legend — show if node has any SIDs
+    if ((d.srPrefixSids && d.srPrefixSids.length > 0) || (d.srAdjSids && d.srAdjSids.length > 0)) {
+      html += buildSidLegendHTML();
+    }
+
     // SR Prefix SIDs
     if (d.srPrefixSids && d.srPrefixSids.length > 0) {
       html += `
@@ -3900,6 +3905,7 @@
 
     // Adj-SIDs (forward direction)
     if (d.adjSids && d.adjSids.length > 0) {
+      html += buildSidLegendHTML();
       html += `
         <div class="detail-section">
           <h4>Adjacency SIDs</h4>
@@ -4049,6 +4055,16 @@
   }
 
   // ── Utility ───────────────────────────────────────────────────────
+
+  /** Build the SID color legend HTML — reused across detail panels. */
+  function buildSidLegendHTML() {
+    return `<div style="display:flex;align-items:center;gap:12px;padding:6px 14px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg-elevated);font-size:0.75rem;color:var(--text-muted);margin-bottom:12px;">
+      <span style="font-weight:600;letter-spacing:0.03em;text-transform:uppercase;opacity:0.7;">Legend</span>
+      <span style="display:inline-flex;align-items:center;gap:5px;"><span style="display:inline-block;width:11px;height:11px;border-radius:50%;background:var(--green);"></span> Algo 0</span>
+      <span style="display:inline-flex;align-items:center;gap:5px;"><span style="display:inline-block;width:11px;height:11px;border-radius:50%;background:var(--red);"></span> FlexAlgo</span>
+      <span style="display:inline-flex;align-items:center;gap:5px;"><span style="display:inline-block;width:11px;height:11px;border-radius:50%;background:var(--amber);"></span> Adj-SID</span>
+    </div>`;
+  }
 
   /**
    * Map a label type string to a badge color class.
