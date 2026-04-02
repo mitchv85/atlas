@@ -1160,6 +1160,36 @@
     btnCollect.addEventListener('click', handleCollect);
     btnCloseDetail.addEventListener('click', closeDetail);
 
+    // ── Detail panel resize handle ─────────────────────────────────
+    {
+      const handle = $('#detailResizeHandle');
+      const MIN_W = 280;
+      const MAX_W = Math.min(900, window.innerWidth * 0.8);
+      let dragging = false;
+
+      handle.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        dragging = true;
+        handle.classList.add('active');
+        document.body.style.cursor = 'col-resize';
+        document.body.style.userSelect = 'none';
+      });
+
+      window.addEventListener('mousemove', (e) => {
+        if (!dragging) return;
+        const newW = Math.max(MIN_W, Math.min(MAX_W, window.innerWidth - e.clientX));
+        detailPanel.style.width = newW + 'px';
+      });
+
+      window.addEventListener('mouseup', () => {
+        if (!dragging) return;
+        dragging = false;
+        handle.classList.remove('active');
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+      });
+    }
+
     // Topology toolbar
     $('#btnFit').addEventListener('click', () => topo.fit());
     $('#btnZoomIn').addEventListener('click', () => topo.zoomIn());
