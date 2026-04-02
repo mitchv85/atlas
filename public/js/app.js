@@ -1056,10 +1056,10 @@
   // ── Theme System ──────────────────────────────────────────────────
   const THEMES = [
     { group: 'Dark' },
+    { id: 'github-dark',    label: 'GitHub Dark',     swatches: ['#0d1117', '#1c2128', '#58a6ff'] },
     { id: 'midnight',       label: 'Midnight',        swatches: ['#0d1220', '#1e3a5f', '#22d3ee'] },
     { id: 'nord',           label: 'Nord',            swatches: ['#2e3440', '#3b4252', '#88c0d0'] },
     { id: 'dracula',        label: 'Dracula',         swatches: ['#21222c', '#343746', '#bd93f9'] },
-    { id: 'github-dark',    label: 'GitHub Dark',     swatches: ['#0d1117', '#1c2128', '#58a6ff'] },
     { id: 'monokai',        label: 'Monokai',         swatches: ['#1e1f1c', '#32332c', '#66d9ef'] },
     { group: 'Light' },
     { id: 'horizon',        label: 'Horizon',         swatches: ['#f1f5f9', '#dbeafe', '#0284c7'] },
@@ -1072,7 +1072,7 @@
   function initThemePicker() {
     const dropdown = $('#themeDropdown');
     const btn = $('#themePickerBtn');
-    const current = localStorage.getItem('atlas-theme') || 'midnight';
+    const current = localStorage.getItem('atlas-theme') || 'github-dark';
 
     // Build dropdown options with group dividers
     dropdown.innerHTML = THEMES.map(t => {
@@ -1112,7 +1112,7 @@
   }
 
   function applyTheme(themeId) {
-    if (themeId === 'midnight') {
+    if (themeId === 'github-dark') {
       document.documentElement.removeAttribute('data-theme');
     } else {
       document.documentElement.setAttribute('data-theme', themeId);
@@ -1124,8 +1124,8 @@
   // ── Init ──────────────────────────────────────────────────────────
   async function init() {
     // Apply saved theme BEFORE topo.init so Cytoscape reads correct CSS vars
-    const savedTheme = localStorage.getItem('atlas-theme') || 'midnight';
-    if (savedTheme !== 'midnight') {
+    const savedTheme = localStorage.getItem('atlas-theme') || 'github-dark';
+    if (savedTheme !== 'github-dark') {
       document.documentElement.setAttribute('data-theme', savedTheme);
     }
 

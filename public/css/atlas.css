@@ -1,38 +1,38 @@
 /* ======================================================================
    ATLAS — Network Topology Engine
-   Design: Dark, technical, NOC-inspired with cyan accents
+   Design: GitHub Dark default with 10 switchable themes
    ====================================================================== */
 
 :root {
-  /* Core palette — Midnight (default dark) */
-  --bg-deep:      #0d1220;
-  --bg-surface:   #151d2e;
-  --bg-elevated:  #1e293b;
-  --bg-hover:     #273449;
-  --border:       #334155;
-  --border-light: #475569;
+  /* Core palette — GitHub Dark (default) */
+  --bg-deep:      #0d1117;
+  --bg-surface:   #161b22;
+  --bg-elevated:  #1c2128;
+  --bg-hover:     #272d36;
+  --border:       #30363d;
+  --border-light: #484f58;
 
   /* Text */
-  --text-primary:   #e8edf5;
-  --text-secondary: #94a3b8;
-  --text-muted:     #64748b;
+  --text-primary:   #e6edf3;
+  --text-secondary: #8b949e;
+  --text-muted:     #6e7681;
 
-  /* Accent — Cyan / Teal */
-  --accent:         #22d3ee;
-  --accent-dim:     #0e7490;
-  --accent-glow:    rgba(34, 211, 238, 0.15);
-  --accent-glow-strong: rgba(34, 211, 238, 0.3);
+  /* Accent — Blue */
+  --accent:         #58a6ff;
+  --accent-dim:     #1f6feb;
+  --accent-glow:    rgba(88, 166, 255, 0.15);
+  --accent-glow-strong: rgba(88, 166, 255, 0.3);
 
   /* Status */
-  --green:  #34d399;
-  --red:    #f87171;
-  --amber:  #fbbf24;
-  --blue:   #63b3ed;
+  --green:  #3fb950;
+  --red:    #f85149;
+  --amber:  #d29922;
+  --blue:   #58a6ff;
 
   /* Topology node/edge */
-  --node-fill:    #1e3a5f;
-  --node-border:  #22d3ee;
-  --edge-color:   #475569;
+  --node-fill:    #1c2128;
+  --node-border:  #58a6ff;
+  --edge-color:   #484f58;
 
   /* Sizing */
   --topbar-h:     56px;
@@ -2250,7 +2250,7 @@ body {
 
 /* ══════════════════════════════════════════════════════════════════════
    THEMES — override :root variables via [data-theme] on <html>
-   Midnight is the default (:root). 5 dark + 5 light themes below.
+   GitHub Dark is the default (:root). 5 dark + 5 light themes below.
    ══════════════════════════════════════════════════════════════════════ */
 
 /* ━━━━━━━━━━━━━━━━━━━ DARK THEMES ━━━━━━━━━━━━━━━━━━━ */
@@ -2305,29 +2305,29 @@ body {
   --edge-color:   #565970;
 }
 
-/* ── GitHub Dark — Crisp dark with blue accents (VS Code GitHub Dark) ── */
-[data-theme="github-dark"] {
-  --bg-deep:      #0d1117;
-  --bg-surface:   #161b22;
-  --bg-elevated:  #1c2128;
-  --bg-hover:     #272d36;
-  --border:       #30363d;
-  --border-light: #484f58;
+/* ── Midnight — Dark navy with cyan accents (the OG ATLAS theme) ── */
+[data-theme="midnight"] {
+  --bg-deep:      #0d1220;
+  --bg-surface:   #151d2e;
+  --bg-elevated:  #1e293b;
+  --bg-hover:     #273449;
+  --border:       #334155;
+  --border-light: #475569;
 
-  --text-primary:   #e6edf3;
-  --text-secondary: #8b949e;
-  --text-muted:     #6e7681;
+  --text-primary:   #e8edf5;
+  --text-secondary: #94a3b8;
+  --text-muted:     #64748b;
 
-  --accent:             #58a6ff;
-  --accent-dim:         #1f6feb;
-  --accent-glow:        rgba(88, 166, 255, 0.15);
-  --accent-glow-strong: rgba(88, 166, 255, 0.3);
+  --accent:             #22d3ee;
+  --accent-dim:         #0e7490;
+  --accent-glow:        rgba(34, 211, 238, 0.15);
+  --accent-glow-strong: rgba(34, 211, 238, 0.3);
 
-  --green: #3fb950;  --red: #f85149;  --amber: #d29922;  --blue: #58a6ff;
+  --green: #34d399;  --red: #f87171;  --amber: #fbbf24;  --blue: #63b3ed;
 
-  --node-fill:    #1c2128;
-  --node-border:  #58a6ff;
-  --edge-color:   #484f58;
+  --node-fill:    #1e3a5f;
+  --node-border:  #22d3ee;
+  --edge-color:   #475569;
 }
 
 /* ── Monokai — Warm dark with cyan accents (VS Code Monokai) ── */
