@@ -2335,12 +2335,12 @@
       html += `<div class="detail-section">
         <div style="display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:6px;margin-bottom:8px;">
           <h4 style="margin:0;">Label Stack (outer → inner)</h4>
-          <div class="label-legend" style="margin:0;display:flex;align-items:center;gap:10px;padding:4px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg-elevated);font-size:0.62rem;color:var(--text-muted);">
+          <div class="label-legend" style="margin:0;display:flex;align-items:center;gap:12px;padding:6px 14px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg-elevated);font-size:0.75rem;color:var(--text-muted);">
             <span style="font-weight:600;letter-spacing:0.03em;text-transform:uppercase;opacity:0.7;">Legend</span>
-            <span style="display:inline-flex;align-items:center;gap:3px;"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--green);"></span> Algo 0</span>
-            <span style="display:inline-flex;align-items:center;gap:3px;"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--red);"></span> FlexAlgo</span>
-            <span style="display:inline-flex;align-items:center;gap:3px;"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--blue);"></span> Service</span>
-            <span style="display:inline-flex;align-items:center;gap:3px;"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--amber);"></span> Adj-SID</span>
+            <span style="display:inline-flex;align-items:center;gap:5px;"><span style="display:inline-block;width:11px;height:11px;border-radius:50%;background:var(--green);"></span> Algo 0</span>
+            <span style="display:inline-flex;align-items:center;gap:5px;"><span style="display:inline-block;width:11px;height:11px;border-radius:50%;background:var(--red);"></span> FlexAlgo</span>
+            <span style="display:inline-flex;align-items:center;gap:5px;"><span style="display:inline-block;width:11px;height:11px;border-radius:50%;background:var(--blue);"></span> Service</span>
+            <span style="display:inline-flex;align-items:center;gap:5px;"><span style="display:inline-block;width:11px;height:11px;border-radius:50%;background:var(--amber);"></span> Adj-SID</span>
           </div>
         </div>`;
       html += `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;">`;
