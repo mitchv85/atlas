@@ -655,9 +655,44 @@ class TopologyRenderer {
   }
 
   /**
+   * Read current theme colors from CSS custom properties.
+   * Called once per style rebuild — cached until next refreshStyles().
+   */
+  _themeColors() {
+    const s = getComputedStyle(document.documentElement);
+    const v = (name) => s.getPropertyValue(name).trim();
+    return {
+      bgDeep:      v('--bg-deep'),
+      bgSurface:   v('--bg-surface'),
+      bgElevated:  v('--bg-elevated'),
+      textPrimary: v('--text-primary'),
+      textSecondary: v('--text-secondary'),
+      textMuted:   v('--text-muted'),
+      accent:      v('--accent'),
+      accentDim:   v('--accent-dim'),
+      green:       v('--green'),
+      red:         v('--red'),
+      amber:       v('--amber'),
+      nodeFill:    v('--node-fill'),
+      nodeBorder:  v('--node-border'),
+      edgeColor:   v('--edge-color'),
+    };
+  }
+
+  /**
+   * Re-read CSS variables and apply updated Cytoscape stylesheet.
+   * Call this after changing the [data-theme] attribute.
+   */
+  refreshStyles() {
+    if (!this.cy) return;
+    this.cy.style(this._getStyles());
+  }
+
+  /**
    * Cytoscape.js stylesheet — the visual identity of the topology.
    */
   _getStyles() {
+    const c = this._themeColors();
     return [
       // ── Default Node ──
       {
@@ -670,14 +705,14 @@ class TopologyRenderer {
           'font-family': 'Outfit, sans-serif',
           'font-size': 11,
           'font-weight': 500,
-          color: '#94a3b8',
-          'text-outline-color': '#0a0e17',
+          color: c.textSecondary,
+          'text-outline-color': c.bgDeep,
           'text-outline-width': 2,
           width: 40,
           height: 40,
-          'background-color': '#1e3a5f',
+          'background-color': c.nodeFill,
           'border-width': 2,
-          'border-color': '#22d3ee',
+          'border-color': c.nodeBorder,
           'border-opacity': 0.7,
           shape: 'round-rectangle',
           'corner-radius': 6,
@@ -690,13 +725,13 @@ class TopologyRenderer {
       {
         selector: 'node.highlighted',
         style: {
-          'border-color': '#22d3ee',
+          'border-color': c.accent,
           'border-width': 3,
           'border-opacity': 1,
-          'background-color': '#0e7490',
+          'background-color': c.accentDim,
           width: 48,
           height: 48,
-          color: '#e8edf5',
+          color: c.textPrimary,
           'font-weight': 600,
           'z-index': 20,
         },
@@ -705,10 +740,10 @@ class TopologyRenderer {
       {
         selector: 'node.neighbor',
         style: {
-          'border-color': '#22d3ee',
+          'border-color': c.accent,
           'border-opacity': 0.5,
-          'background-color': '#1a3550',
-          color: '#e8edf5',
+          'background-color': c.nodeFill,
+          color: c.textPrimary,
         },
       },
       // ── Default Edge ──
@@ -716,17 +751,16 @@ class TopologyRenderer {
         selector: 'edge',
         style: {
           width: 2,
-          'line-color': '#3b5578',
+          'line-color': c.edgeColor,
           'curve-style': 'bezier',
-          // Directional metric labels — each end shows its own node's configured metric
           'source-label': 'data(sourceMetric)',
           'target-label': 'data(targetMetric)',
           'source-text-offset': 22,
           'target-text-offset': 22,
           'font-family': 'JetBrains Mono, monospace',
           'font-size': 9,
-          color: '#536580',
-          'text-outline-color': '#0a0e17',
+          color: c.textMuted,
+          'text-outline-color': c.bgDeep,
           'text-outline-width': 2,
           'text-rotation': 'autorotate',
           'overlay-padding': 4,
@@ -738,9 +772,9 @@ class TopologyRenderer {
       {
         selector: 'edge.highlighted-edge',
         style: {
-          'line-color': '#22d3ee',
+          'line-color': c.accent,
           width: 3,
-          color: '#22d3ee',
+          color: c.accent,
           'z-index': 15,
         },
       },
@@ -748,7 +782,7 @@ class TopologyRenderer {
       {
         selector: ':selected',
         style: {
-          'overlay-color': '#22d3ee',
+          'overlay-color': c.accent,
           'overlay-opacity': 0.1,
         },
       },
@@ -763,11 +797,11 @@ class TopologyRenderer {
       {
         selector: 'node.path-node',
         style: {
-          'background-color': '#0e7490',
-          'border-color': '#22d3ee',
+          'background-color': c.accentDim,
+          'border-color': c.accent,
           'border-width': 3,
           'border-opacity': 1,
-          color: '#e8edf5',
+          color: c.textPrimary,
           'font-weight': 600,
           opacity: 1,
           'z-index': 20,
@@ -777,7 +811,7 @@ class TopologyRenderer {
       {
         selector: 'node.selected-source',
         style: {
-          'border-color': '#22d3ee',
+          'border-color': c.accent,
           'border-width': 3,
           'border-style': 'double',
           'z-index': 20,
@@ -786,7 +820,7 @@ class TopologyRenderer {
       {
         selector: 'node.selected-dest',
         style: {
-          'border-color': '#34d399',
+          'border-color': c.green,
           'border-width': 3,
           'border-style': 'double',
           'z-index': 20,
@@ -795,7 +829,7 @@ class TopologyRenderer {
       {
         selector: 'node.selected-fail',
         style: {
-          'border-color': '#f87171',
+          'border-color': c.red,
           'border-width': 3,
           'border-style': 'dashed',
           'z-index': 20,
@@ -804,7 +838,7 @@ class TopologyRenderer {
       {
         selector: 'edge.selected-fail',
         style: {
-          'line-color': '#f87171',
+          'line-color': c.red,
           'line-style': 'dashed',
           'opacity': 0.7,
           'z-index': 20,
@@ -814,8 +848,8 @@ class TopologyRenderer {
       {
         selector: 'node.path-source',
         style: {
-          'background-color': '#0e7490',
-          'border-color': '#22d3ee',
+          'background-color': c.accentDim,
+          'border-color': c.accent,
           'border-width': 4,
           width: 50,
           height: 50,
@@ -827,7 +861,7 @@ class TopologyRenderer {
         selector: 'node.path-dest',
         style: {
           'background-color': '#065f46',
-          'border-color': '#34d399',
+          'border-color': c.green,
           'border-width': 4,
           width: 50,
           height: 50,
@@ -839,11 +873,11 @@ class TopologyRenderer {
         selector: 'node.path-failed',
         style: {
           'background-color': '#7f1d1d',
-          'border-color': '#f87171',
+          'border-color': c.red,
           'border-width': 3,
           'border-style': 'dashed',
           opacity: 0.7,
-          color: '#f87171',
+          color: c.red,
           'z-index': 15,
         },
       },
@@ -852,17 +886,17 @@ class TopologyRenderer {
         selector: 'node.path-failed-neighbor',
         style: {
           opacity: 0.6,
-          'border-color': '#536580',
-          color: '#94a3b8',
+          'border-color': c.textMuted,
+          color: c.textSecondary,
         },
       },
       // ── Path: Edge on path (base style, no arrows) ──
       {
         selector: 'edge.path-edge',
         style: {
-          'line-color': '#22d3ee',
+          'line-color': c.accent,
           width: 4,
-          color: '#22d3ee',
+          color: c.accent,
           'font-size': 10,
           'font-weight': 700,
           opacity: 1,
@@ -873,7 +907,7 @@ class TopologyRenderer {
       {
         selector: 'edge.path-edge-fwd',
         style: {
-          'target-arrow-color': '#22d3ee',
+          'target-arrow-color': c.accent,
           'target-arrow-shape': 'triangle',
           'arrow-scale': 1.2,
           'source-arrow-shape': 'none',
@@ -883,7 +917,7 @@ class TopologyRenderer {
       {
         selector: 'edge.path-edge-rev',
         style: {
-          'source-arrow-color': '#22d3ee',
+          'source-arrow-color': c.accent,
           'source-arrow-shape': 'triangle',
           'arrow-scale': 1.2,
           'target-arrow-shape': 'none',
@@ -893,11 +927,11 @@ class TopologyRenderer {
       {
         selector: 'edge.path-edge-failed',
         style: {
-          'line-color': '#f87171',
+          'line-color': c.red,
           'line-style': 'dashed',
           'line-dash-pattern': [8, 4],
           width: 3,
-          color: '#f87171',
+          color: c.red,
           opacity: 0.7,
           'z-index': 15,
         },
@@ -906,11 +940,11 @@ class TopologyRenderer {
       {
         selector: 'node.ecmp-node',
         style: {
-          'background-color': '#1e3a5f',
-          'border-color': '#e8edf5',
+          'background-color': c.nodeFill,
+          'border-color': c.textPrimary,
           'border-width': 2.5,
           'border-opacity': 0.8,
-          color: '#e8edf5',
+          color: c.textPrimary,
           'font-weight': 600,
           opacity: 1,
           'z-index': 20,
@@ -920,9 +954,9 @@ class TopologyRenderer {
       {
         selector: 'node.ecmp-source',
         style: {
-          'border-color': '#22d3ee',
+          'border-color': c.accent,
           'border-width': 4,
-          'background-color': '#0e7490',
+          'background-color': c.accentDim,
           width: 50,
           height: 50,
           'z-index': 25,
@@ -932,7 +966,7 @@ class TopologyRenderer {
       {
         selector: 'node.ecmp-dest',
         style: {
-          'border-color': '#34d399',
+          'border-color': c.green,
           'border-width': 4,
           'background-color': '#065f46',
           width: 50,
@@ -944,9 +978,9 @@ class TopologyRenderer {
       {
         selector: 'edge.ecmp-shared-edge',
         style: {
-          'line-color': '#e8edf5',
+          'line-color': c.textPrimary,
           width: 4,
-          color: '#e8edf5',
+          color: c.textPrimary,
           opacity: 1,
           'z-index': 18,
         },
@@ -1049,9 +1083,9 @@ class TopologyRenderer {
       {
         selector: 'edge.flow-lsp-highlight',
         style: {
-          'line-color': '#22d3ee',
+          'line-color': c.accent,
           width: 5,
-          'target-arrow-color': '#22d3ee',
+          'target-arrow-color': c.accent,
           'target-arrow-shape': 'triangle',
           'arrow-scale': 1.2,
           opacity: 1,
@@ -1061,10 +1095,10 @@ class TopologyRenderer {
       {
         selector: 'node.flow-lsp-node',
         style: {
-          'background-color': '#0e7490',
-          'border-color': '#22d3ee',
+          'background-color': c.accentDim,
+          'border-color': c.accent,
           'border-width': 3,
-          color: '#e8edf5',
+          color: c.textPrimary,
           'font-weight': 600,
           opacity: 1,
           'z-index': 25,

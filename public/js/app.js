@@ -1053,9 +1053,76 @@
     };
   }
 
+  // ── Theme System ──────────────────────────────────────────────────
+  const THEMES = [
+    { id: 'midnight',  label: 'Midnight',  swatches: ['#0a0e17', '#1e3a5f', '#22d3ee'] },
+    { id: 'ember',     label: 'Ember',     swatches: ['#10080a', '#3d1f0e', '#f59e0b'] },
+    { id: 'phosphor',  label: 'Phosphor',  swatches: ['#030a04', '#0a2e12', '#22c55e'] },
+    { id: 'horizon',   label: 'Horizon',   swatches: ['#f0f4f8', '#dbeafe', '#0284c7'] },
+    { id: 'nebula',    label: 'Nebula',    swatches: ['#0a0716', '#1e1450', '#a78bfa'] },
+  ];
+
+  function initThemePicker() {
+    const dropdown = $('#themeDropdown');
+    const btn = $('#themePickerBtn');
+    const current = localStorage.getItem('atlas-theme') || 'midnight';
+
+    // Build dropdown options
+    dropdown.innerHTML = THEMES.map(t => {
+      const swatchHTML = t.swatches.map(c => `<span style="background:${c};"></span>`).join('');
+      return `<div class="theme-option${t.id === current ? ' active' : ''}" data-theme="${t.id}">
+        <div class="theme-option-swatch">${swatchHTML}</div>
+        ${t.label}
+      </div>`;
+    }).join('');
+
+    // Toggle dropdown
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      dropdown.classList.toggle('open');
+    });
+
+    // Close on outside click
+    document.addEventListener('click', () => dropdown.classList.remove('open'));
+    dropdown.addEventListener('click', (e) => e.stopPropagation());
+
+    // Theme selection
+    dropdown.querySelectorAll('.theme-option').forEach(opt => {
+      opt.addEventListener('click', () => {
+        const themeId = opt.dataset.theme;
+        applyTheme(themeId);
+        localStorage.setItem('atlas-theme', themeId);
+
+        // Update active state
+        dropdown.querySelectorAll('.theme-option').forEach(o => o.classList.remove('active'));
+        opt.classList.add('active');
+        dropdown.classList.remove('open');
+      });
+    });
+  }
+
+  function applyTheme(themeId) {
+    if (themeId === 'midnight') {
+      document.documentElement.removeAttribute('data-theme');
+    } else {
+      document.documentElement.setAttribute('data-theme', themeId);
+    }
+    // Re-apply Cytoscape styles with new colors (no-op if cy not initialized)
+    topo.refreshStyles();
+  }
+
   // ── Init ──────────────────────────────────────────────────────────
   async function init() {
+    // Apply saved theme BEFORE topo.init so Cytoscape reads correct CSS vars
+    const savedTheme = localStorage.getItem('atlas-theme') || 'midnight';
+    if (savedTheme !== 'midnight') {
+      document.documentElement.setAttribute('data-theme', savedTheme);
+    }
+
     topo.init();
+
+    // Now wire the theme picker UI
+    initThemePicker();
     topo.onNodeClick = showNodeDetail;
     topo.onEdgeClick = showEdgeDetail;
 
