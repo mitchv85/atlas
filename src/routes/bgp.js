@@ -383,6 +383,27 @@ router.get('/debug-rib', (req, res) => {
                             ? firstPfxVal[0]
                             : (firstPfxVal?.paths?.[0] ?? firstPfxVal),
     };
+
+    // Run the parser directly against live data — if liveParseTest.vrfCount > 0
+    // but store vrfCount is 0, collect is broken. If parse throws or returns 0,
+    // the parser itself is the problem.
+    try {
+      const bgpParser = require('../services/bgpParser');
+      const { vrfs, rib } = bgpParser.parseVpnv4Rib(raw);
+      frrStructure.liveParseTest = {
+        vrfCount:  vrfs.size,
+        ribLength: rib.length,
+        sampleEntry: rib[0] ? {
+          prefix:         `${rib[0].prefix}/${rib[0].prefixLen}`,
+          nextHop:        rib[0].nextHop,
+          label:          rib[0].label,
+          extCommunities: rib[0].extCommunities,
+          bestpath:       rib[0].bestpath,
+        } : null,
+      };
+    } catch (parseErr) {
+      frrStructure.liveParseTest = { error: parseErr.message };
+    }
   } catch (e) {
     frrStructure = { error: e.message };
   }
