@@ -425,14 +425,14 @@ body {
   justify-content: space-between;
   align-items: baseline;
   padding: 6px 0;
-  border-bottom: 1px solid rgba(42, 53, 72, 0.5);
+  border-bottom: 1px solid var(--border);
   font-size: 0.82rem;
 }
 
 .detail-row:last-child { border-bottom: none; }
 
 .detail-label {
-  color: var(--text-muted);
+  color: var(--text-secondary);
   font-weight: 400;
 }
 
@@ -467,7 +467,7 @@ body {
 .prefix-list li {
   padding: 4px 0;
   color: var(--text-secondary);
-  border-bottom: 1px solid rgba(42, 53, 72, 0.3);
+  border-bottom: 1px solid var(--border);
 }
 
 .prefix-list li:last-child { border-bottom: none; }
