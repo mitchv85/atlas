@@ -2305,29 +2305,29 @@ body {
   --edge-color:   #565970;
 }
 
-/* ── Solarized Dark — Deep blue with warm teal accents (VS Code Solarized Dark) ── */
-[data-theme="solarized-dark"] {
-  --bg-deep:      #002b36;
-  --bg-surface:   #073642;
-  --bg-elevated:  #0a4050;
-  --bg-hover:     #0f4d5e;
-  --border:       #1a5c6e;
-  --border-light: #586e75;
+/* ── GitHub Dark — Crisp dark with blue accents (VS Code GitHub Dark) ── */
+[data-theme="github-dark"] {
+  --bg-deep:      #0d1117;
+  --bg-surface:   #161b22;
+  --bg-elevated:  #1c2128;
+  --bg-hover:     #272d36;
+  --border:       #30363d;
+  --border-light: #484f58;
 
-  --text-primary:   #fdf6e3;
-  --text-secondary: #93a1a1;
-  --text-muted:     #657b83;
+  --text-primary:   #e6edf3;
+  --text-secondary: #8b949e;
+  --text-muted:     #6e7681;
 
-  --accent:             #2aa198;
-  --accent-dim:         #1a7a72;
-  --accent-glow:        rgba(42, 161, 152, 0.15);
-  --accent-glow-strong: rgba(42, 161, 152, 0.3);
+  --accent:             #58a6ff;
+  --accent-dim:         #1f6feb;
+  --accent-glow:        rgba(88, 166, 255, 0.15);
+  --accent-glow-strong: rgba(88, 166, 255, 0.3);
 
-  --green: #859900;  --red: #dc322f;  --amber: #b58900;  --blue: #268bd2;
+  --green: #3fb950;  --red: #f85149;  --amber: #d29922;  --blue: #58a6ff;
 
-  --node-fill:    #0a4050;
-  --node-border:  #2aa198;
-  --edge-color:   #586e75;
+  --node-fill:    #1c2128;
+  --node-border:  #58a6ff;
+  --edge-color:   #484f58;
 }
 
 /* ── Monokai — Warm dark with cyan accents (VS Code Monokai) ── */

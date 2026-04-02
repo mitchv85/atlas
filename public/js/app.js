@@ -1059,7 +1059,7 @@
     { id: 'midnight',       label: 'Midnight',        swatches: ['#0d1220', '#1e3a5f', '#22d3ee'] },
     { id: 'nord',           label: 'Nord',            swatches: ['#2e3440', '#3b4252', '#88c0d0'] },
     { id: 'dracula',        label: 'Dracula',         swatches: ['#21222c', '#343746', '#bd93f9'] },
-    { id: 'solarized-dark', label: 'Solarized Dark',  swatches: ['#002b36', '#073642', '#2aa198'] },
+    { id: 'github-dark',    label: 'GitHub Dark',     swatches: ['#0d1117', '#1c2128', '#58a6ff'] },
     { id: 'monokai',        label: 'Monokai',         swatches: ['#1e1f1c', '#32332c', '#66d9ef'] },
     { group: 'Light' },
     { id: 'horizon',        label: 'Horizon',         swatches: ['#f1f5f9', '#dbeafe', '#0284c7'] },
