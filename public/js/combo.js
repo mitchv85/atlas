@@ -263,7 +263,10 @@ class PrefixAutocomplete {
     try {
       const rt = this.vrfGetter();
       const qs = rt ? `?rt=${encodeURIComponent(rt)}` : '';
-      const res = await fetch(`/api/bgp/prefix-list${qs}`);
+      const headers = {};
+      const token = localStorage.getItem('atlas-token');
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      const res = await fetch(`/api/bgp/prefix-list${qs}`, { headers });
       this.cache = res.ok ? await res.json() : [];
       this.cachedRT = rt;
     } catch {

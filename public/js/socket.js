@@ -114,7 +114,9 @@ class AtlasSocket {
 
     this._pollTimer = setInterval(async () => {
       try {
-        const res = await fetch('/api/topology');
+        const token = localStorage.getItem('atlas-token');
+        const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+        const res = await fetch('/api/topology', { headers });
         if (res.ok) {
           const topology = await res.json();
           const hash = `${topology.metadata?.nodeCount}|${topology.metadata?.edgeCount}|${topology.metadata?.collectedAt}`;
@@ -128,7 +130,7 @@ class AtlasSocket {
         }
 
         // Also fetch status
-        const statusRes = await fetch('/api/status');
+        const statusRes = await fetch('/api/status', { headers });
         if (statusRes.ok) {
           const status = await statusRes.json();
           this._emit('status', status);
