@@ -2192,7 +2192,10 @@
         // Extended Communities
         const extComms = (p.extCommunities || []).map(c => `${c.type}:${c.value}`);
         html += pathRow('Ext Communities', extComms.length > 0
-          ? extComms.map(c => `<span class="detail-badge cyan" style="font-size:0.65rem;">${esc(c)}</span>`).join(' ')
+          ? (p.extCommunities || []).map(c => {
+              const badge = c.type === 'Color' ? 'pink' : 'cyan';
+              return `<span class="detail-badge ${badge}" style="font-size:0.65rem;">${esc(c.type)}:${esc(String(c.value))}</span>`;
+            }).join(' ')
           : '—', true);
 
         // Standard Communities
@@ -2506,7 +2509,10 @@
       html += `<div class="detail-row"><span class="detail-label">Local Pref</span><span class="detail-value">${bgp.locPref}</span></div>`;
       if (bgp.extCommunities?.length > 0) {
         html += `<div class="detail-row"><span class="detail-label">Ext Communities</span><span class="detail-value" style="display:flex;flex-wrap:wrap;gap:3px;">`;
-        html += bgp.extCommunities.map(c => `<span class="detail-badge cyan" style="font-size:0.65rem;">${esc(c.type)}:${esc(String(c.value))}</span>`).join('');
+        html += bgp.extCommunities.map(c => {
+          const badge = c.type === 'Color' ? 'pink' : 'cyan';
+          return `<span class="detail-badge ${badge}" style="font-size:0.65rem;">${esc(c.type)}:${esc(String(c.value))}</span>`;
+        }).join('');
         html += `</span></div>`;
       }
       if (bgp.originatorId) {
