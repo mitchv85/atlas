@@ -2076,7 +2076,7 @@
         const algoNum   = colorComm ? colorComm.value : 0;
         const algoIsFA  = algoNum >= 128;
         const algoCell  = algoIsFA
-          ? `<span class="detail-badge red"   title="Color community ${algoNum} → FlexAlgo ${algoNum}">Algo ${algoNum}</span>`
+          ? `<span class="detail-badge pink"  title="Color community ${algoNum} → FlexAlgo ${algoNum}">Algo ${algoNum}</span>`
           : `<span class="detail-badge green" title="No Color community — standard SPF">Algo 0</span>`;
 
         html += `<tr class="bgp-pfx-row" data-prefix="${esc(pfxKey)}" data-detail-id="${detailId}" title="Click for full path details">
@@ -2445,9 +2445,9 @@
           <div class="label-legend" style="margin:0;display:flex;align-items:center;gap:12px;padding:6px 14px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg-elevated);font-size:0.75rem;color:var(--text-muted);">
             <span style="font-weight:600;letter-spacing:0.03em;text-transform:uppercase;opacity:0.7;">Legend</span>
             <span style="display:inline-flex;align-items:center;gap:5px;"><span style="display:inline-block;width:11px;height:11px;border-radius:50%;background:var(--green);"></span> Algo 0</span>
-            <span style="display:inline-flex;align-items:center;gap:5px;"><span style="display:inline-block;width:11px;height:11px;border-radius:50%;background:var(--red);"></span> FlexAlgo</span>
+            <span style="display:inline-flex;align-items:center;gap:5px;"><span style="display:inline-block;width:11px;height:11px;border-radius:50%;background:#ec84c4;"></span> FlexAlgo</span>
             <span style="display:inline-flex;align-items:center;gap:5px;"><span style="display:inline-block;width:11px;height:11px;border-radius:50%;background:var(--blue);"></span> Service</span>
-            <span style="display:inline-flex;align-items:center;gap:5px;"><span style="display:inline-block;width:11px;height:11px;border-radius:50%;background:var(--amber);"></span> Adj-SID</span>
+            <span style="display:inline-flex;align-items:center;gap:5px;"><span style="display:inline-block;width:11px;height:11px;border-radius:50%;background:#c49456;"></span> Adj-SID</span>
           </div>
         </div>`;
       html += `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;">`;
@@ -3556,7 +3556,7 @@
 
         // Algorithms this node participates in
         html += `<div class="detail-row"><span class="detail-label">Algorithms</span><span class="detail-value" style="display:flex;flex-wrap:wrap;gap:4px;">`;
-        html += faAlgos.map(a => `<span class="detail-badge red" style="font-size:0.65rem;">Algo ${a.number} — ${esc(a.name)}</span>`).join('');
+        html += faAlgos.map(a => `<span class="detail-badge pink" style="font-size:0.65rem;">Algo ${a.number} — ${esc(a.name)}</span>`).join('');
         html += `</span></div>`;
 
         // FlexAlgo Definitions (if this node is the advertiser)
@@ -3590,7 +3590,7 @@
             const globalLabel = srgbBase + s.sid;
             html += `<div class="detail-row">
               <span class="detail-label">Algo ${s.algorithm} SID</span>
-              <span class="detail-value">${esc(s.prefix)} <span class="detail-badge red" style="margin-left:4px;">SID ${globalLabel}</span></span>
+              <span class="detail-value">${esc(s.prefix)} <span class="detail-badge pink" style="margin-left:4px;">SID ${globalLabel}</span></span>
             </div>`;
           }
           html += `</div>`;
@@ -3625,7 +3625,7 @@
                   if (s.isNodeSid) flags += '<span class="detail-badge cyan" style="margin-left:4px;font-size:0.65rem;">N</span>';
                   if (s.noPHP) flags += '<span class="detail-badge amber" style="margin-left:4px;font-size:0.65rem;">noPHP</span>';
                   if (s.explicitNull) flags += '<span class="detail-badge green" style="margin-left:4px;font-size:0.65rem;">E</span>';
-                  const sidColor = (s.algorithm || 0) >= 128 ? 'red' : 'green';
+                  const sidColor = (s.algorithm || 0) >= 128 ? 'pink' : 'green';
                   const srgbBase = d.routerCaps?.srgb?.[0]?.base || SRGB_BASE;
                   const globalLabel = srgbBase + s.sid;
                   return `<li>${esc(s.prefix)}<span class="detail-badge ${sidColor}" style="margin-left:8px;">SID ${globalLabel}</span><span class="prefix-metric">algo ${s.algorithm}</span>${flags}</li>`;
@@ -3645,7 +3645,7 @@
             ${d.srAdjSids
               .map(
                 (s) =>
-                  `<li>→ ${esc(s.neighbor)}<span class="detail-badge amber" style="margin-left:8px;">${s.sid}</span></li>`
+                  `<li>→ ${esc(s.neighbor)}<span class="detail-badge brown" style="margin-left:8px;">${s.sid}</span></li>`
               )
               .join('')}
           </ul>
@@ -3689,7 +3689,7 @@
 
         for (const nbr of neighbors) {
           const adjStr = nbr.adjSids.length > 0
-            ? nbr.adjSids.map((s) => `<span class="detail-badge amber" style="font-size:0.65rem;">Adj ${s.sid}</span>`).join(' ')
+            ? nbr.adjSids.map((s) => `<span class="detail-badge brown" style="font-size:0.65rem;">Adj ${s.sid}</span>`).join(' ')
             : '';
           html += `
             <div style="padding:6px 0;border-bottom:1px solid var(--border);">
@@ -3987,13 +3987,13 @@
         <div class="detail-section">
           <h4>Adjacency SIDs</h4>
           ${d.adjSids.map(s =>
-            `<div class="detail-row"><span class="detail-label">${esc(d.sourceLabel)} → ${esc(d.targetLabel)}</span><span class="detail-badge amber">${s.sid}</span></div>`
+            `<div class="detail-row"><span class="detail-label">${esc(d.sourceLabel)} → ${esc(d.targetLabel)}</span><span class="detail-badge brown">${s.sid}</span></div>`
           ).join('')}`;
 
       // Reverse Adj-SIDs
       if (d.reverseAdjSids && d.reverseAdjSids.length > 0) {
         html += d.reverseAdjSids.map(s =>
-          `<div class="detail-row"><span class="detail-label">${esc(d.targetLabel)} → ${esc(d.sourceLabel)}</span><span class="detail-badge amber">${s.sid}</span></div>`
+          `<div class="detail-row"><span class="detail-label">${esc(d.targetLabel)} → ${esc(d.sourceLabel)}</span><span class="detail-badge brown">${s.sid}</span></div>`
         ).join('');
       }
 
@@ -4138,8 +4138,8 @@
     return `<div style="display:flex;align-items:center;gap:12px;padding:6px 14px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg-elevated);font-size:0.75rem;color:var(--text-muted);margin-bottom:12px;">
       <span style="font-weight:600;letter-spacing:0.03em;text-transform:uppercase;opacity:0.7;">Legend</span>
       <span style="display:inline-flex;align-items:center;gap:5px;"><span style="display:inline-block;width:11px;height:11px;border-radius:50%;background:var(--green);"></span> Algo 0</span>
-      <span style="display:inline-flex;align-items:center;gap:5px;"><span style="display:inline-block;width:11px;height:11px;border-radius:50%;background:var(--red);"></span> FlexAlgo</span>
-      <span style="display:inline-flex;align-items:center;gap:5px;"><span style="display:inline-block;width:11px;height:11px;border-radius:50%;background:var(--amber);"></span> Adj-SID</span>
+      <span style="display:inline-flex;align-items:center;gap:5px;"><span style="display:inline-block;width:11px;height:11px;border-radius:50%;background:#ec84c4;"></span> FlexAlgo</span>
+      <span style="display:inline-flex;align-items:center;gap:5px;"><span style="display:inline-block;width:11px;height:11px;border-radius:50%;background:#c49456;"></span> Adj-SID</span>
     </div>`;
   }
 
@@ -4147,13 +4147,13 @@
    * Map a label type string to a badge color class.
    *   blue  = Service Label (VPN/MPLS label carried in BGP)
    *   green = Transport Label, Algo 0 (standard SPF Prefix-SID)
-   *   red   = Transport Label, FlexAlgo (algo 128-255 Prefix-SID)
-   *   amber = Adjacency SID
+   *   pink  = Transport Label, FlexAlgo (algo 128-255 Prefix-SID)
+   *   brown = Adjacency SID
    */
   function labelTypeColor(type) {
     if (type === 'VPN Label') return 'blue';
-    if (/^FlexAlgo/.test(type)) return 'red';
-    if (/Adj.SID/.test(type)) return 'amber';
+    if (/^FlexAlgo/.test(type)) return 'pink';
+    if (/Adj.SID/.test(type)) return 'brown';
     return 'green';
   }
 
@@ -4185,10 +4185,10 @@
 
     // Implicit null (PHP) — popped before the packet arrives, never on the wire
     if (label === 3) {
-      return { description: 'Implicit Null (PHP)', color: 'amber' };
+      return { description: 'Implicit Null (PHP)', color: 'brown' };
     }
 
-    // SRGB range — Prefix-SID (algo 0 = green/transport, algo 128+ = red/FlexAlgo)
+    // SRGB range — Prefix-SID (algo 0 = green/transport, algo 128+ = pink/FlexAlgo)
     if (label >= SRGB_BASE && label < SRGB_END) {
       const sid = label - SRGB_BASE;
       // Try to find the node with this prefix-SID and determine its algorithm
@@ -4204,14 +4204,14 @@
           }
         }
       }
-      const color = isFlexAlgo ? 'red' : 'green';
+      const color = isFlexAlgo ? 'pink' : 'green';
       const algoLabel = isFlexAlgo ? ` Algo ${(topologyData?.nodes || []).flatMap(n => n.data.srPrefixSids || []).find(s => s.sid === sid)?.algorithm || '?'}` : '';
       return { description: `Prefix-SID ${sid}${algoLabel}${nodeName}`, color };
     }
 
     // SRLB range — likely Adj-SID (dynamic)
     if (label >= SRLB_BASE && label < SRLB_END) {
-      return { description: `Adj-SID ${label} (SRLB)`, color: 'amber' };
+      return { description: `Adj-SID ${label} (SRLB)`, color: 'brown' };
     }
 
     // Below SRGB — likely a dynamic Adj-SID from the local label space
@@ -4226,7 +4226,7 @@
           }
         }
       }
-      return { description: `Adj-SID ${label}${adjInfo}`, color: 'amber' };
+      return { description: `Adj-SID ${label}${adjInfo}`, color: 'brown' };
     }
 
     return { description: `Label ${label}`, color: 'cyan' };

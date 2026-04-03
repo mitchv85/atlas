@@ -456,6 +456,8 @@ body {
 .detail-badge.cyan  { background: var(--accent-glow); color: var(--accent); }
 .detail-badge.red   { background: rgba(248, 113, 113, 0.15); color: var(--red); }
 .detail-badge.blue  { background: rgba(99, 179, 237, 0.15); color: var(--blue); }
+.detail-badge.pink  { background: rgba(236, 130, 196, 0.15); color: #ec84c4; }
+.detail-badge.brown { background: rgba(180, 130, 80, 0.18); color: #c49456; }
 
 /* Prefix list in detail panel */
 .prefix-list {
