@@ -349,12 +349,12 @@
               <span class="devices-count" id="bgpVrfCount">0 VRFs</span>
             </div>
           </div>
-          <div class="label-legend">
-            <span class="label-legend-title">Label Key:</span>
-            <span class="detail-badge blue"  title="VPN/MPLS service label carried in BGP">Service Label</span>
-            <span class="detail-badge green" title="SR Prefix-SID, standard SPF (Algo 0)">Transport · Algo 0</span>
-            <span class="detail-badge red"   title="SR Prefix-SID, FlexAlgo (Algo 128-255)">Transport · FlexAlgo</span>
-            <span class="detail-badge amber" title="Adjacency SID">Adj-SID</span>
+          <div style="display:flex;align-items:center;gap:12px;padding:6px 14px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg-elevated);font-size:0.75rem;color:var(--text-muted);">
+            <span style="font-weight:600;letter-spacing:0.03em;text-transform:uppercase;opacity:0.7;">Legend</span>
+            <span style="display:inline-flex;align-items:center;gap:5px;"><span style="display:inline-block;width:11px;height:11px;border-radius:50%;background:var(--green);"></span> Algo 0</span>
+            <span style="display:inline-flex;align-items:center;gap:5px;"><span style="display:inline-block;width:11px;height:11px;border-radius:50%;background:#ec84c4;"></span> FlexAlgo</span>
+            <span style="display:inline-flex;align-items:center;gap:5px;"><span style="display:inline-block;width:11px;height:11px;border-radius:50%;background:var(--blue);"></span> Service</span>
+            <span style="display:inline-flex;align-items:center;gap:5px;"><span style="display:inline-block;width:11px;height:11px;border-radius:50%;background:#e89a72;"></span> Adj-SID</span>
           </div>
           <div class="bgp-vrf-table-wrap">
             <table class="devices-table" id="bgpVrfTable">
