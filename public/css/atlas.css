@@ -1549,7 +1549,7 @@ body {
 
 .ssh-terminal {
   flex: 1;
-  background: #05070d;
+  background: var(--bg-deep);
   padding: 8px;
   border: 1px solid var(--border);
   border-top: none;
@@ -2174,20 +2174,20 @@ body {
 }
 
 .badge-algo {
-  background: rgba(167, 139, 250, 0.2);
-  color: #a78bfa;
+  background: rgba(236, 130, 196, 0.15);
+  color: #ec84c4;
 }
 
 /* Topology toolbar active button */
 .topo-btn-active {
-  background: rgba(20, 184, 166, 0.2) !important;
-  border-color: #14b8a6 !important;
-  color: #14b8a6 !important;
+  background: var(--accent-glow) !important;
+  border-color: var(--accent) !important;
+  color: var(--accent) !important;
 }
 
 /* Utility text classes */
-.text-warn { color: #ef4444; }
-.text-amber { color: #f59e0b; }
+.text-warn { color: var(--red); }
+.text-amber { color: var(--amber); }
 .font-mono { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
 .text-center { text-align: center; }
 .text-muted { color: var(--text-muted); }

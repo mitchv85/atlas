@@ -3365,7 +3365,7 @@
 
     html += `
       <div class="path-result-banner">
-        <svg class="path-result-icon" viewBox="0 0 20 20" fill="#22d3ee">
+        <svg class="path-result-icon" viewBox="0 0 20 20" fill="var(--accent)">
           <path fill-rule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clip-rule="evenodd"/>
         </svg>
         <span class="path-result-text">
@@ -3564,7 +3564,7 @@
     if (!pathData) {
       html += `
         <div class="path-result-banner failure">
-          <svg class="path-result-icon" viewBox="0 0 20 20" fill="#f87171">
+          <svg class="path-result-icon" viewBox="0 0 20 20" fill="var(--red)">
             <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/>
           </svg>
           <span class="path-result-text"><strong>Unreachable</strong> — destination cannot be reached with <strong>${esc(failureLabel)}</strong> failed</span>
@@ -3586,7 +3586,7 @@
     const protectionType = failedNodes.length > 0 ? 'Node Protection' : 'Link Protection';
     html += `
       <div class="path-result-banner">
-        <svg class="path-result-icon" viewBox="0 0 20 20" fill="${isBackup ? '#fbbf24' : '#22d3ee'}">
+        <svg class="path-result-icon" viewBox="0 0 20 20" fill="${isBackup ? 'var(--amber)' : 'var(--accent)'}">
           <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
         </svg>
         <span class="path-result-text">
@@ -4231,15 +4231,15 @@
         <h4>Remote Node SID Reachability</h4>
         <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:10px;font-size:0.68rem;color:var(--text-muted);">
           <span style="display:inline-flex;align-items:center;gap:3px;">
-            <svg viewBox="0 0 20 20" fill="#34d399" style="width:14px;height:14px;"><path fill-rule="evenodd" d="M10 1.944A11.954 11.954 0 012.166 5C2.056 5.649 2 6.319 2 7c0 5.225 3.34 9.67 8 11.317C14.66 16.67 18 12.225 18 7c0-.682-.057-1.35-.166-2.001A11.954 11.954 0 0110 1.944zM13.707 8.707a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
+            <svg viewBox="0 0 20 20" fill="var(--green)" style="width:14px;height:14px;"><path fill-rule="evenodd" d="M10 1.944A11.954 11.954 0 012.166 5C2.056 5.649 2 6.319 2 7c0 5.225 3.34 9.67 8 11.317C14.66 16.67 18 12.225 18 7c0-.682-.057-1.35-.166-2.001A11.954 11.954 0 0110 1.944zM13.707 8.707a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
             Protected
           </span>
           <span style="display:inline-flex;align-items:center;gap:3px;">
-            <svg viewBox="0 0 20 20" fill="#22d3ee" style="width:14px;height:14px;"><path fill-rule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clip-rule="evenodd"/></svg>
+            <svg viewBox="0 0 20 20" fill="var(--accent)" style="width:14px;height:14px;"><path fill-rule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clip-rule="evenodd"/></svg>
             ECMP
           </span>
           <span style="display:inline-flex;align-items:center;gap:3px;">
-            <svg viewBox="0 0 20 20" fill="#fbbf24" style="width:14px;height:14px;"><path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>
+            <svg viewBox="0 0 20 20" fill="var(--amber)" style="width:14px;height:14px;"><path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>
             Unprotected
           </span>
         </div>
@@ -4350,17 +4350,17 @@
       case 'node-protected+ecmp':
         return {
           title: 'TI-LFA Node Protected',
-          icon: '<svg viewBox="0 0 20 20" fill="#34d399"><path fill-rule="evenodd" d="M10 1.944A11.954 11.954 0 012.166 5C2.056 5.649 2 6.319 2 7c0 5.225 3.34 9.67 8 11.317C14.66 16.67 18 12.225 18 7c0-.682-.057-1.35-.166-2.001A11.954 11.954 0 0110 1.944zM13.707 8.707a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>',
+          icon: '<svg viewBox="0 0 20 20" fill="var(--green)"><path fill-rule="evenodd" d="M10 1.944A11.954 11.954 0 012.166 5C2.056 5.649 2 6.319 2 7c0 5.225 3.34 9.67 8 11.317C14.66 16.67 18 12.225 18 7c0-.682-.057-1.35-.166-2.001A11.954 11.954 0 0110 1.944zM13.707 8.707a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>',
         };
       case 'ecmp':
         return {
           title: 'ECMP (Multiple Equal-Cost Paths)',
-          icon: '<svg viewBox="0 0 20 20" fill="#22d3ee"><path fill-rule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clip-rule="evenodd"/></svg>',
+          icon: '<svg viewBox="0 0 20 20" fill="var(--accent)"><path fill-rule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clip-rule="evenodd"/></svg>',
         };
       default:
         return {
           title: 'Unprotected',
-          icon: '<svg viewBox="0 0 20 20" fill="#fbbf24"><path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>',
+          icon: '<svg viewBox="0 0 20 20" fill="var(--amber)"><path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>',
         };
     }
   }
