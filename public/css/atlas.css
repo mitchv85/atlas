@@ -2624,6 +2624,37 @@ body {
   margin-bottom: 14px;
 }
 
+.login-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 16px 0 8px;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+.login-divider::before,
+.login-divider::after {
+  content: '';
+  flex: 1;
+  border-top: 1px solid var(--border);
+}
+
+.login-github-btn {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.login-github-btn:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-light);
+}
+
 /* ── User Badge ────────────────────────────────────────────────────── */
 .user-badge {
   display: flex;

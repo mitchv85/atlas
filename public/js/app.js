@@ -1170,6 +1170,36 @@
   }
 
   async function checkAuth() {
+    // Check for GitHub SSO callback token in URL
+    const params = new URLSearchParams(window.location.search);
+    const callbackToken = params.get('auth_token');
+    const authError = params.get('auth_error');
+
+    // Clean URL
+    if (callbackToken || authError) {
+      window.history.replaceState({}, '', '/');
+    }
+
+    if (callbackToken) {
+      localStorage.setItem('atlas-token', callbackToken);
+    }
+
+    if (authError) {
+      const handle = params.get('handle') || '';
+      const errorMap = {
+        'missing_code': 'GitHub authentication failed.',
+        'token_exchange_failed': 'GitHub token exchange failed.',
+        'not_authorized': handle ? `GitHub user "${handle}" is not pre-authorized. Ask an admin to add your GitHub account.` : 'GitHub user not pre-authorized.',
+        'server_error': 'Server error during GitHub authentication.',
+      };
+      setTimeout(() => {
+        const loginErr = document.getElementById('loginError');
+        loginErr.textContent = errorMap[authError] || 'Authentication error.';
+        loginErr.style.display = 'block';
+      }, 100);
+      return false;
+    }
+
     const token = localStorage.getItem('atlas-token');
     if (!token) return false;
     try {
@@ -1185,6 +1215,19 @@
       }
     } catch {}
     return false;
+  }
+
+  async function checkGitHubSSO() {
+    try {
+      const status = await API.getGitHubSSOStatus();
+      if (status.enabled) {
+        document.getElementById('btnGitHubSSO').style.display = 'flex';
+        document.getElementById('loginDivider').style.display = 'flex';
+        document.getElementById('btnGitHubSSO').addEventListener('click', () => {
+          window.location.href = '/api/auth/github';
+        });
+      }
+    } catch {}
   }
 
   // ── Mgmt Page ───────────────────────────────────────────────────
@@ -1213,6 +1256,15 @@
     document.getElementById('btnRefreshAudit')?.addEventListener('click', loadAuditLog);
     document.getElementById('btnRefreshSystem')?.addEventListener('click', loadSystemInfo);
     document.getElementById('btnAddUser')?.addEventListener('click', showAddUserForm);
+    document.getElementById('btnAddGitHubUser')?.addEventListener('click', showAddGitHubUserForm);
+
+    // Show GitHub preauth button if SSO is configured
+    API.getGitHubSSOStatus().then(s => {
+      if (s.enabled) {
+        const btn = document.getElementById('btnAddGitHubUser');
+        if (btn) btn.style.display = 'inline-flex';
+      }
+    }).catch(() => {});
   }
 
   // ── Profile ──
@@ -1267,15 +1319,19 @@
 
       let html = `<div class="devices-table-wrap"><table class="devices-table">
         <thead><tr>
-          <th>Username</th><th>Role</th><th>Name</th><th>Email</th>
+          <th>Username</th><th>Type</th><th>Role</th><th>Name</th><th>Email</th>
           <th>Last Login</th><th>Created</th><th>Actions</th>
         </tr></thead><tbody>`;
 
       for (const u of users) {
         const name = [u.firstName, u.lastName].filter(Boolean).join(' ') || '—';
         const roleBadge = u.role === 'admin' ? 'cyan' : u.role === 'operator' ? 'green' : 'blue';
+        const typeBadge = u.type === 'github'
+          ? '<span class="detail-badge" style="font-size:0.6rem;background:rgba(255,255,255,0.08);color:var(--text-secondary);">GitHub</span>'
+          : '<span class="detail-badge" style="font-size:0.6rem;background:rgba(255,255,255,0.08);color:var(--text-muted);">Local</span>';
         html += `<tr>
           <td style="font-weight:600;">${esc(u.username)}</td>
+          <td>${typeBadge}</td>
           <td><span class="detail-badge ${roleBadge}" style="font-size:0.68rem;">${esc(u.role)}</span>
             ${u.mustChangePassword ? '<span class="detail-badge amber" style="font-size:0.6rem;margin-left:4px;">PW Reset</span>' : ''}</td>
           <td>${esc(name)}</td>
@@ -1335,6 +1391,37 @@
       if (result.ok) { loadUsers(); } else { msg.innerHTML = `<span style="color:var(--red);">${esc(result.data.error)}</span>`; }
     });
     document.getElementById('btnCancelAddUser').addEventListener('click', loadUsers);
+  }
+
+  function showAddGitHubUserForm() {
+    const container = document.getElementById('usersContent');
+    const formHTML = `
+      <div class="devices-table-wrap" style="max-width:500px;padding:16px;margin-bottom:16px;">
+        <h3 style="font-size:0.88rem;margin-bottom:4px;">Pre-Authorize GitHub User</h3>
+        <p class="text-muted" style="font-size:0.72rem;margin-bottom:12px;">The user will be able to sign in with GitHub SSO after being pre-authorized.</p>
+        <div class="login-field"><label>GitHub Username</label><input class="input-field" id="ghPreauthHandle" placeholder="e.g. mitchv85" /></div>
+        <div class="login-field"><label>Display Name (optional)</label><input class="input-field" id="ghPreauthName" /></div>
+        <div class="login-field"><label>Role</label>
+          <select class="input-field" id="ghPreauthRole"><option value="viewer">Viewer</option><option value="operator">Operator</option><option value="admin">Admin</option></select>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:8px;">
+          <button class="btn btn-primary btn-sm" id="btnConfirmGhPreauth">Pre-Authorize</button>
+          <button class="btn btn-ghost btn-sm" id="btnCancelGhPreauth">Cancel</button>
+        </div>
+        <div id="ghPreauthMsg" style="margin-top:8px;font-size:0.78rem;"></div>
+      </div>`;
+    container.insertAdjacentHTML('afterbegin', formHTML);
+
+    document.getElementById('btnConfirmGhPreauth').addEventListener('click', async () => {
+      const handle = document.getElementById('ghPreauthHandle').value.trim();
+      const name = document.getElementById('ghPreauthName').value.trim();
+      const role = document.getElementById('ghPreauthRole').value;
+      const msg = document.getElementById('ghPreauthMsg');
+      if (!handle) { msg.innerHTML = '<span style="color:var(--red);">GitHub username is required.</span>'; return; }
+      const result = await API.githubPreauth(handle, role, name);
+      if (result.ok) { loadUsers(); } else { msg.innerHTML = `<span style="color:var(--red);">${esc(result.data.error)}</span>`; }
+    });
+    document.getElementById('btnCancelGhPreauth').addEventListener('click', loadUsers);
   }
 
   function showEditUserForm(username, currentRole) {
@@ -1528,6 +1615,7 @@
       await initApp();
     } else {
       showLogin();
+      checkGitHubSSO(); // Show GitHub button if SSO is configured
     }
   }
 

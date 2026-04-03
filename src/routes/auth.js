@@ -84,4 +84,104 @@ router.post('/change-password', async (req, res) => {
   res.json({ ok: true, token: newToken });
 });
 
+// ════════════════════════════════════════════════════════════════════════
+// GitHub OAuth SSO
+// ════════════════════════════════════════════════════════════════════════
+
+// ── GET /api/auth/github/status ─────────────────────────────────────────
+// Tells frontend if GitHub SSO is configured
+router.get('/github/status', (_req, res) => {
+  res.json({ enabled: !!(auth.GITHUB_CLIENT_ID && auth.GITHUB_CLIENT_SECRET) });
+});
+
+// ── GET /api/auth/github ────────────────────────────────────────────────
+// Redirects the browser to GitHub's OAuth authorization page.
+router.get('/github', (_req, res) => {
+  if (!auth.GITHUB_CLIENT_ID) {
+    return res.status(503).json({ error: 'GitHub SSO not configured.' });
+  }
+  const { randomBytes } = require('crypto');
+  const state = randomBytes(16).toString('hex');
+  const params = new URLSearchParams({
+    client_id:    auth.GITHUB_CLIENT_ID,
+    redirect_uri: auth.GITHUB_CALLBACK_URL,
+    scope:        'read:user',
+    state,
+  });
+  res.redirect(`https://github.com/login/oauth/authorize?${params}`);
+});
+
+// ── GET /api/auth/github/callback ───────────────────────────────────────
+// GitHub redirects here after user approves. Exchange code → token →
+// GitHub profile → match pre-authorized user → issue ATLAS JWT.
+router.get('/github/callback', async (req, res) => {
+  const code = req.query.code;
+  if (!code) {
+    return res.redirect('/?auth_error=missing_code');
+  }
+
+  try {
+    // Step 1 — Exchange code for access token
+    const tokenRes = await fetch('https://github.com/login/oauth/access_token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({
+        client_id:     auth.GITHUB_CLIENT_ID,
+        client_secret: auth.GITHUB_CLIENT_SECRET,
+        code,
+        redirect_uri:  auth.GITHUB_CALLBACK_URL,
+      }),
+    });
+    const tokenJson = await tokenRes.json();
+    if (tokenJson.error || !tokenJson.access_token) {
+      console.error('[GitHub SSO] Token exchange failed:', tokenJson.error_description || tokenJson.error);
+      return res.redirect('/?auth_error=token_exchange_failed');
+    }
+
+    // Step 2 — Fetch GitHub user profile
+    const profileRes = await fetch('https://api.github.com/user', {
+      headers: { Authorization: `Bearer ${tokenJson.access_token}`, 'User-Agent': 'ATLAS-App' },
+    });
+    const profile     = await profileRes.json();
+    const githubId     = String(profile.id);
+    const githubHandle = profile.login;
+
+    // Step 3 — Look up pre-authorized user in users.json
+    const users = auth.loadUsers();
+    let matchedKey = null;
+    for (const [key, u] of Object.entries(users)) {
+      if (u.type === 'github' && (String(u.githubId) === githubId || u.githubHandle?.toLowerCase() === githubHandle.toLowerCase())) {
+        matchedKey = key;
+        break;
+      }
+    }
+
+    if (!matchedKey) {
+      auth.writeAudit(githubHandle, '—', 'auth.github-login', githubHandle, 'error', 'not pre-authorized');
+      return res.redirect(`/?auth_error=not_authorized&handle=${encodeURIComponent(githubHandle)}`);
+    }
+
+    const entry = users[matchedKey];
+
+    // Step 4 — Stamp githubId in case only handle was matched
+    if (!entry.githubId) {
+      users[matchedKey].githubId = githubId;
+    }
+    users[matchedKey].lastLogin = new Date().toISOString();
+    auth.saveUsers(users);
+
+    // Step 5 — Issue ATLAS JWT
+    const payload = { username: matchedKey, role: entry.role, mustChangePassword: false, authType: 'github' };
+    const token   = auth.signToken(payload);
+    auth.writeAudit(matchedKey, entry.role, 'auth.github-login', githubHandle, 'success');
+
+    // Step 6 — Redirect to frontend with token in query param
+    res.redirect(`/?auth_token=${encodeURIComponent(token)}`);
+
+  } catch (e) {
+    console.error('[GitHub SSO] Callback error:', e.message);
+    res.redirect('/?auth_error=server_error');
+  }
+});
+
 module.exports = router;

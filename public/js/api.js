@@ -106,6 +106,20 @@ const API = {
     const res = await authFetch('/api/mgmt/system');
     return res.json();
   },
+
+  async getGitHubSSOStatus() {
+    const res = await fetch('/api/auth/github/status');
+    return res.json();
+  },
+
+  async githubPreauth(githubHandle, role, displayName) {
+    const res = await authFetch('/api/mgmt/users/github-preauth', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ githubHandle, role, displayName }),
+    });
+    return { ok: res.ok, data: await res.json() };
+  },
   // ── Devices ──────────────────────────────────────────────────────────
   /** Fetch all configured devices. */
   async getDevices() {

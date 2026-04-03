@@ -57,6 +57,7 @@ router.get('/users', auth.requireRole('admin'), (req, res) => {
   const users = auth.loadUsers();
   const safe  = Object.entries(users).map(([username, u]) => ({
     username,
+    type:               u.type || 'local',
     role:               u.role,
     createdAt:          u.createdAt,
     lastLogin:          u.lastLogin,
@@ -65,6 +66,7 @@ router.get('/users', auth.requireRole('admin'), (req, res) => {
     lastName:           u.lastName    || null,
     email:              u.email       || null,
     phone:              u.phone       || null,
+    githubHandle:       u.githubHandle || null,
   }));
   res.json(safe);
 });
@@ -91,6 +93,32 @@ router.post('/users', auth.requireRole('admin'), async (req, res) => {
   auth.saveUsers(users);
   auth.writeAudit(req.authUser.username, req.authUser.role, 'user.add', username, 'success', `role=${role}`);
   res.status(201).json({ ok: true, username, role });
+});
+
+// ── POST /api/mgmt/users/github-preauth ─────────────────────────────
+// Admin pre-authorizes a GitHub username so they can log in via SSO.
+router.post('/users/github-preauth', auth.requireRole('admin'), (req, res) => {
+  const { githubHandle, role, displayName } = req.body || {};
+  if (!githubHandle || !['admin', 'operator', 'viewer'].includes(role)) {
+    return res.status(400).json({ error: 'githubHandle and valid role are required.' });
+  }
+  const users = auth.loadUsers();
+  const key = githubHandle.toLowerCase();
+  if (users[key]) return res.status(409).json({ error: `User '${key}' already exists.` });
+
+  users[key] = {
+    type:         'github',
+    username:     key,
+    githubHandle: githubHandle,
+    githubId:     null, // populated on first SSO login
+    displayName:  displayName || githubHandle,
+    role,
+    createdAt:    new Date().toISOString(),
+    lastLogin:    null,
+  };
+  auth.saveUsers(users);
+  auth.writeAudit(req.authUser.username, req.authUser.role, 'user.add', key, 'success', `type=github role=${role}`);
+  res.status(201).json({ ok: true, username: key, githubHandle, role });
 });
 
 // ── PUT /api/mgmt/users/:username ───────────────────────────────────────

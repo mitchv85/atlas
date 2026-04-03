@@ -171,6 +171,16 @@ function getRealIp(req) {
   return (fwd ? fwd.split(',')[0] : req.socket.remoteAddress || 'unknown').trim();
 }
 
+// ── GitHub OAuth ─────────────────────────────────────────────────────
+const GITHUB_CLIENT_ID     = process.env.GITHUB_CLIENT_ID     || '';
+const GITHUB_CLIENT_SECRET = process.env.GITHUB_CLIENT_SECRET || '';
+const ATLAS_BASE_URL       = process.env.ATLAS_BASE_URL       || 'https://localhost:3000';
+const GITHUB_CALLBACK_URL  = `${ATLAS_BASE_URL}/api/auth/github/callback`;
+
+if (!GITHUB_CLIENT_ID || !GITHUB_CLIENT_SECRET) {
+  console.warn('⚠  GITHUB_CLIENT_ID / GITHUB_CLIENT_SECRET not set — GitHub SSO disabled');
+}
+
 module.exports = {
   loadUsers, saveUsers, initUsers,
   signToken, verifyToken, getAuthUser,
@@ -178,4 +188,5 @@ module.exports = {
   checkLoginRateLimit, resetLoginRateLimit, getRealIp,
   requireAuth, requireRole,
   BCRYPT_ROUNDS, TOKEN_TTL, AUDIT_MAX, ROLE_LEVEL,
+  GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET, GITHUB_CALLBACK_URL, ATLAS_BASE_URL,
 };
