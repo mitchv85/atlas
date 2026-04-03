@@ -2358,6 +2358,31 @@ body {
   --edge-color:   #696b5e;
 }
 
+/* ── Arista Dark — Official Arista Networks brand palette ── */
+[data-theme="arista-dark"] {
+  --bg-deep:      #0c1a30;
+  --bg-surface:   #132340;
+  --bg-elevated:  #1a2d4d;
+  --bg-hover:     #23395e;
+  --border:       #2d4470;
+  --border-light: #3d5a8a;
+
+  --text-primary:   #e8ecf2;
+  --text-secondary: #96a7bf;
+  --text-muted:     #5f7a9a;
+
+  --accent:             #4473a9;
+  --accent-dim:         #16325b;
+  --accent-glow:        rgba(68, 115, 169, 0.18);
+  --accent-glow-strong: rgba(68, 115, 169, 0.35);
+
+  --green: #aad037;  --red: #f87171;  --amber: #e9d554;  --blue: #4473a9;
+
+  --node-fill:    #16325b;
+  --node-border:  #4473a9;
+  --edge-color:   #3d5a8a;
+}
+
 /* ━━━━━━━━━━━━━━━━━━━ LIGHT THEMES ━━━━━━━━━━━━━━━━━━━ */
 
 /* ── Horizon — Clean white with slate blue accents ── */
@@ -2483,6 +2508,31 @@ body {
   --node-fill:    #e8dcc8;
   --node-border:  #b45309;
   --edge-color:   #b5a68f;
+}
+
+/* ── Arista Light — Official Arista Networks brand palette ── */
+[data-theme="arista-light"] {
+  --bg-deep:      #eef2f6;
+  --bg-surface:   #ffffff;
+  --bg-elevated:  #f4f6f9;
+  --bg-hover:     #e2e8f0;
+  --border:       #c8d2df;
+  --border-light: #96a7bf;
+
+  --text-primary:   #16325b;
+  --text-secondary: #3d5478;
+  --text-muted:     #738a96;
+
+  --accent:             #146095;
+  --accent-dim:         #16325b;
+  --accent-glow:        rgba(20, 96, 149, 0.1);
+  --accent-glow-strong: rgba(20, 96, 149, 0.2);
+
+  --green: #5a8c1a;  --red: #c82828;  --amber: #b8860b;  --blue: #146095;
+
+  --node-fill:    #d6e3f0;
+  --node-border:  #146095;
+  --edge-color:   #96a7bf;
 }
 
 /* ── Theme Picker ───────────────────────────────────────────────────── */
