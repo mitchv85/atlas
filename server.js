@@ -20,6 +20,9 @@ const express = require('express');
 const path = require('path');
 const { WebSocketServer } = require('ws');
 
+const authService = require('./src/services/auth');
+const authRoutes = require('./src/routes/auth');
+const mgmtRoutes = require('./src/routes/mgmt');
 const deviceRoutes = require('./src/routes/devices');
 const topologyRoutes = require('./src/routes/topology');
 const bgpRoutes = require('./src/routes/bgp');
@@ -44,15 +47,21 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.set('poller', poller);
 
 // ---------------------------------------------------------------------------
-// API Routes
+// Auth Routes (public — no auth required)
 // ---------------------------------------------------------------------------
-app.use('/api/devices', deviceRoutes);
-app.use('/api/topology', topologyRoutes);
-app.use('/api/bgp', bgpRoutes);
-app.use('/api/sflow', sflowRoutes);
+app.use('/api/auth', authRoutes);
 
-// Poller status endpoint
-app.get('/api/status', (_req, res) => {
+// ---------------------------------------------------------------------------
+// Protected API Routes — require valid JWT
+// ---------------------------------------------------------------------------
+app.use('/api/devices', authService.requireAuth, deviceRoutes);
+app.use('/api/topology', authService.requireAuth, topologyRoutes);
+app.use('/api/bgp', authService.requireAuth, bgpRoutes);
+app.use('/api/sflow', authService.requireAuth, sflowRoutes);
+app.use('/api/mgmt', authService.requireAuth, mgmtRoutes);
+
+// Poller status endpoint (protected)
+app.get('/api/status', authService.requireAuth, (_req, res) => {
   res.json(poller.getStatus());
 });
 
@@ -299,15 +308,19 @@ sshWss.on('connection', (ws, req) => {
 // ---------------------------------------------------------------------------
 // Start
 // ---------------------------------------------------------------------------
-server.listen(PORT, () => {
+server.listen(PORT, async () => {
+  // Initialize default users if none exist
+  await authService.initUsers();
+
   console.log(`\n  ╔══════════════════════════════════════╗`);
-  console.log(`  ║          A T L A S   v0.6.0          ║`);
+  console.log(`  ║          A T L A S   v0.7.0          ║`);
   console.log(`  ║   Network Topology & Operations       ║`);
   console.log(`  ╠══════════════════════════════════════╣`);
   console.log(`  ║  http://localhost:${PORT}               ║`);
   console.log(`  ║  WebSocket: ws://localhost:${PORT}/ws    ║`);
   console.log(`  ║  SSH Proxy: ws://localhost:${PORT}/ssh   ║`);
   console.log(`  ║  sFlow:    udp://0.0.0.0:6343        ║`);
+  console.log(`  ║  Auth:     JWT (${authService.TOKEN_TTL} TTL)             ║`);
   console.log(`  ╚══════════════════════════════════════╝\n`);
 
   // Start the background poller

@@ -2535,6 +2535,180 @@ body {
   --edge-color:   #96a7bf;
 }
 
+/* ── Login Overlay ──────────────────────────────────────────────────── */
+.login-overlay, .modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  background: var(--bg-deep);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.login-card {
+  width: 100%;
+  max-width: 380px;
+  padding: 36px 32px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  text-align: center;
+}
+
+.login-logo {
+  width: 48px;
+  height: 48px;
+  margin-bottom: 12px;
+}
+
+.login-title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: 0.08em;
+}
+
+.login-subtitle {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin-bottom: 24px;
+}
+
+.login-field {
+  text-align: left;
+  margin-bottom: 14px;
+}
+
+.login-field label {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.login-field input {
+  width: 100%;
+  padding: 9px 12px;
+  font-size: 0.88rem;
+  font-family: 'JetBrains Mono', monospace;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  outline: none;
+}
+
+.login-field input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-glow);
+}
+
+.login-btn {
+  width: 100%;
+  margin-top: 8px;
+  padding: 10px;
+  font-size: 0.88rem;
+}
+
+.login-error {
+  background: rgba(248, 81, 73, 0.12);
+  color: var(--red);
+  border: 1px solid rgba(248, 81, 73, 0.3);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  font-size: 0.78rem;
+  margin-bottom: 14px;
+}
+
+/* ── User Badge ────────────────────────────────────────────────────── */
+.user-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: var(--bg-elevated);
+  font-size: 0.78rem;
+}
+
+.user-badge-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--green);
+}
+
+.user-badge-name {
+  font-weight: 600;
+  color: var(--text-primary);
+  text-transform: uppercase;
+}
+
+.user-badge-role {
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.btn-signout {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  cursor: pointer;
+  padding: 2px 6px;
+  margin-left: 4px;
+  border-left: 1px solid var(--border);
+}
+
+.btn-signout:hover {
+  color: var(--red);
+}
+
+/* ── Mgmt Tab ──────────────────────────────────────────────────────── */
+.mgmt-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 2px solid var(--border);
+  margin-bottom: 24px;
+}
+
+.mgmt-tab {
+  padding: 10px 20px;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.mgmt-tab:hover {
+  color: var(--text-secondary);
+}
+
+.mgmt-tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.mgmt-panel {
+  display: none;
+}
+
+.mgmt-panel.active {
+  display: block;
+}
+
 /* ── Theme Picker ───────────────────────────────────────────────────── */
 .theme-picker {
   position: relative;

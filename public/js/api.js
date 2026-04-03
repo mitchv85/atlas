@@ -8,29 +8,125 @@
 // "not found" (getTopology, getNodeDetail, etc.) return null on 404.
 // ---------------------------------------------------------------------------
 
+/**
+ * Fetch wrapper that attaches the JWT Authorization header.
+ * On 401, fires a custom 'atlas:unauthorized' event so the app can redirect to login.
+ */
+async function authFetch(url, opts = {}) {
+  const token = localStorage.getItem('atlas-token');
+  const headers = { ...(opts.headers || {}) };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const res = await authFetch(url, { ...opts, headers });
+  if (res.status === 401) {
+    window.dispatchEvent(new CustomEvent('atlas:unauthorized'));
+  }
+  return res;
+}
+
 const API = {
+  // ── Auth ───────────────────────────────────────────────────────────
+  async login(username, password) {
+    const res = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    });
+    return { ok: res.ok, status: res.status, data: await res.json() };
+  },
+
+  async getMe() {
+    const res = await authFetch('/api/auth/me');
+    if (!res.ok) return null;
+    return res.json();
+  },
+
+  async logout() {
+    await authFetch('/api/auth/logout', { method: 'POST' });
+  },
+
+  async changePassword(currentPassword, newPassword) {
+    const res = await authFetch('/api/auth/change-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ currentPassword, newPassword }),
+    });
+    return { ok: res.ok, data: await res.json() };
+  },
+
+  // ── Mgmt ──────────────────────────────────────────────────────────
+  async getProfile() {
+    const res = await authFetch('/api/mgmt/profile');
+    return res.json();
+  },
+
+  async updateProfile(fields) {
+    const res = await authFetch('/api/mgmt/profile', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(fields),
+    });
+    return res.json();
+  },
+
+  async getUsers() {
+    const res = await authFetch('/api/mgmt/users');
+    return res.json();
+  },
+
+  async addUser(username, password, role) {
+    const res = await authFetch('/api/mgmt/users', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password, role }),
+    });
+    return { ok: res.ok, data: await res.json() };
+  },
+
+  async editUser(username, fields) {
+    const res = await authFetch(`/api/mgmt/users/${encodeURIComponent(username)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(fields),
+    });
+    return { ok: res.ok, data: await res.json() };
+  },
+
+  async deleteUser(username) {
+    const res = await authFetch(`/api/mgmt/users/${encodeURIComponent(username)}`, { method: 'DELETE' });
+    return { ok: res.ok, data: await res.json() };
+  },
+
+  async getAuditLog(limit = 200) {
+    const res = await authFetch(`/api/mgmt/audit-log?limit=${limit}`);
+    return res.json();
+  },
+
+  async getSystemInfo() {
+    const res = await authFetch('/api/mgmt/system');
+    return res.json();
+  },
   // ── Devices ──────────────────────────────────────────────────────────
   /** Fetch all configured devices. */
   async getDevices() {
-    const res = await fetch('/api/devices');
+    const res = await authFetch('/api/devices');
     return res.json();
   },
 
   /** Fetch enriched device info (model, EOS version, serial, etc.). */
   async getDeviceInfo() {
-    const res = await fetch('/api/devices/info');
+    const res = await authFetch('/api/devices/info');
     return res.json();
   },
 
   /** Fetch running config for a specific device. */
   async getDeviceConfig(id) {
-    const res = await fetch(`/api/devices/${id}/config`);
+    const res = await authFetch(`/api/devices/${id}/config`);
     return res.json();
   },
 
   /** Add a new device to the inventory. */
   async addDevice(device) {
-    const res = await fetch('/api/devices', {
+    const res = await authFetch('/api/devices', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(device),
@@ -40,7 +136,7 @@ const API = {
 
   /** Update fields on an existing device. */
   async updateDevice(id, fields) {
-    const res = await fetch(`/api/devices/${id}`, {
+    const res = await authFetch(`/api/devices/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(fields),
@@ -50,13 +146,13 @@ const API = {
 
   /** Delete a device from the inventory. */
   async deleteDevice(id) {
-    const res = await fetch(`/api/devices/${id}`, { method: 'DELETE' });
+    const res = await authFetch(`/api/devices/${id}`, { method: 'DELETE' });
     return res.json();
   },
 
   /** Bulk import devices from an array of device objects. */
   async bulkImportDevices(devices) {
-    const res = await fetch('/api/devices/bulk', {
+    const res = await authFetch('/api/devices/bulk', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ devices }),
@@ -66,13 +162,13 @@ const API = {
 
   /** Test eAPI connectivity to a specific device. */
   async testDevice(id) {
-    const res = await fetch(`/api/devices/${id}/test`, { method: 'POST' });
+    const res = await authFetch(`/api/devices/${id}/test`, { method: 'POST' });
     return res.json();
   },
 
   /** Run an eAPI command on a device (by hostname). Returns text or JSON. */
   async runCommand(hostname, cmd, format = 'text') {
-    const res = await fetch(`/api/devices/by-hostname/${encodeURIComponent(hostname)}/command`, {
+    const res = await authFetch(`/api/devices/by-hostname/${encodeURIComponent(hostname)}/command`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ cmd, format }),
@@ -83,7 +179,7 @@ const API = {
   // ── Topology ─────────────────────────────────────────────────────────
   /** Fetch the current topology graph. Returns null if not yet collected. */
   async getTopology() {
-    const res = await fetch('/api/topology');
+    const res = await authFetch('/api/topology');
     if (res.status === 404) return null;
     return res.json();
   },
@@ -91,7 +187,7 @@ const API = {
   /** Trigger a topology collection cycle. Optionally target a specific device. */
   async collectTopology(deviceId = null) {
     const body = deviceId ? { deviceId } : {};
-    const res = await fetch('/api/topology/collect', {
+    const res = await authFetch('/api/topology/collect', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -105,14 +201,14 @@ const API = {
 
   /** Fetch detail for a specific node by system ID. */
   async getNodeDetail(systemId) {
-    const res = await fetch(`/api/topology/node/${systemId}`);
+    const res = await authFetch(`/api/topology/node/${systemId}`);
     if (!res.ok) return null;
     return res.json();
   },
 
   /** Fetch Remote Node SID reachability (TI-LFA protection status). */
   async getNodeReachability(systemId) {
-    const res = await fetch(`/api/topology/node/${systemId}/reachability`);
+    const res = await authFetch(`/api/topology/node/${systemId}/reachability`);
     if (!res.ok) return null;
     return res.json();
   },
@@ -120,7 +216,7 @@ const API = {
   // ── Path Computation ──────────────────────────────────────────────
   /** Compute shortest path with optional node/edge failure simulation. */
   async computePath(source, destination, excludeNodes = [], excludeEdges = []) {
-    const res = await fetch('/api/topology/path', {
+    const res = await authFetch('/api/topology/path', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ source, destination, excludeNodes, excludeEdges }),
@@ -130,7 +226,7 @@ const API = {
 
   /** Full path analysis: primary + TI-LFA backup paths with label stacks. */
   async analyzePath(source, destination) {
-    const res = await fetch('/api/topology/path/analyze', {
+    const res = await authFetch('/api/topology/path/analyze', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ source, destination }),
@@ -140,7 +236,7 @@ const API = {
 
   /** Compute all ECMP paths between source and destination. */
   async computeECMP(source, destination) {
-    const res = await fetch('/api/topology/path/ecmp', {
+    const res = await authFetch('/api/topology/path/ecmp', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ source, destination }),
@@ -151,13 +247,13 @@ const API = {
   // ── Positions ─────────────────────────────────────────────────────
   /** Fetch saved node positions for layout persistence. */
   async getPositions() {
-    const res = await fetch('/api/topology/positions');
+    const res = await authFetch('/api/topology/positions');
     return res.json();
   },
 
   /** Save node positions to server for layout persistence. */
   async savePositions(positions) {
-    await fetch('/api/topology/positions', {
+    await authFetch('/api/topology/positions', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(positions),
@@ -168,14 +264,14 @@ const API = {
 
   /** Fetch FlexAlgo summary from LSDB: defined algorithms, participation, FADs. */
   async getFlexAlgoSummary() {
-    const res = await fetch('/api/topology/flexalgo/summary');
+    const res = await authFetch('/api/topology/flexalgo/summary');
     if (!res.ok) return null;
     return res.json();
   },
 
   /** Fetch FlexAlgo computed paths from a specific device via eAPI. */
   async getFlexAlgoPaths(systemId, algo) {
-    const res = await fetch(`/api/topology/flexalgo/paths/${encodeURIComponent(systemId)}/${algo}`);
+    const res = await authFetch(`/api/topology/flexalgo/paths/${encodeURIComponent(systemId)}/${algo}`);
     if (!res.ok) {
       const err = await res.json();
       throw new Error(err.error || 'FlexAlgo path query failed');
@@ -185,7 +281,7 @@ const API = {
 
   /** Trace a FlexAlgo path between two nodes for a specific algorithm. */
   async traceFlexAlgoPath(source, destination, algorithm) {
-    const res = await fetch('/api/topology/flexalgo/trace', {
+    const res = await authFetch('/api/topology/flexalgo/trace', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ source, destination, algorithm }),
@@ -197,19 +293,19 @@ const API = {
 
   /** Fetch BGP subsystem status (FRR, gRPC, neighbors, VRFs, prefixes). */
   async getBgpStatus() {
-    const res = await fetch('/api/bgp/status');
+    const res = await authFetch('/api/bgp/status');
     return res.json();
   },
 
   /** Fetch BGP configuration (local AS, router ID, neighbors, address families). */
   async getBgpConfig() {
-    const res = await fetch('/api/bgp/config');
+    const res = await authFetch('/api/bgp/config');
     return res.json();
   },
 
   /** Deploy BGP configuration to FRR (generates frr.conf + restarts service). */
   async deployBgpConfig(config) {
-    const res = await fetch('/api/bgp/config', {
+    const res = await authFetch('/api/bgp/config', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(config),
@@ -219,7 +315,7 @@ const API = {
 
   /** Preview the FRR config that would be generated (without deploying). */
   async previewBgpConfig(config) {
-    const res = await fetch('/api/bgp/config/preview', {
+    const res = await authFetch('/api/bgp/config/preview', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(config),
@@ -229,19 +325,19 @@ const API = {
 
   /** Fetch BGP neighbor session summary. */
   async getBgpNeighbors() {
-    const res = await fetch('/api/bgp/neighbors');
+    const res = await authFetch('/api/bgp/neighbors');
     return res.json();
   },
 
   /** Fetch VRFs grouped by RD. */
   async getBgpVrfs() {
-    const res = await fetch('/api/bgp/vrfs');
+    const res = await authFetch('/api/bgp/vrfs');
     return res.json();
   },
 
   /** Fetch VRFs grouped by Route Target (preferred for display). */
   async getBgpVrfsByRT() {
-    const res = await fetch('/api/bgp/vrfs/by-rt');
+    const res = await authFetch('/api/bgp/vrfs/by-rt');
     return res.json();
   },
 
@@ -251,25 +347,25 @@ const API = {
     for (const [k, v] of Object.entries(filters)) {
       if (v !== undefined && v !== '') params.set(k, v);
     }
-    const res = await fetch(`/api/bgp/rib?${params}`);
+    const res = await authFetch(`/api/bgp/rib?${params}`);
     return res.json();
   },
 
   /** Trigger a BGP collection cycle (vtysh queries to FRR). */
   async collectBgp() {
-    const res = await fetch('/api/bgp/collect', { method: 'POST' });
+    const res = await authFetch('/api/bgp/collect', { method: 'POST' });
     return res.json();
   },
 
   /** Fetch a flat sorted list of all known VPN prefixes for autocomplete. */
   async getBgpPrefixList() {
-    const res = await fetch('/api/bgp/prefix-list');
+    const res = await authFetch('/api/bgp/prefix-list');
     return res.json();
   },
 
   /** Fetch full BGP path detail for a specific VPN prefix. */
   async getBgpPrefixDetail(prefix) {
-    const res = await fetch(`/api/bgp/prefix/${encodeURIComponent(prefix)}`);
+    const res = await authFetch(`/api/bgp/prefix/${encodeURIComponent(prefix)}`);
     return res.json();
   },
 
@@ -285,7 +381,7 @@ const API = {
     const body = { sourceNode, prefix };
     if (vrf) body.vrf = vrf;
     if (algoOverride != null) body.algoOverride = algoOverride;
-    const res = await fetch('/api/bgp/trace', {
+    const res = await authFetch('/api/bgp/trace', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -297,32 +393,32 @@ const API = {
 
   /** Fetch sFlow collector + aggregator status. */
   async getSflowStatus() {
-    const res = await fetch('/api/sflow/status');
+    const res = await authFetch('/api/sflow/status');
     return res.json();
   },
 
   /** Fetch current flow snapshot (all LSPs + edge flows). */
   async getSflowFlows() {
-    const res = await fetch('/api/sflow/flows');
+    const res = await authFetch('/api/sflow/flows');
     return res.json();
   },
 
   /** Fetch deterministic tunnel counter rates from eAPI polling. */
   async getTunnelRates() {
-    const res = await fetch('/api/sflow/tunnel-rates');
+    const res = await authFetch('/api/sflow/tunnel-rates');
     return res.json();
   },
 
   /** Fetch detailed flow data for a specific LSP. */
   async getSflowLspDetail(lspKey) {
-    const res = await fetch(`/api/sflow/lsp/${encodeURIComponent(lspKey)}`);
+    const res = await authFetch(`/api/sflow/lsp/${encodeURIComponent(lspKey)}`);
     if (!res.ok) return null;
     return res.json();
   },
 
   /** Fetch flow data for a specific topology edge. */
   async getSflowEdgeDetail(edgeId) {
-    const res = await fetch(`/api/sflow/edge/${encodeURIComponent(edgeId)}`);
+    const res = await authFetch(`/api/sflow/edge/${encodeURIComponent(edgeId)}`);
     if (!res.ok) return null;
     return res.json();
   },
@@ -332,7 +428,7 @@ const API = {
     const params = new URLSearchParams();
     if (collectorIP) params.set('collectorIP', collectorIP);
     if (samplingRate) params.set('samplingRate', samplingRate);
-    const res = await fetch(`/api/sflow/config/eos?${params}`);
+    const res = await authFetch(`/api/sflow/config/eos?${params}`);
     return res.json();
   },
 };

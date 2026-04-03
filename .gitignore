@@ -10,6 +10,11 @@ logs/
 # User-specific state
 atlas.positions.json
 
+# Auth runtime files (generated on first boot)
+users.json
+audit-log.json
+.jwt-secret
+
 # FRR proto files (copy from your local FRR installation)
 src/proto/*.proto
 

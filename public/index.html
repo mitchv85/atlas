@@ -11,6 +11,59 @@
 </head>
 <body>
   <!-- ================================================================== -->
+  <!-- Login Overlay                                                       -->
+  <!-- ================================================================== -->
+  <div class="login-overlay" id="loginOverlay">
+    <div class="login-card">
+      <svg class="login-logo" viewBox="0 0 28 28" fill="none">
+        <circle cx="14" cy="14" r="12" stroke="var(--accent)" stroke-width="1.5" opacity="0.3"/>
+        <circle cx="14" cy="6" r="2.5" fill="var(--accent)"/>
+        <circle cx="6" cy="20" r="2.5" fill="var(--accent)"/>
+        <circle cx="22" cy="20" r="2.5" fill="var(--accent)"/>
+        <line x1="14" y1="6" x2="6" y2="20" stroke="var(--accent)" stroke-width="1.2"/>
+        <line x1="14" y1="6" x2="22" y2="20" stroke="var(--accent)" stroke-width="1.2"/>
+        <line x1="6" y1="20" x2="22" y2="20" stroke="var(--accent)" stroke-width="1.2"/>
+      </svg>
+      <h1 class="login-title">ATLAS</h1>
+      <p class="login-subtitle">Network Topology Engine</p>
+      <div class="login-error" id="loginError" style="display:none;"></div>
+      <div class="login-field">
+        <label>Username</label>
+        <input type="text" id="loginUsername" autocomplete="username" />
+      </div>
+      <div class="login-field">
+        <label>Password</label>
+        <input type="password" id="loginPassword" autocomplete="current-password" />
+      </div>
+      <button class="btn btn-primary login-btn" id="btnLogin">Sign In</button>
+    </div>
+  </div>
+
+  <!-- ================================================================== -->
+  <!-- Change Password Modal                                               -->
+  <!-- ================================================================== -->
+  <div class="modal-overlay" id="changePasswordModal" style="display:none;">
+    <div class="login-card">
+      <h2 style="font-size:1.1rem;font-weight:600;margin-bottom:4px;">Change Password</h2>
+      <p class="login-subtitle" style="margin-bottom:16px;">You must change your password before continuing.</p>
+      <div class="login-error" id="cpError" style="display:none;"></div>
+      <div class="login-field">
+        <label>Current Password</label>
+        <input type="password" id="cpCurrent" />
+      </div>
+      <div class="login-field">
+        <label>New Password (min 8 chars)</label>
+        <input type="password" id="cpNew" />
+      </div>
+      <div class="login-field">
+        <label>Confirm New Password</label>
+        <input type="password" id="cpConfirm" />
+      </div>
+      <button class="btn btn-primary login-btn" id="btnChangePassword">Update Password</button>
+    </div>
+  </div>
+
+  <!-- ================================================================== -->
   <!-- Top Bar                                                             -->
   <!-- ================================================================== -->
   <header class="topbar">
@@ -32,10 +85,17 @@
         <button class="topbar-tab" data-tab="devices">Devices</button>
         <button class="topbar-tab" data-tab="bgp">BGP</button>
         <button class="topbar-tab" data-tab="flows">Flows</button>
+        <button class="topbar-tab" data-tab="mgmt" id="tabMgmt">Mgmt</button>
       </nav>
     </div>
 
     <div class="topbar-actions">
+      <div class="user-badge" id="userBadge" style="display:none;">
+        <span class="user-badge-dot"></span>
+        <span class="user-badge-name" id="userBadgeName"></span>
+        <span class="user-badge-role" id="userBadgeRole"></span>
+        <button class="btn-signout" id="btnSignOut" title="Sign out">Sign Out</button>
+      </div>
       <div class="theme-picker" id="themePicker">
         <button class="theme-picker-btn" id="themePickerBtn" title="Change theme">
           <svg viewBox="0 0 20 20"><path d="M4 2a2 2 0 00-2 2v1a1 1 0 002 0V4h1a1 1 0 000-2H4zm9 0a1 1 0 100 2h1v1a1 1 0 102 0V4a2 2 0 00-2-2h-1zM3 9a1 1 0 012 0 1 1 0 11-2 0zm14 0a1 1 0 01-2 0 1 1 0 112 0zM4 14H3v-1a1 1 0 10-2 0v1a2 2 0 002 2h1a1 1 0 100-2zm11 2h1a2 2 0 002-2v-1a1 1 0 10-2 0v1h-1a1 1 0 100 2zM10 8a2 2 0 100 4 2 2 0 000-4z"/></svg>
@@ -539,6 +599,66 @@
             </div>
             <pre class="config-output" id="sflowEosConfigOutput" style="background: var(--bg-surface); border: 1px solid var(--border); border-radius: 6px; padding: 12px; font-size: 11px; overflow-x: auto; color: var(--text-secondary);"></pre>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================================================================== -->
+    <!-- Tab: Management                                                     -->
+    <!-- ================================================================== -->
+    <div class="tab-view" id="viewMgmt">
+      <div class="devices-page">
+        <!-- Mgmt sub-tabs -->
+        <div class="mgmt-tabs">
+          <button class="mgmt-tab active" data-mgmt="profile">① My Profile</button>
+          <button class="mgmt-tab" data-mgmt="users" id="mgmtTabUsers">② Users</button>
+          <button class="mgmt-tab" data-mgmt="audit">③ Audit Log</button>
+          <button class="mgmt-tab" data-mgmt="system">④ System</button>
+        </div>
+
+        <!-- Profile sub-tab -->
+        <div class="mgmt-panel active" id="mgmtProfile">
+          <h2 class="devices-heading">My Profile</h2>
+          <p class="text-muted" style="font-size:0.78rem;margin-bottom:16px;">Personal info & password</p>
+          <div id="profileContent"></div>
+        </div>
+
+        <!-- Users sub-tab -->
+        <div class="mgmt-panel" id="mgmtUsers">
+          <div class="devices-toolbar">
+            <div class="devices-toolbar-left">
+              <h2 class="devices-heading">Users</h2>
+              <span class="devices-count" id="mgmtUserCount">0 users</span>
+            </div>
+            <div class="devices-toolbar-right">
+              <button class="btn btn-primary btn-sm" id="btnAddUser">+ Add User</button>
+            </div>
+          </div>
+          <div id="usersContent"></div>
+        </div>
+
+        <!-- Audit Log sub-tab -->
+        <div class="mgmt-panel" id="mgmtAudit">
+          <div class="devices-toolbar">
+            <div class="devices-toolbar-left">
+              <h2 class="devices-heading">Audit Log</h2>
+              <span class="devices-count" id="mgmtAuditCount">0 entries</span>
+            </div>
+            <div class="devices-toolbar-right">
+              <button class="btn btn-ghost btn-sm" id="btnRefreshAudit">↻ Refresh</button>
+            </div>
+          </div>
+          <div id="auditContent"></div>
+        </div>
+
+        <!-- System sub-tab -->
+        <div class="mgmt-panel" id="mgmtSystem">
+          <h2 class="devices-heading">System Info</h2>
+          <p class="text-muted" style="font-size:0.78rem;margin-bottom:16px;">Server vitals & application status</p>
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;">
+            <button class="btn btn-ghost btn-sm" id="btnRefreshSystem">↻ Refresh</button>
+          </div>
+          <div id="systemContent"></div>
         </div>
       </div>
     </div>

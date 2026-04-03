@@ -13,6 +13,7 @@
   let lastFlowSnapshot = null; // Latest sFlow flow data
   let lastTunnelRates = [];    // Latest tunnel counter rates (deterministic)
   let flowOverlayActive = false; // Is the heatmap overlay on?
+  let authUser = null;          // Current authenticated user { username, role }
   const topo = new TopologyRenderer('cy');
   const socket = new AtlasSocket();
 
@@ -85,6 +86,7 @@
   const viewDevices = $('#viewDevices');
   const viewBgp = $('#viewBgp');
   const viewFlows = $('#viewFlows');
+  const viewMgmt = $('#viewMgmt');
 
   // Devices page — use containers, re-query children as needed
   const devicesTableView = $('#devicesTableView');
@@ -153,6 +155,7 @@
     viewDevices.classList.toggle('active', tabName === 'devices');
     viewBgp.classList.toggle('active', tabName === 'bgp');
     viewFlows.classList.toggle('active', tabName === 'flows');
+    viewMgmt.classList.toggle('active', tabName === 'mgmt');
 
     // Show/hide path bar and collect button based on tab
     // Only show the path bar OR service trace bar — whichever was active
@@ -169,6 +172,9 @@
     }
     if (tabName === 'flows') {
       refreshFlowsPage();
+    }
+    if (tabName === 'mgmt') {
+      refreshMgmtPage();
     }
   }
 
@@ -1053,6 +1059,387 @@
     };
   }
 
+  // ── Auth Flow ────────────────────────────────────────────────────
+  function showLogin() {
+    document.getElementById('loginOverlay').style.display = 'flex';
+    document.getElementById('loginUsername').focus();
+  }
+
+  function hideLogin() {
+    document.getElementById('loginOverlay').style.display = 'none';
+  }
+
+  function showApp() {
+    hideLogin();
+    document.getElementById('changePasswordModal').style.display = 'none';
+    document.getElementById('userBadge').style.display = 'flex';
+    document.getElementById('userBadgeName').textContent = authUser.username;
+    document.getElementById('userBadgeRole').textContent = authUser.role;
+    // Hide Users tab for non-admins
+    const usersTab = document.getElementById('mgmtTabUsers');
+    if (usersTab) usersTab.style.display = authUser.role === 'admin' ? '' : 'none';
+    // Initialize the app if not already done
+    if (!topo.cy) initApp();
+  }
+
+  function doLogout() {
+    API.logout();
+    localStorage.removeItem('atlas-token');
+    authUser = null;
+    document.getElementById('userBadge').style.display = 'none';
+    showLogin();
+  }
+
+  function initAuthHandlers() {
+    const loginBtn = document.getElementById('btnLogin');
+    const loginUser = document.getElementById('loginUsername');
+    const loginPass = document.getElementById('loginPassword');
+    const loginErr = document.getElementById('loginError');
+
+    async function doLogin() {
+      loginErr.style.display = 'none';
+      const username = loginUser.value.trim();
+      const password = loginPass.value;
+      if (!username || !password) {
+        loginErr.textContent = 'Please enter username and password.';
+        loginErr.style.display = 'block';
+        return;
+      }
+      loginBtn.disabled = true;
+      loginBtn.textContent = 'Signing in...';
+      try {
+        const result = await API.login(username, password);
+        if (result.ok) {
+          localStorage.setItem('atlas-token', result.data.token);
+          authUser = result.data.user;
+          loginPass.value = '';
+          if (authUser.mustChangePassword) {
+            hideLogin();
+            document.getElementById('changePasswordModal').style.display = 'flex';
+          } else {
+            showApp();
+          }
+        } else {
+          loginErr.textContent = result.data.error || 'Login failed.';
+          loginErr.style.display = 'block';
+        }
+      } catch (e) {
+        loginErr.textContent = 'Connection error. Please try again.';
+        loginErr.style.display = 'block';
+      }
+      loginBtn.disabled = false;
+      loginBtn.textContent = 'Sign In';
+    }
+
+    loginBtn.addEventListener('click', doLogin);
+    loginPass.addEventListener('keydown', (e) => { if (e.key === 'Enter') doLogin(); });
+    loginUser.addEventListener('keydown', (e) => { if (e.key === 'Enter') loginPass.focus(); });
+
+    // Change password
+    const cpBtn = document.getElementById('btnChangePassword');
+    const cpErr = document.getElementById('cpError');
+    cpBtn.addEventListener('click', async () => {
+      cpErr.style.display = 'none';
+      const cur = document.getElementById('cpCurrent').value;
+      const np  = document.getElementById('cpNew').value;
+      const nc  = document.getElementById('cpConfirm').value;
+      if (np !== nc) { cpErr.textContent = 'Passwords do not match.'; cpErr.style.display = 'block'; return; }
+      if (np.length < 8) { cpErr.textContent = 'Minimum 8 characters.'; cpErr.style.display = 'block'; return; }
+      cpBtn.disabled = true;
+      try {
+        const result = await API.changePassword(cur, np);
+        if (result.ok) {
+          localStorage.setItem('atlas-token', result.data.token);
+          authUser.mustChangePassword = false;
+          showApp();
+        } else {
+          cpErr.textContent = result.data.error || 'Failed.';
+          cpErr.style.display = 'block';
+        }
+      } catch { cpErr.textContent = 'Connection error.'; cpErr.style.display = 'block'; }
+      cpBtn.disabled = false;
+    });
+
+    // Sign out
+    document.getElementById('btnSignOut').addEventListener('click', doLogout);
+
+    // Listen for 401s from API
+    window.addEventListener('atlas:unauthorized', () => {
+      if (authUser) doLogout();
+    });
+  }
+
+  async function checkAuth() {
+    const token = localStorage.getItem('atlas-token');
+    if (!token) return false;
+    try {
+      const me = await API.getMe();
+      if (me && me.username) {
+        authUser = me;
+        if (me.mustChangePassword) {
+          document.getElementById('loginOverlay').style.display = 'none';
+          document.getElementById('changePasswordModal').style.display = 'flex';
+          return false;
+        }
+        return true;
+      }
+    } catch {}
+    return false;
+  }
+
+  // ── Mgmt Page ───────────────────────────────────────────────────
+  let activeMgmtTab = 'profile';
+
+  function refreshMgmtPage() {
+    if (activeMgmtTab === 'profile') loadProfile();
+    else if (activeMgmtTab === 'users') loadUsers();
+    else if (activeMgmtTab === 'audit') loadAuditLog();
+    else if (activeMgmtTab === 'system') loadSystemInfo();
+  }
+
+  function initMgmtPage() {
+    // Sub-tab switching
+    document.querySelectorAll('.mgmt-tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        const target = tab.dataset.mgmt;
+        activeMgmtTab = target;
+        document.querySelectorAll('.mgmt-tab').forEach(t => t.classList.toggle('active', t.dataset.mgmt === target));
+        document.querySelectorAll('.mgmt-panel').forEach(p => p.classList.remove('active'));
+        document.getElementById('mgmt' + target.charAt(0).toUpperCase() + target.slice(1)).classList.add('active');
+        refreshMgmtPage();
+      });
+    });
+
+    document.getElementById('btnRefreshAudit')?.addEventListener('click', loadAuditLog);
+    document.getElementById('btnRefreshSystem')?.addEventListener('click', loadSystemInfo);
+    document.getElementById('btnAddUser')?.addEventListener('click', showAddUserForm);
+  }
+
+  // ── Profile ──
+  async function loadProfile() {
+    const container = document.getElementById('profileContent');
+    try {
+      const p = await API.getProfile();
+      container.innerHTML = `
+        <div class="devices-table-wrap" style="max-width:600px;">
+          <table class="devices-table">
+            <tbody>
+              <tr><td style="font-weight:600;width:160px;">Username</td><td>${esc(p.username)}</td></tr>
+              <tr><td style="font-weight:600;">Role</td><td><span class="detail-badge cyan">${esc(p.role)}</span></td></tr>
+              <tr><td style="font-weight:600;">First Name</td><td><input class="input-field" id="profFirstName" value="${esc(p.firstName)}" /></td></tr>
+              <tr><td style="font-weight:600;">Last Name</td><td><input class="input-field" id="profLastName" value="${esc(p.lastName)}" /></td></tr>
+              <tr><td style="font-weight:600;">Email</td><td><input class="input-field" id="profEmail" value="${esc(p.email)}" /></td></tr>
+              <tr><td style="font-weight:600;">Phone</td><td><input class="input-field" id="profPhone" value="${esc(p.phone)}" /></td></tr>
+              <tr><td style="font-weight:600;">Created</td><td>${p.createdAt ? new Date(p.createdAt).toLocaleString() : '—'}</td></tr>
+              <tr><td style="font-weight:600;">Last Login</td><td>${p.lastLogin ? new Date(p.lastLogin).toLocaleString() : '—'}</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div style="margin-top:12px;display:flex;gap:8px;">
+          <button class="btn btn-primary btn-sm" id="btnSaveProfile">Save Profile</button>
+          <button class="btn btn-ghost btn-sm" id="btnShowChangePw">Change Password</button>
+        </div>
+        <div id="profileMsg" style="margin-top:8px;font-size:0.78rem;"></div>`;
+
+      document.getElementById('btnSaveProfile').addEventListener('click', async () => {
+        const fields = {
+          firstName: document.getElementById('profFirstName').value,
+          lastName: document.getElementById('profLastName').value,
+          email: document.getElementById('profEmail').value,
+          phone: document.getElementById('profPhone').value,
+        };
+        await API.updateProfile(fields);
+        document.getElementById('profileMsg').innerHTML = '<span style="color:var(--green);">Profile saved.</span>';
+      });
+
+      document.getElementById('btnShowChangePw').addEventListener('click', () => {
+        document.getElementById('changePasswordModal').style.display = 'flex';
+      });
+    } catch { container.innerHTML = '<p class="text-muted">Error loading profile.</p>'; }
+  }
+
+  // ── Users ──
+  async function loadUsers() {
+    const container = document.getElementById('usersContent');
+    try {
+      const users = await API.getUsers();
+      document.getElementById('mgmtUserCount').textContent = `${users.length} user${users.length !== 1 ? 's' : ''}`;
+
+      let html = `<div class="devices-table-wrap"><table class="devices-table">
+        <thead><tr>
+          <th>Username</th><th>Role</th><th>Name</th><th>Email</th>
+          <th>Last Login</th><th>Created</th><th>Actions</th>
+        </tr></thead><tbody>`;
+
+      for (const u of users) {
+        const name = [u.firstName, u.lastName].filter(Boolean).join(' ') || '—';
+        const roleBadge = u.role === 'admin' ? 'cyan' : u.role === 'operator' ? 'green' : 'blue';
+        html += `<tr>
+          <td style="font-weight:600;">${esc(u.username)}</td>
+          <td><span class="detail-badge ${roleBadge}" style="font-size:0.68rem;">${esc(u.role)}</span>
+            ${u.mustChangePassword ? '<span class="detail-badge amber" style="font-size:0.6rem;margin-left:4px;">PW Reset</span>' : ''}</td>
+          <td>${esc(name)}</td>
+          <td>${esc(u.email || '—')}</td>
+          <td style="font-size:0.72rem;">${u.lastLogin ? new Date(u.lastLogin).toLocaleString() : '—'}</td>
+          <td style="font-size:0.72rem;">${u.createdAt ? new Date(u.createdAt).toLocaleString() : '—'}</td>
+          <td style="white-space:nowrap;">
+            <button class="btn btn-ghost btn-sm btn-edit-user" data-username="${esc(u.username)}" data-role="${esc(u.role)}">Edit</button>
+            ${u.username !== 'admin' ? `<button class="btn btn-ghost btn-sm btn-delete-user" data-username="${esc(u.username)}" style="color:var(--red);">×</button>` : ''}
+          </td>
+        </tr>`;
+      }
+      html += '</tbody></table></div>';
+      container.innerHTML = html;
+
+      // Wire edit buttons
+      container.querySelectorAll('.btn-edit-user').forEach(btn => {
+        btn.addEventListener('click', () => showEditUserForm(btn.dataset.username, btn.dataset.role));
+      });
+      // Wire delete buttons
+      container.querySelectorAll('.btn-delete-user').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          if (!confirm(`Delete user "${btn.dataset.username}"?`)) return;
+          await API.deleteUser(btn.dataset.username);
+          loadUsers();
+        });
+      });
+    } catch { container.innerHTML = '<p class="text-muted">Error loading users.</p>'; }
+  }
+
+  function showAddUserForm() {
+    const container = document.getElementById('usersContent');
+    const existing = container.innerHTML;
+    const formHTML = `
+      <div class="devices-table-wrap" style="max-width:500px;padding:16px;margin-bottom:16px;">
+        <h3 style="font-size:0.88rem;margin-bottom:12px;">Add New User</h3>
+        <div class="login-field"><label>Username</label><input class="input-field" id="newUserName" /></div>
+        <div class="login-field"><label>Password (min 8 chars)</label><input type="password" class="input-field" id="newUserPass" /></div>
+        <div class="login-field"><label>Role</label>
+          <select class="input-field" id="newUserRole"><option value="viewer">Viewer</option><option value="operator">Operator</option><option value="admin">Admin</option></select>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:8px;">
+          <button class="btn btn-primary btn-sm" id="btnConfirmAddUser">Create User</button>
+          <button class="btn btn-ghost btn-sm" id="btnCancelAddUser">Cancel</button>
+        </div>
+        <div id="addUserMsg" style="margin-top:8px;font-size:0.78rem;"></div>
+      </div>`;
+    container.insertAdjacentHTML('afterbegin', formHTML);
+
+    document.getElementById('btnConfirmAddUser').addEventListener('click', async () => {
+      const u = document.getElementById('newUserName').value.trim();
+      const p = document.getElementById('newUserPass').value;
+      const r = document.getElementById('newUserRole').value;
+      const msg = document.getElementById('addUserMsg');
+      if (!u || !p) { msg.innerHTML = '<span style="color:var(--red);">All fields required.</span>'; return; }
+      const result = await API.addUser(u, p, r);
+      if (result.ok) { loadUsers(); } else { msg.innerHTML = `<span style="color:var(--red);">${esc(result.data.error)}</span>`; }
+    });
+    document.getElementById('btnCancelAddUser').addEventListener('click', loadUsers);
+  }
+
+  function showEditUserForm(username, currentRole) {
+    const modal = document.createElement('div');
+    modal.className = 'modal-overlay';
+    modal.style.display = 'flex';
+    modal.innerHTML = `<div class="login-card" style="max-width:400px;">
+      <h2 style="font-size:1rem;margin-bottom:12px;">Edit User: ${esc(username)}</h2>
+      <div class="login-field"><label>Role</label>
+        <select class="input-field" id="editRole">
+          <option value="viewer" ${currentRole==='viewer'?'selected':''}>Viewer</option>
+          <option value="operator" ${currentRole==='operator'?'selected':''}>Operator</option>
+          <option value="admin" ${currentRole==='admin'?'selected':''}>Admin</option>
+        </select>
+      </div>
+      <div class="login-field"><label>Reset Password (optional)</label><input type="password" class="input-field" id="editNewPw" placeholder="Leave blank to keep current" /></div>
+      <div style="display:flex;gap:8px;margin-top:8px;">
+        <button class="btn btn-primary btn-sm" id="btnConfirmEdit">Save</button>
+        <button class="btn btn-ghost btn-sm" id="btnCancelEdit">Cancel</button>
+      </div>
+      <div id="editMsg" style="margin-top:8px;font-size:0.78rem;"></div>
+    </div>`;
+    document.body.appendChild(modal);
+
+    document.getElementById('btnConfirmEdit').addEventListener('click', async () => {
+      const fields = { role: document.getElementById('editRole').value };
+      const pw = document.getElementById('editNewPw').value;
+      if (pw) { fields.resetPassword = true; fields.newPassword = pw; }
+      const result = await API.editUser(username, fields);
+      if (result.ok) { modal.remove(); loadUsers(); }
+      else { document.getElementById('editMsg').innerHTML = `<span style="color:var(--red);">${esc(result.data.error)}</span>`; }
+    });
+    document.getElementById('btnCancelEdit').addEventListener('click', () => modal.remove());
+  }
+
+  // ── Audit Log ──
+  async function loadAuditLog() {
+    const container = document.getElementById('auditContent');
+    try {
+      const log = await API.getAuditLog(300);
+      document.getElementById('mgmtAuditCount').textContent = `${log.length} entries`;
+
+      let html = `<div class="devices-table-wrap"><table class="devices-table">
+        <thead><tr><th>Time</th><th>User</th><th>Role</th><th>Action</th><th>Target</th><th>Result</th><th>Detail</th></tr></thead><tbody>`;
+
+      for (const e of log) {
+        const resultBadge = e.result === 'success' ? 'green' : e.result === 'denied' ? 'amber' : 'red';
+        html += `<tr>
+          <td style="font-size:0.7rem;white-space:nowrap;">${new Date(e.timestamp).toLocaleString()}</td>
+          <td style="font-weight:600;">${esc(e.user)}</td>
+          <td><span class="detail-badge cyan" style="font-size:0.6rem;">${esc(e.role)}</span></td>
+          <td style="font-family:'JetBrains Mono',monospace;font-size:0.72rem;">${esc(e.action)}</td>
+          <td>${esc(e.target)}</td>
+          <td><span class="detail-badge ${resultBadge}" style="font-size:0.65rem;">${esc(e.result)}</span></td>
+          <td style="font-size:0.7rem;color:var(--text-muted);max-width:200px;overflow:hidden;text-overflow:ellipsis;">${esc(e.detail || '')}</td>
+        </tr>`;
+      }
+      html += '</tbody></table></div>';
+      container.innerHTML = html;
+    } catch { container.innerHTML = '<p class="text-muted">Error loading audit log.</p>'; }
+  }
+
+  // ── System Info ──
+  async function loadSystemInfo() {
+    const container = document.getElementById('systemContent');
+    try {
+      const s = await API.getSystemInfo();
+      const uptimeStr = formatUptime(s.uptimeSeconds);
+
+      container.innerHTML = `
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;max-width:800px;">
+          <div class="devices-table-wrap">
+            <table class="devices-table">
+              <thead><tr><th colspan="2">Server</th></tr></thead>
+              <tbody>
+                <tr><td style="font-weight:600;">Node.js</td><td>${esc(s.nodeVersion)}</td></tr>
+                <tr><td style="font-weight:600;">Platform</td><td>${esc(s.platform)}</td></tr>
+                <tr><td style="font-weight:600;">Uptime</td><td style="color:var(--accent);">${uptimeStr}</td></tr>
+                <tr><td style="font-weight:600;">Memory (RSS)</td><td>${s.memUsedMb} MB</td></tr>
+                <tr><td style="font-weight:600;">ATLAS Commit</td><td style="color:var(--accent);font-family:'JetBrains Mono',monospace;">${esc(s.atlasCommit)}</td></tr>
+                <tr><td style="font-weight:600;">Token TTL</td><td>${esc(s.tokenTtl)}</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="devices-table-wrap">
+            <table class="devices-table">
+              <thead><tr><th colspan="2">Application</th></tr></thead>
+              <tbody>
+                <tr><td style="font-weight:600;">Users</td><td>${s.userCount}</td></tr>
+                <tr><td style="font-weight:600;">Audit Entries</td><td>${s.auditCount} / ${s.auditMax}</td></tr>
+                <tr><td style="font-weight:600;">Devices</td><td>${s.deviceCount}</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>`;
+    } catch { container.innerHTML = '<p class="text-muted">Error loading system info.</p>'; }
+  }
+
+  function formatUptime(seconds) {
+    const d = Math.floor(seconds / 86400);
+    const h = Math.floor((seconds % 86400) / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    return `${d}d ${h}h ${m}m`;
+  }
+
   // ── Theme System ──────────────────────────────────────────────────
   const THEMES = [
     { group: 'Dark' },
@@ -1125,16 +1512,34 @@
 
   // ── Init ──────────────────────────────────────────────────────────
   async function init() {
-    // Apply saved theme BEFORE topo.init so Cytoscape reads correct CSS vars
+    // Apply saved theme BEFORE anything renders
     const savedTheme = localStorage.getItem('atlas-theme') || 'github-dark';
     if (savedTheme !== 'github-dark') {
       document.documentElement.setAttribute('data-theme', savedTheme);
     }
 
-    topo.init();
+    // Wire auth handlers (login form, sign out, etc.)
+    initAuthHandlers();
 
-    // Now wire the theme picker UI
+    // Check if user has a valid session
+    const isAuthenticated = await checkAuth();
+    if (isAuthenticated) {
+      showApp();
+      await initApp();
+    } else {
+      showLogin();
+    }
+  }
+
+  /**
+   * Initialize the full application after successful authentication.
+   * Called once on page load (if token is valid) or after login success.
+   */
+  async function initApp() {
+    topo.init();
     initThemePicker();
+    initMgmtPage();
+
     topo.onNodeClick = showNodeDetail;
     topo.onEdgeClick = showEdgeDetail;
 

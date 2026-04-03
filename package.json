@@ -1,6 +1,6 @@
 {
   "name": "atlas",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Protocol-aware network topology visualization, path analysis, and BGP operations engine",
   "main": "server.js",
   "scripts": {
@@ -17,9 +17,11 @@
     "@grpc/grpc-js": "^1.10.0",
     "@grpc/proto-loader": "^0.7.0",
     "axios": "^1.7.0",
+    "bcrypt": "^6.0.0",
     "dotenv": "^16.4.0",
     "express": "^4.21.0",
     "https-agent": "^1.0.0",
+    "jsonwebtoken": "^9.0.3",
     "ssh2": "^1.17.0",
     "uuid": "^10.0.0",
     "ws": "^8.19.0"
