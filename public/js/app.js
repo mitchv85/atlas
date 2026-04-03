@@ -2447,7 +2447,7 @@
             <span style="display:inline-flex;align-items:center;gap:5px;"><span style="display:inline-block;width:11px;height:11px;border-radius:50%;background:var(--green);"></span> Algo 0</span>
             <span style="display:inline-flex;align-items:center;gap:5px;"><span style="display:inline-block;width:11px;height:11px;border-radius:50%;background:#ec84c4;"></span> FlexAlgo</span>
             <span style="display:inline-flex;align-items:center;gap:5px;"><span style="display:inline-block;width:11px;height:11px;border-radius:50%;background:var(--blue);"></span> Service</span>
-            <span style="display:inline-flex;align-items:center;gap:5px;"><span style="display:inline-block;width:11px;height:11px;border-radius:50%;background:#c49456;"></span> Adj-SID</span>
+            <span style="display:inline-flex;align-items:center;gap:5px;"><span style="display:inline-block;width:11px;height:11px;border-radius:50%;background:#e89a72;"></span> Adj-SID</span>
           </div>
         </div>`;
       html += `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;">`;
@@ -4139,7 +4139,7 @@
       <span style="font-weight:600;letter-spacing:0.03em;text-transform:uppercase;opacity:0.7;">Legend</span>
       <span style="display:inline-flex;align-items:center;gap:5px;"><span style="display:inline-block;width:11px;height:11px;border-radius:50%;background:var(--green);"></span> Algo 0</span>
       <span style="display:inline-flex;align-items:center;gap:5px;"><span style="display:inline-block;width:11px;height:11px;border-radius:50%;background:#ec84c4;"></span> FlexAlgo</span>
-      <span style="display:inline-flex;align-items:center;gap:5px;"><span style="display:inline-block;width:11px;height:11px;border-radius:50%;background:#c49456;"></span> Adj-SID</span>
+      <span style="display:inline-flex;align-items:center;gap:5px;"><span style="display:inline-block;width:11px;height:11px;border-radius:50%;background:#e89a72;"></span> Adj-SID</span>
     </div>`;
   }
 
