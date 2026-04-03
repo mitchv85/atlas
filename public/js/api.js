@@ -16,8 +16,9 @@ async function authFetch(url, opts = {}) {
   const token = localStorage.getItem('atlas-token');
   const headers = { ...(opts.headers || {}) };
   if (token) headers['Authorization'] = `Bearer ${token}`;
-  const res = await authFetch(url, { ...opts, headers });
-  if (res.status === 401) {
+  const res = await fetch(url, { ...opts, headers });
+  // Only treat 401 as session expiry for non-auth routes
+  if (res.status === 401 && !url.startsWith('/api/auth/')) {
     window.dispatchEvent(new CustomEvent('atlas:unauthorized'));
   }
   return res;
