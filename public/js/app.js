@@ -2433,7 +2433,7 @@
         <span class="path-result-text">
           <strong>Service Path</strong> — ${esc(result.sourceNode)} → ${esc(result.prefix)}<br>
           Destination PE: <strong>${esc(result.destinationPE)}</strong>
-          ${hasColor ? `<br>Color: <span class="detail-badge amber" style="font-size:0.65rem;">Color:${result.colorCommunity}</span> → <strong>${esc(result.transportAlgorithmName)}</strong>` : '<br>Transport: <strong>Standard IGP (Algo 0)</strong>'}
+          ${hasColor ? `<br>Color: <span class="detail-badge pink" style="font-size:0.65rem;">Color:${result.colorCommunity}</span> → <strong>${esc(result.transportAlgorithmName)}</strong>` : '<br>Transport: <strong>Standard IGP (Algo 0)</strong>'}
         </span>
       </div>`;
 
