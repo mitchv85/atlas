@@ -2180,7 +2180,7 @@
         html += pathRow('Origin', p.origin || '—');
         html += pathRow('Local Pref', p.locPref);
         if (p.med) html += pathRow('MED', p.med);
-        html += pathRow('Label', p.label ? `<span class="detail-badge green">${p.label}</span>` : '—', true);
+        html += pathRow('Label', p.label ? `<span class="detail-badge blue">${p.label}</span>` : '—', true);
         if (p.nextHopMetric !== null && p.nextHopMetric !== undefined) {
           html += pathRow('IGP Metric to NH', p.nextHopMetric);
         }
