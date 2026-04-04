@@ -108,6 +108,38 @@ class GnmiSubscriber extends EventEmitter {
     return { enabled: this._config.enabled, port: this._config.port, connections: status };
   }
 
+  /**
+   * Add a new device to the subscriber — starts gNMI streams immediately.
+   * Called when a device is added via the Devices tab.
+   */
+  addDevice(device) {
+    if (!this._config.enabled) return;
+    if (!device || !device.host) return;
+    console.log(`  [gNMI] Adding new device ${device.name} to subscriber`);
+    this._connectDevice(device);
+  }
+
+  /**
+   * Remove a device from the subscriber — kills all gNMI streams.
+   * Called when a device is removed via the Devices tab.
+   */
+  removeDevice(deviceName) {
+    if (!deviceName) return;
+    const procs = this._processes.get(deviceName);
+    if (procs) {
+      for (const p of procs) {
+        try { p.proc.kill('SIGTERM'); } catch {}
+      }
+      this._processes.delete(deviceName);
+    }
+    this._deviceStatus.delete(deviceName);
+    if (this._reconnectTimers.has(deviceName)) {
+      clearTimeout(this._reconnectTimers.get(deviceName));
+      this._reconnectTimers.delete(deviceName);
+    }
+    console.log(`  [gNMI] Removed device ${deviceName} from subscriber`);
+  }
+
   _connectDevice(device) {
     const name = device.name;
     const target = `${device.host}:${this._config.port}`;

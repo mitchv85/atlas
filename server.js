@@ -49,6 +49,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 // Share the poller with topology routes
 // ---------------------------------------------------------------------------
 app.set('poller', poller);
+app.set('gnmiSubscriber', gnmiSubscriber);
 
 // ---------------------------------------------------------------------------
 // Auth Routes (public — no auth required)

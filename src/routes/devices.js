@@ -30,6 +30,11 @@ router.post('/', (req, res) => {
   }
 
   const device = deviceStore.add({ name, host, port, username, password, transport });
+
+  // Start gNMI streams for the new device
+  const gnmi = req.app.get('gnmiSubscriber');
+  if (gnmi) gnmi.addDevice(deviceStore.getRaw(device.id));
+
   res.status(201).json(device);
 });
 
@@ -161,8 +166,17 @@ router.post('/by-hostname/:hostname/command', async (req, res) => {
 
 // DELETE /api/devices/:id — Remove a device
 router.delete('/:id', (req, res) => {
+  // Get device name before removing
+  const device = deviceStore.get(req.params.id);
   const removed = deviceStore.remove(req.params.id);
   if (!removed) return res.status(404).json({ error: 'Device not found' });
+
+  // Stop gNMI streams for the removed device
+  if (device) {
+    const gnmi = req.app.get('gnmiSubscriber');
+    if (gnmi) gnmi.removeDevice(device.name);
+  }
+
   res.json({ success: true });
 });
 
