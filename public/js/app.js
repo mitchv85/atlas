@@ -4318,7 +4318,7 @@
           <div class="reach-shield" title="${esc(statusInfo.title)}">${statusInfo.icon}</div>
           <div class="reach-info">
             <span class="reach-hostname">${esc(entry.hostname)}</span>
-            <span class="reach-sid detail-badge cyan">SID ${entry.sid}</span>
+            <span class="reach-sid detail-badge cyan">SID ${SRGB_BASE + entry.sid}</span>
           </div>
           <span class="reach-meta">${entry.hopCount}h / m${entry.metric}</span>
         </div>
