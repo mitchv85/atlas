@@ -91,5 +91,11 @@
       "vpnv4": { "enabled": true },
       "bgpLs": { "enabled": false }
     }
+  },
+  "gnmi": {
+    "enabled": false,
+    "port": 6030,
+    "sampleIntervalSeconds": 10,
+    "isisInstance": "100"
   }
 }

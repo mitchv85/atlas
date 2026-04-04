@@ -17,6 +17,7 @@ audit-log.json
 
 # FRR proto files (copy from your local FRR installation)
 src/proto/*.proto
+!src/proto/gnmi.proto
 
 # Stale test/capture data
 command_output.json

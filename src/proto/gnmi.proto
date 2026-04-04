@@ -1,0 +1,204 @@
+// gNMI proto definition — OpenConfig gRPC Network Management Interface
+// Source: https://github.com/openconfig/gnmi/blob/master/proto/gnmi/gnmi.proto
+// Simplified for ATLAS — includes Subscribe, Get, Capabilities
+
+syntax = "proto3";
+
+package gnmi;
+
+option go_package = "github.com/openconfig/gnmi/proto/gnmi";
+
+// gNMI service definition
+service gNMI {
+  rpc Capabilities(CapabilityRequest) returns (CapabilityResponse);
+  rpc Get(GetRequest) returns (GetResponse);
+  rpc Set(SetRequest) returns (SetResponse);
+  rpc Subscribe(stream SubscribeRequest) returns (stream SubscribeResponse);
+}
+
+// Path represents a gNMI path
+message Path {
+  repeated string element = 1 [deprecated=true];
+  string origin = 2;
+  repeated PathElem elem = 3;
+  string target = 4;
+}
+
+message PathElem {
+  string name = 1;
+  map<string, string> key = 2;
+}
+
+// TypedValue represents a value with a type
+message TypedValue {
+  oneof value {
+    string string_val = 1;
+    int64 int_val = 2;
+    uint64 uint_val = 3;
+    bool bool_val = 4;
+    bytes bytes_val = 5;
+    float float_val = 6;
+    Decimal64 decimal_val = 7;
+    ScalarArray leaflist_val = 8;
+    bytes any_val = 9;
+    bytes json_val = 10;
+    bytes json_ietf_val = 11;
+    string ascii_val = 12;
+    bytes proto_bytes = 13;
+    double double_val = 14;
+  }
+}
+
+message Decimal64 {
+  int64 digits = 1;
+  uint32 precision = 2;
+}
+
+message ScalarArray {
+  repeated TypedValue element = 1;
+}
+
+// Notification — a set of updates/deletes on paths
+message Notification {
+  int64 timestamp = 1;
+  Path prefix = 2;
+  repeated Update update = 4;
+  repeated Path delete = 5;
+  bool atomic = 6;
+}
+
+message Update {
+  Path path = 1;
+  TypedValue val = 3;
+  uint32 duplicates = 4;
+}
+
+// Subscribe
+message SubscribeRequest {
+  oneof request {
+    SubscriptionList subscribe = 1;
+    Poll poll = 3;
+  }
+}
+
+message Poll {
+}
+
+message SubscribeResponse {
+  oneof response {
+    Notification update = 1;
+    bool sync_response = 3;
+    Error error = 4 [deprecated=true];
+  }
+}
+
+message SubscriptionList {
+  Path prefix = 1;
+  repeated Subscription subscription = 2;
+  enum Mode {
+    STREAM = 0;
+    ONCE = 1;
+    POLL = 2;
+  }
+  Mode mode = 5;
+  Encoding encoding = 6;
+  repeated ModelData use_models = 7;
+  QOSMarking qos = 4;
+  bool updates_only = 9;
+}
+
+message Subscription {
+  Path path = 1;
+  SubscriptionMode mode = 2;
+  uint64 sample_interval = 3;
+  bool suppress_redundant = 4;
+  uint64 heartbeat_interval = 5;
+}
+
+enum SubscriptionMode {
+  TARGET_DEFINED = 0;
+  ON_CHANGE = 1;
+  SAMPLE = 2;
+}
+
+enum Encoding {
+  JSON = 0;
+  BYTES = 1;
+  PROTO = 2;
+  ASCII = 3;
+  JSON_IETF = 4;
+}
+
+message QOSMarking {
+  uint32 marking = 1;
+}
+
+// Get
+message GetRequest {
+  Path prefix = 1;
+  repeated Path path = 2;
+  enum DataType {
+    ALL = 0;
+    CONFIG = 1;
+    STATE = 2;
+    OPERATIONAL = 3;
+  }
+  DataType type = 3;
+  Encoding encoding = 5;
+  repeated ModelData use_models = 6;
+}
+
+message GetResponse {
+  repeated Notification notification = 1;
+}
+
+// Set
+message SetRequest {
+  Path prefix = 1;
+  repeated Update delete_deprecated = 2 [deprecated=true];
+  repeated Update replace = 3;
+  repeated Update update = 4;
+  repeated Path delete = 5;
+}
+
+message SetResponse {
+  Path prefix = 1;
+  repeated UpdateResult response = 2;
+  int64 timestamp = 4;
+}
+
+message UpdateResult {
+  enum Operation {
+    INVALID = 0;
+    DELETE = 1;
+    REPLACE = 2;
+    UPDATE = 3;
+  }
+  int64 timestamp = 1;
+  Path path = 2;
+  Error message = 3 [deprecated=true];
+  Operation op = 4;
+}
+
+// Capabilities
+message CapabilityRequest {
+}
+
+message CapabilityResponse {
+  repeated ModelData supported_models = 1;
+  repeated Encoding supported_encodings = 2;
+  string gNMI_version = 3;
+}
+
+message ModelData {
+  string name = 1;
+  string organization = 2;
+  string version = 3;
+}
+
+// Error (deprecated but included for compatibility)
+message Error {
+  uint32 code = 1;
+  string message = 2;
+  bytes data = 3;
+}

@@ -1,6 +1,6 @@
 {
   "name": "atlas",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "description": "Protocol-aware network topology visualization, path analysis, and BGP operations engine",
   "main": "server.js",
   "scripts": {

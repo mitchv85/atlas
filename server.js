@@ -32,6 +32,9 @@ const { SflowCollector } = require('./src/services/sflowCollector');
 const SflowAggregator = require('./src/services/sflowAggregator');
 const sflowStore = require('./src/store/sflow');
 const deviceStore = require('./src/store/devices');
+const GnmiSubscriber = require('./src/services/gnmiSubscriber');
+
+const gnmiSubscriber = new GnmiSubscriber();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -64,6 +67,11 @@ app.use('/api/mgmt', authService.requireAuth, mgmtRoutes);
 // Poller status endpoint (protected)
 app.get('/api/status', authService.requireAuth, (_req, res) => {
   res.json(poller.getStatus());
+});
+
+// gNMI subscriber status endpoint (protected)
+app.get('/api/gnmi/status', authService.requireAuth, (_req, res) => {
+  res.json(gnmiSubscriber.getStatus());
 });
 
 // ---------------------------------------------------------------------------
@@ -187,6 +195,47 @@ bgpStore.on('neighbors:updated', (neighbors) => {
 
 bgpStore.on('status:changed', (status) => {
   broadcast({ type: 'bgp:status', data: status });
+});
+
+// ---------------------------------------------------------------------------
+// gNMI Subscriber — Real-Time State Streaming
+// ---------------------------------------------------------------------------
+
+// Topology change events from gNMI → trigger eAPI refresh + notify clients
+gnmiSubscriber.on('topology:changed', ({ device, reason, detail }) => {
+  console.log(`  [gNMI] Topology change from ${device}: ${reason}`);
+  // Debounce: wait 2s for flap storms to settle, then trigger eAPI refresh
+  if (!gnmiSubscriber._refreshTimer) {
+    gnmiSubscriber._refreshTimer = setTimeout(async () => {
+      gnmiSubscriber._refreshTimer = null;
+      try {
+        console.log('  [gNMI] Triggering eAPI topology refresh...');
+        await poller.forceCollect();
+      } catch (err) {
+        console.error('  [gNMI] eAPI refresh failed:', err.message);
+      }
+    }, 2000);
+  }
+});
+
+// IS-IS adjacency events → immediate broadcast to clients
+gnmiSubscriber.on('isis:adjacency', (event) => {
+  broadcast({ type: 'gnmi:isis:adjacency', data: event });
+});
+
+// Interface status changes → immediate broadcast
+gnmiSubscriber.on('interface:status', (event) => {
+  broadcast({ type: 'gnmi:interface:status', data: event });
+});
+
+// Interface counter samples → broadcast for live overlays
+gnmiSubscriber.on('interface:counters', (event) => {
+  broadcast({ type: 'gnmi:interface:counters', data: event });
+});
+
+// Device sync complete
+gnmiSubscriber.on('device:synced', ({ device }) => {
+  broadcast({ type: 'gnmi:device:synced', data: { device } });
 });
 
 // ---------------------------------------------------------------------------
@@ -316,14 +365,29 @@ server.listen(PORT, async () => {
   // Initialize default users if none exist
   await authService.initUsers();
 
+  // Load gNMI config before banner
+  let gnmiConfig = null;
+  try {
+    const fs = require('fs');
+    const configPath = require('path').join(__dirname, 'atlas.config.json');
+    const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+    if (config.gnmi) {
+      gnmiConfig = config.gnmi;
+      gnmiSubscriber.configure(gnmiConfig);
+    }
+  } catch {}
+
+  const gnmiStatus = gnmiSubscriber._config.enabled ? 'enabled' : 'disabled';
+
   console.log(`\n  ╔══════════════════════════════════════╗`);
-  console.log(`  ║          A T L A S   v0.7.0          ║`);
+  console.log(`  ║          A T L A S   v0.7.1          ║`);
   console.log(`  ║   Network Topology & Operations       ║`);
   console.log(`  ╠══════════════════════════════════════╣`);
   console.log(`  ║  http://localhost:${PORT}               ║`);
   console.log(`  ║  WebSocket: ws://localhost:${PORT}/ws    ║`);
   console.log(`  ║  SSH Proxy: ws://localhost:${PORT}/ssh   ║`);
   console.log(`  ║  sFlow:    udp://0.0.0.0:6343        ║`);
+  console.log(`  ║  gNMI:     port ${gnmiSubscriber._config.port} (${gnmiStatus})       ║`);
   console.log(`  ║  Auth:     JWT (${authService.TOKEN_TTL} TTL)             ║`);
   console.log(`  ╚══════════════════════════════════════╝\n`);
 
@@ -335,4 +399,12 @@ server.listen(PORT, async () => {
   sflowAggregator.start();
   sflowStore.setConfig({ enabled: true, port: 6343 });
   console.log('  sFlow collector + aggregator started');
+
+  // Start gNMI subscriber
+  if (gnmiConfig && gnmiConfig.enabled) {
+    const allDevices = deviceStore.getAllRaw();
+    gnmiSubscriber.start(allDevices);
+  } else {
+    console.log('  gNMI subscriber disabled in config');
+  }
 });
