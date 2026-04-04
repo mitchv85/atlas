@@ -240,6 +240,10 @@ class TopologyPoller extends EventEmitter {
 
         // Detect the source node: the node whose loopback is NOT in the
         // tunnel FIB endpoints (a device doesn't build a tunnel to itself).
+        // Skip if FIB is empty — the heuristic can't work with zero data
+        // points and would incorrectly match (and overwrite) another device.
+        if (fibEndpoints.size === 0) continue;
+
         for (const [_sysId, nodeInfo] of allNodes) {
           const rid = nodeInfo.routerCaps?.routerId;
           if (!rid || !nodeInfo.hostname) continue;
