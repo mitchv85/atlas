@@ -1631,7 +1631,6 @@
     const isAuthenticated = await checkAuth();
     if (isAuthenticated) {
       showApp();
-      await initApp();
     } else {
       showLogin();
       checkGitHubSSO(); // Show GitHub button if SSO is configured
