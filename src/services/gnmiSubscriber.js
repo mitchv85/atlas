@@ -206,6 +206,7 @@ class GnmiSubscriber extends EventEmitter {
         lastUpdate: conn.lastUpdate,
         updateCount: conn.updateCount,
         errorCount: conn.errorCount,
+        streams: `${conn.syncCount || 0}/${conn.totalStreams || 0} synced`,
       };
     }
     return {
@@ -219,6 +220,8 @@ class GnmiSubscriber extends EventEmitter {
 
   /**
    * Connect to a single device and establish subscriptions.
+   * EOS does not support aggregated subscriptions (multiple paths in one
+   * stream), so we create a separate gRPC stream per subscription path.
    */
   _connectDevice(device) {
     const name = device.name;
@@ -227,6 +230,11 @@ class GnmiSubscriber extends EventEmitter {
     // Skip if already connected
     if (this._connections.has(name) && this._connections.get(name).status === 'connected') {
       return;
+    }
+
+    // Clean up any existing dead connection
+    if (this._connections.has(name)) {
+      this._disconnect(name);
     }
 
     console.log(`  [gNMI] Connecting to ${name} (${target})...`);
@@ -240,81 +248,84 @@ class GnmiSubscriber extends EventEmitter {
 
     const conn = {
       client,
-      stream: null,
+      streams: [],           // One stream per subscription path
       status: 'connecting',
       connectedAt: null,
       lastUpdate: null,
       updateCount: 0,
       errorCount: 0,
+      syncCount: 0,          // How many streams have sent sync_response
+      totalStreams: 0,        // Total streams expected
     };
     this._connections.set(name, conn);
 
-    // Build subscription list
-    const subscriptions = [];
-
-    // ON_CHANGE subscriptions
+    // Build per-path subscription definitions
+    const pathDefs = [];
     for (const p of ON_CHANGE_PATHS) {
-      subscriptions.push({
-        path: parsePath(p),
-        mode: 'ON_CHANGE',
-      });
+      pathDefs.push({ path: p, mode: 'ON_CHANGE', sample_interval: null });
     }
-
-    // SAMPLE subscriptions
     for (const p of SAMPLE_PATHS) {
-      subscriptions.push({
-        path: parsePath(p),
-        mode: 'SAMPLE',
-        sample_interval: this._config.sampleIntervalNs,
-      });
+      pathDefs.push({ path: p, mode: 'SAMPLE', sample_interval: this._config.sampleIntervalNs });
     }
 
-    // Set up authentication metadata
-    const metadata = new grpc.Metadata();
-    metadata.set('username', device.username || 'admin');
-    metadata.set('password', device.password || 'admin');
+    conn.totalStreams = pathDefs.length;
 
-    // Create the subscribe stream
-    const stream = client.Subscribe(metadata);
-    conn.stream = stream;
+    // Create one stream per path
+    for (const def of pathDefs) {
+      const metadata = new grpc.Metadata();
+      metadata.set('username', device.username || 'admin');
+      metadata.set('password', device.password || 'admin');
 
-    // Send the subscription request
-    stream.write({
-      subscribe: {
-        subscription: subscriptions,
-        mode: 'STREAM',
-        encoding: 'JSON_IETF',
-        updates_only: false, // Get initial state snapshot first
-      },
-    });
+      const stream = client.Subscribe(metadata);
+      conn.streams.push(stream);
 
-    // Handle incoming updates
-    stream.on('data', (response) => {
-      try {
-        this._handleResponse(name, response);
-      } catch (err) {
-        console.error(`  [gNMI] ${name} handler error:`, err.message);
+      // Build single-path subscription
+      const sub = {
+        path: parsePath(def.path),
+        mode: def.mode,
+      };
+      if (def.sample_interval) {
+        sub.sample_interval = def.sample_interval;
+      }
+
+      // Send subscription request with ONE path
+      stream.write({
+        subscribe: {
+          subscription: [sub],
+          mode: 'STREAM',
+          encoding: 'JSON_IETF',
+          updates_only: false,
+        },
+      });
+
+      // Handle incoming updates
+      stream.on('data', (response) => {
+        try {
+          this._handleResponse(name, response);
+        } catch (err) {
+          console.error(`  [gNMI] ${name} handler error:`, err.message);
+          conn.errorCount++;
+        }
+      });
+
+      stream.on('error', (err) => {
+        const code = err.code || '';
+        const msg = err.details || err.message || '';
+        if (code !== grpc.status.CANCELLED) {
+          console.error(`  [gNMI] ${name} stream error (code=${code}): ${msg}`);
+        }
         conn.errorCount++;
-      }
-    });
+      });
 
-    stream.on('error', (err) => {
-      const code = err.code || '';
-      const msg = err.details || err.message || '';
-      // Suppress noisy keepalive/unavailable logs
-      if (code !== grpc.status.CANCELLED) {
-        console.error(`  [gNMI] ${name} stream error (code=${code}): ${msg}`);
-      }
-      conn.status = 'error';
-      conn.errorCount++;
-      this._scheduleReconnect(device);
-    });
-
-    stream.on('end', () => {
-      console.log(`  [gNMI] ${name} stream ended`);
-      conn.status = 'disconnected';
-      this._scheduleReconnect(device);
-    });
+      stream.on('end', () => {
+        conn.activeStreams = (conn.activeStreams || conn.totalStreams) - 1;
+        if (conn.activeStreams <= 0) {
+          console.log(`  [gNMI] ${name} all streams ended`);
+          conn.status = 'disconnected';
+          this._scheduleReconnect(device);
+        }
+      });
+    }
   }
 
   /**
@@ -340,7 +351,9 @@ class GnmiSubscriber extends EventEmitter {
     if (!conn) return;
 
     try {
-      if (conn.stream) conn.stream.cancel();
+      for (const stream of (conn.streams || [])) {
+        try { stream.cancel(); } catch {}
+      }
       if (conn.client) conn.client.close();
     } catch {}
 
@@ -352,15 +365,18 @@ class GnmiSubscriber extends EventEmitter {
    * Handle a gNMI SubscribeResponse message.
    */
   _handleResponse(deviceName, response) {
-    // Sync response — initial snapshot complete
+    // Sync response — one stream's initial snapshot complete
     if (response.sync_response) {
       const conn = this._connections.get(deviceName);
       if (conn) {
-        conn.status = 'connected';
-        conn.connectedAt = new Date().toISOString();
+        conn.syncCount++;
+        if (conn.syncCount >= conn.totalStreams) {
+          conn.status = 'connected';
+          conn.connectedAt = new Date().toISOString();
+          console.log(`  [gNMI] ${deviceName} all ${conn.totalStreams} streams synced — streaming live`);
+          this.emit('device:synced', { device: deviceName });
+        }
       }
-      console.log(`  [gNMI] ${deviceName} sync complete — streaming live`);
-      this.emit('device:synced', { device: deviceName });
       return;
     }
 
