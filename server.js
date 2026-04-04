@@ -31,6 +31,7 @@ const poller = require('./src/services/poller');
 const { SflowCollector } = require('./src/services/sflowCollector');
 const SflowAggregator = require('./src/services/sflowAggregator');
 const sflowStore = require('./src/store/sflow');
+const deviceStore = require('./src/store/devices');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -138,22 +139,8 @@ function broadcast(message) {
 // Poller Events → WebSocket Broadcasts
 // ---------------------------------------------------------------------------
 
-/** Filter hidden devices from topology for WebSocket broadcasts. */
-function filterHiddenNodes(topology) {
-  if (!topology) return topology;
-  const hidden = deviceStore.getHiddenHostnames();
-  if (hidden.size === 0) return topology;
-  const hiddenLower = new Set([...hidden].map(h => h.toLowerCase()));
-  const hiddenIds = new Set();
-  const nodes = topology.nodes.filter(n => {
-    const hn = (n.data.hostname || '').toLowerCase();
-    const lb = (n.data.label || '').toLowerCase();
-    if (hiddenLower.has(hn) || hiddenLower.has(lb)) { hiddenIds.add(n.data.id); return false; }
-    return true;
-  });
-  const edges = topology.edges.filter(e => !hiddenIds.has(e.data.source) && !hiddenIds.has(e.data.target));
-  return { ...topology, nodes, edges, metadata: { ...topology.metadata, nodeCount: nodes.length, edgeCount: edges.length } };
-}
+// Use shared filter from device store
+const { filterHiddenNodes } = deviceStore;
 
 poller.on('topology:changed', (topology) => {
   broadcast({ type: 'topology:changed', data: filterHiddenNodes(topology) });
@@ -245,7 +232,6 @@ poller.on('tunnelCounters:updated', (rates) => {
 // WebSocket SSH Proxy — /ssh?device=<name>
 // ---------------------------------------------------------------------------
 const { Client: SshClient } = require('ssh2');
-const deviceStore = require('./src/store/devices');
 
 sshWss.on('connection', (ws, req) => {
   const params = new URL(req.url, 'http://localhost').searchParams;

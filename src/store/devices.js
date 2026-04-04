@@ -147,6 +147,34 @@ function getHiddenHostnames() {
   return hidden;
 }
 
+/**
+ * Filter hidden devices from topology data.
+ * Removes nodes whose hostname matches a hidden device, plus any edges
+ * connected to those nodes. Returns a new topology object (no mutation).
+ */
+function filterHiddenNodes(topology) {
+  if (!topology) return topology;
+  const hidden = getHiddenHostnames();
+  if (hidden.size === 0) return topology;
+
+  const hiddenLower = new Set([...hidden].map(h => h.toLowerCase()));
+  const hiddenIds = new Set();
+  const nodes = topology.nodes.filter(n => {
+    const hn = (n.data.hostname || '').toLowerCase();
+    const lb = (n.data.label || '').toLowerCase();
+    if (hiddenLower.has(hn) || hiddenLower.has(lb)) { hiddenIds.add(n.data.id); return false; }
+    return true;
+  });
+  const edges = topology.edges.filter(e => !hiddenIds.has(e.data.source) && !hiddenIds.has(e.data.target));
+
+  return {
+    ...topology,
+    nodes,
+    edges,
+    metadata: { ...topology.metadata, nodeCount: nodes.length, edgeCount: edges.length },
+  };
+}
+
 // Strip credentials from public responses
 function sanitize(device) {
   const { password, ...safe } = device;
@@ -156,4 +184,4 @@ function sanitize(device) {
 // Load on module init
 loadConfig();
 
-module.exports = { list, get, getRaw, getAllRaw, add, update, remove, getPollingConfig, getHiddenHostnames, loadConfig };
+module.exports = { list, get, getRaw, getAllRaw, add, update, remove, getPollingConfig, getHiddenHostnames, filterHiddenNodes, loadConfig };

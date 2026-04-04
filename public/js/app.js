@@ -624,7 +624,7 @@
       if (/^!/.test(line)) return 'var(--text-muted)';
       if (/^(interface|router|vrf|policy-map|class-map|ip access-list|route-map|spanning-tree|mpls|segment-routing|evpn)/.test(line)) return 'var(--accent)';
       if (/^\s+(ip address|ipv6 address|description|shutdown|no shutdown|mtu|isis|ospf|bgp|evpn|neighbor|network|redistribute)/.test(line)) return '#a78bfa';
-      if (/^\s+no /.test(line)) return '#f87171';
+      if (/^\s+no /.test(line)) return 'var(--red)';
       return 'var(--text-primary)';
     }
 

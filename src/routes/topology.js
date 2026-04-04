@@ -25,45 +25,8 @@ function getTopology(req) {
   return getPoller(req).getTopology();
 }
 
-/**
- * Filter hidden devices from topology data.
- * Removes nodes whose hostname matches a hidden device, plus any edges
- * connected to those nodes. Returns a new topology object (no mutation).
- */
-function filterHiddenNodes(topology) {
-  if (!topology) return topology;
-  const hidden = deviceStore.getHiddenHostnames();
-  if (hidden.size === 0) return topology;
-
-  // Build lowercase set for case-insensitive matching
-  const hiddenLower = new Set([...hidden].map(h => h.toLowerCase()));
-
-  const hiddenIds = new Set();
-  const nodes = topology.nodes.filter(n => {
-    const hostname = (n.data.hostname || '').toLowerCase();
-    const label = (n.data.label || '').toLowerCase();
-    if (hiddenLower.has(hostname) || hiddenLower.has(label)) {
-      hiddenIds.add(n.data.id);
-      return false;
-    }
-    return true;
-  });
-
-  const edges = topology.edges.filter(e =>
-    !hiddenIds.has(e.data.source) && !hiddenIds.has(e.data.target)
-  );
-
-  return {
-    ...topology,
-    nodes,
-    edges,
-    metadata: {
-      ...topology.metadata,
-      nodeCount: nodes.length,
-      edgeCount: edges.length,
-    },
-  };
-}
+// Use shared filter from device store
+const { filterHiddenNodes } = deviceStore;
 
 // GET /api/topology — Return the current topology graph
 router.get('/', (req, res) => {
