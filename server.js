@@ -2,19 +2,21 @@
 // ATLAS Server — Main Entry Point
 // ---------------------------------------------------------------------------
 // Express HTTP server with WebSocket support for real-time topology updates.
-// Serves the SPA frontend, REST API routes, SSH proxy, and manages the
-// background topology poller lifecycle.
+// Serves the SPA frontend, REST API routes, SSH proxy, gNMI subscriber,
+// and manages the background topology poller lifecycle.
 //
 // Endpoints:
 //   /api/devices     — Device management (CRUD, test, bulk import)
 //   /api/topology    — Topology graph, path analysis, FlexAlgo
 //   /api/bgp         — BGP state, VRFs, prefix detail, service path trace
 //   /api/sflow       — sFlow collector status, flow data, configuration
+//   /api/gnmi/status — gNMI subscriber connection status
 //   /ws              — WebSocket for topology change notifications
 //   /ssh             — WebSocket-to-SSH proxy for terminal access
 // ---------------------------------------------------------------------------
 
 require('dotenv').config();
+const fs = require('fs');
 const http = require('http');
 const express = require('express');
 const path = require('path');
@@ -376,8 +378,7 @@ server.listen(PORT, async () => {
   // Load gNMI config before banner
   let gnmiConfig = null;
   try {
-    const fs = require('fs');
-    const configPath = require('path').join(__dirname, 'atlas.config.json');
+    const configPath = path.join(__dirname, 'atlas.config.json');
     const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
     if (config.gnmi) {
       gnmiConfig = config.gnmi;
@@ -416,3 +417,16 @@ server.listen(PORT, async () => {
     console.log('  gNMI subscriber disabled in config');
   }
 });
+
+// ---------------------------------------------------------------------------
+// Graceful Shutdown — kill gnmic subprocesses on exit
+// ---------------------------------------------------------------------------
+function gracefulShutdown(signal) {
+  console.log(`\n  [ATLAS] ${signal} received — shutting down...`);
+  gnmiSubscriber.stop();
+  sflowCollector.stop();
+  process.exit(0);
+}
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
