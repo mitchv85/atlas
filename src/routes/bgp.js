@@ -471,13 +471,25 @@ router.post('/trace', async (req, res) => {
   try {
     const topology = poller.getTopology();
 
-    // 1. Fetch prefix detail from FRR
-    const raw = JSON.parse(
-      execSync(`vtysh -c "show bgp ipv4 vpn ${prefix} json"`, { encoding: 'utf-8', timeout: 10000 })
-    );
-    const details = bgpParser.parsePrefixDetail(raw);
+    // 1. Fetch prefix detail from FRR (with retry on empty result)
+    let raw;
+    let details;
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      const vtyshOutput = execSync(`vtysh -c "show bgp ipv4 vpn ${prefix} json"`, { encoding: 'utf-8', timeout: 10000 });
+      raw = JSON.parse(vtyshOutput);
+      details = bgpParser.parsePrefixDetail(raw);
+
+      if (details && details.length > 0) break;
+
+      // If first attempt returned empty, log and retry after brief pause
+      if (attempt === 1) {
+        console.warn(`[Trace] Attempt ${attempt}: vtysh returned ${Object.keys(raw).length} RD keys for ${prefix}, parsed ${details?.length || 0} entries. Retrying...`);
+        execSync('sleep 0.3');
+      }
+    }
 
     if (!details || details.length === 0) {
+      console.error(`[Trace] Prefix ${prefix} not found after 2 attempts. Raw keys: [${Object.keys(raw).join(', ')}]`);
       return res.json({ error: `Prefix ${prefix} not found in VPNv4 RIB` });
     }
 
@@ -491,11 +503,16 @@ router.post('/trace', async (req, res) => {
         }
       }
       if (matchingRDs.size > 0) {
-        candidates = details.filter(d => matchingRDs.has(d.rd));
+        // FRR specific-prefix queries return keys as "RD:prefix" (e.g., "100.0.0.1:91:92.1.1.2/32")
+        // while the VRF store has plain RDs (e.g., "100.0.0.1:91"). Use startsWith for matching.
+        candidates = details.filter(d =>
+          matchingRDs.has(d.rd) || [...matchingRDs].some(rd => d.rd.startsWith(rd))
+        );
       }
     }
 
     if (candidates.length === 0) {
+      console.error(`[Trace] VRF filter: prefix=${prefix}, vrf=${vrf}, detail_rds=[${details.map(d=>d.rd).join(', ')}]`);
       return res.json({ error: `Prefix ${prefix} not found in VRF ${vrf}` });
     }
 
