@@ -12,7 +12,7 @@ const packageDef = protoLoader.loadSync(PROTO_PATH, {
   keepCase: true,
   longs: String,
   enums: String,
-  defaults: true,
+  defaults: false,
   oneofs: true,
 });
 const gnmiProto = grpc.loadPackageDefinition(packageDef).gnmi;
