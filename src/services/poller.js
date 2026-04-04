@@ -89,13 +89,19 @@ class TopologyPoller extends EventEmitter {
    * Force an immediate collection (e.g., from the UI "Collect" button).
    */
   async forceCollect() {
-    return this._collect();
+    if (this._collecting) {
+      // Queue a re-collect after the current one finishes
+      console.log('  [Poller] Collection in progress — queuing refresh');
+      this._pendingForceCollect = true;
+      return;
+    }
+    return this._collect(true); // true = force broadcast
   }
 
   /**
    * Internal: run a collection cycle.
    */
-  async _collect() {
+  async _collect(forceBroadcast = false) {
     if (this._collecting) return; // Prevent overlapping collections
 
     const allDevices = deviceStore.getAllRaw();
@@ -409,7 +415,7 @@ class TopologyPoller extends EventEmitter {
 
       // Check if topology changed (simple hash: node count + edge count + node ids)
       const hash = this._computeHash(topology);
-      const changed = hash !== this._lastHash;
+      const changed = hash !== this._lastHash || forceBroadcast;
 
       // Attach tunnel counter rates to topology
       topology.tunnelCounterRates = this._serializeTunnelRates();
@@ -429,6 +435,13 @@ class TopologyPoller extends EventEmitter {
       // Emit tunnel counter rates separately for sFlow integration
       if (this._tunnelRates.size > 0) {
         this.emit('tunnelCounters:updated', this._serializeTunnelRates());
+      }
+
+      // Handle queued force-collect (gNMI triggered while we were busy)
+      if (this._pendingForceCollect) {
+        this._pendingForceCollect = false;
+        console.log('  [Poller] Running queued force-collect...');
+        setTimeout(() => this._collect(true), 500);
       }
 
     } catch (err) {

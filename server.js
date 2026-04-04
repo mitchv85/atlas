@@ -212,6 +212,7 @@ gnmiSubscriber.on('topology:changed', ({ device, reason, detail }) => {
       try {
         console.log('  [gNMI] Triggering eAPI topology refresh...');
         await poller.forceCollect();
+        console.log('  [gNMI] eAPI topology refresh complete — broadcast sent');
       } catch (err) {
         console.error('  [gNMI] eAPI refresh failed:', err.message);
       }
