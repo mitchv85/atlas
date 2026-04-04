@@ -10,7 +10,13 @@ logs/
 # User-specific state
 atlas.positions.json
 
-# Auth runtime files (generated on first boot)
+# SQLite database (runtime state — devices, users, audit log)
+atlas.db
+
+# Deployment config (instance-specific — copy from atlas.config.example.json)
+atlas.config.json
+
+# Auth runtime files (now in atlas.db, kept for legacy)
 users.json
 audit-log.json
 .jwt-secret

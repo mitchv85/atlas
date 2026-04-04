@@ -35,6 +35,7 @@ const SflowAggregator = require('./src/services/sflowAggregator');
 const sflowStore = require('./src/store/sflow');
 const deviceStore = require('./src/store/devices');
 const GnmiSubscriber = require('./src/services/gnmiSubscriber');
+const db = require('./src/db');
 
 const gnmiSubscriber = new GnmiSubscriber();
 
@@ -372,6 +373,12 @@ sshWss.on('connection', (ws, req) => {
 // Start
 // ---------------------------------------------------------------------------
 server.listen(PORT, async () => {
+  // Initialize SQLite database (loads/creates atlas.db)
+  await db.init();
+
+  // Load deployment config from atlas.config.json
+  deviceStore.loadConfig();
+
   // Initialize default users if none exist
   await authService.initUsers();
 

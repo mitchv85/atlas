@@ -1,0 +1,29 @@
+{
+  "polling": {
+    "enabled": true,
+    "intervalSeconds": 15
+  },
+  "bgp": {
+    "enabled": true,
+    "frr": {
+      "statusCommand": "systemctl status frr --no-pager -l",
+      "restartCommand": "sudo systemctl restart frr",
+      "grpcPort": 50051,
+      "configDir": "/etc/frr"
+    },
+    "routerId": "100.0.0.1",
+    "localAs": 100,
+    "sourceAddress": "100.0.0.1",
+    "neighbor": "100.0.0.1",
+    "addressFamilies": {
+      "vpnv4": { "enabled": true },
+      "bgpLs": { "enabled": false }
+    }
+  },
+  "gnmi": {
+    "enabled": true,
+    "port": 6030,
+    "sampleIntervalSeconds": 10,
+    "isisInstance": "100"
+  }
+}

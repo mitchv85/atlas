@@ -12,9 +12,8 @@ const jwt = require('jsonwebtoken');
 const { randomBytes } = require('crypto');
 
 const DATA_DIR        = path.join(__dirname, '..', '..');
-const USERS_FILE      = path.join(DATA_DIR, 'users.json');
-const AUDIT_LOG_FILE  = path.join(DATA_DIR, 'audit-log.json');
 const JWT_SECRET_FILE = path.join(DATA_DIR, '.jwt-secret');
+const db = require('../db');
 
 const BCRYPT_ROUNDS = 10;
 const TOKEN_TTL     = '8h';
@@ -45,20 +44,61 @@ function verifyToken(token) {
   try { return jwt.verify(token, getJwtSecret()); } catch { return null; }
 }
 
-// ── User helpers ────────────────────────────────────────────────────────
+// ── User helpers (backed by SQLite) ──────────────────────────────────────
 function loadUsers() {
-  try {
-    if (fs.existsSync(USERS_FILE)) return JSON.parse(fs.readFileSync(USERS_FILE, 'utf8'));
-  } catch {}
-  return {};
+  // Returns { username: { passwordHash, role, mustChangePassword, ... } }
+  // to maintain backward compatibility with auth/mgmt routes
+  const users = {};
+  for (const u of db.users.list()) {
+    users[u.username] = {
+      passwordHash: u.passwordHash,
+      role: u.role,
+      mustChangePassword: u.forcePasswordChange,
+      forcePasswordChange: u.forcePasswordChange,
+      displayName: u.displayName,
+      githubId: u.githubId,
+      githubLogin: u.githubLogin,
+    };
+  }
+  return users;
 }
 
-function saveUsers(users) {
-  fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2));
+function saveUsers(usersObj) {
+  // Takes { username: { passwordHash, role, ... } } and syncs to database
+  for (const [username, data] of Object.entries(usersObj)) {
+    const existing = db.users.getByUsername(username);
+    if (existing) {
+      db.users.update(username, {
+        passwordHash: data.passwordHash,
+        role: data.role,
+        forcePasswordChange: data.mustChangePassword || data.forcePasswordChange || false,
+        displayName: data.displayName || data.firstName ? `${data.firstName || ''} ${data.lastName || ''}`.trim() : undefined,
+        githubId: data.githubId,
+        githubLogin: data.githubLogin,
+      });
+    } else {
+      db.users.add({
+        username,
+        passwordHash: data.passwordHash,
+        role: data.role || 'viewer',
+        forcePasswordChange: data.mustChangePassword || data.forcePasswordChange || false,
+        displayName: data.displayName,
+        githubId: data.githubId,
+        githubLogin: data.githubLogin,
+      });
+    }
+  }
+
+  // Remove users that are no longer in the object
+  for (const u of db.users.list()) {
+    if (!usersObj[u.username]) {
+      db.users.remove(u.username);
+    }
+  }
 }
 
 async function initUsers() {
-  if (fs.existsSync(USERS_FILE)) return;
+  if (db.users.count() > 0) return; // Users already exist
   const now = new Date().toISOString();
   const users = {
     admin: {
@@ -70,39 +110,22 @@ async function initUsers() {
     },
   };
   saveUsers(users);
-  console.log('[AUTH] Created users.json with default admin account — please change password on first login.');
+  console.log('[AUTH] Created default admin account in atlas.db — please change password on first login.');
 }
 
-// ── Audit Log ───────────────────────────────────────────────────────────
+// ── Audit Log (backed by SQLite) ────────────────────────────────────────
 function writeAudit(username, role, action, target, result, detail = '') {
-  const entry = {
-    id:        Date.now() + '_' + Math.random().toString(36).slice(2, 6),
-    timestamp: new Date().toISOString(),
-    user:      username,
-    role,
-    action,
-    target,
-    result,    // 'success' | 'error' | 'denied'
-    detail,
-  };
-  let log = [];
-  try {
-    if (fs.existsSync(AUDIT_LOG_FILE))
-      log = JSON.parse(fs.readFileSync(AUDIT_LOG_FILE, 'utf8'));
-  } catch {}
-  log.unshift(entry);
-  if (log.length > AUDIT_MAX) log = log.slice(0, AUDIT_MAX);
-  try { fs.writeFileSync(AUDIT_LOG_FILE, JSON.stringify(log, null, 2)); } catch {}
+  db.audit.add({
+    action: `${action} → ${target}: ${result}`,
+    username,
+    ip: null,
+    detail: detail || `role=${role}`,
+  });
   console.log(`[AUDIT] ${username}(${role}) ${action} → ${target}: ${result}${detail ? ' | ' + detail : ''}`);
 }
 
 function loadAuditLog(limit = 200) {
-  let log = [];
-  try {
-    if (fs.existsSync(AUDIT_LOG_FILE))
-      log = JSON.parse(fs.readFileSync(AUDIT_LOG_FILE, 'utf8'));
-  } catch {}
-  return log.slice(0, Math.min(limit, AUDIT_MAX));
+  return db.audit.list(Math.min(limit, AUDIT_MAX));
 }
 
 // ── Login Rate Limiter ──────────────────────────────────────────────────
