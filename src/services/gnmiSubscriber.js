@@ -144,30 +144,45 @@ class GnmiSubscriber extends EventEmitter {
       '--insecure', '--path', pathStr,
       '--stream-mode', streamMode,
       '--encoding', 'json_ietf',
-      '--format', 'event',
+      '--format', 'json',
     ];
     if (sampleInterval) args.push('--sample-interval', `${sampleInterval}s`);
 
     const proc = spawn('gnmic', args, { stdio: ['ignore', 'pipe', 'pipe'] });
-    let buffer = '';
+    let jsonBuffer = '';
+    let braceDepth = 0;
+    let inString = false;
+    let escaped = false;
 
     proc.stdout.on('data', (data) => {
-      buffer += data.toString();
-      const lines = buffer.split('\n');
-      buffer = lines.pop();
+      const chunk = data.toString();
 
-      for (const line of lines) {
-        if (!line.trim()) continue;
-        try {
-          const events = JSON.parse(line);
-          for (const event of (Array.isArray(events) ? events : [events])) {
-            if (event['sync-response'] || event.sync_response) {
-              this._handleSync(device.name, pathStr);
-            } else {
-              this._handleEvent(device.name, event, pathStr);
-            }
+      // Accumulate and detect complete JSON objects using brace counting
+      for (const ch of chunk) {
+        jsonBuffer += ch;
+
+        if (escaped) { escaped = false; continue; }
+        if (ch === '\\') { escaped = true; continue; }
+        if (ch === '"') { inString = !inString; continue; }
+        if (inString) continue;
+
+        if (ch === '{') braceDepth++;
+        if (ch === '}') {
+          braceDepth--;
+          if (braceDepth === 0 && jsonBuffer.trim()) {
+            // Complete JSON object
+            try {
+              const obj = JSON.parse(jsonBuffer.trim());
+
+              if (obj['sync-response'] || obj.sync_response) {
+                this._handleSync(device.name, pathStr);
+              } else if (obj.updates) {
+                this._handleJsonUpdate(device.name, obj, pathStr);
+              }
+            } catch {}
+            jsonBuffer = '';
           }
-        } catch {}
+        }
       }
     });
 
@@ -210,82 +225,97 @@ class GnmiSubscriber extends EventEmitter {
     }
   }
 
-  _handleEvent(deviceName, event, subscribedPath) {
+  _handleJsonUpdate(deviceName, obj, subscribedPath) {
     const ds = this._deviceStatus.get(deviceName);
     if (ds) { ds.updateCount++; ds.lastUpdate = new Date().toISOString(); }
 
-    const name = event.name || '';
-    const values = event.values || {};
-    const tags = event.tags || {};
-    const timestamp = event.timestamp;
+    const timestamp = obj.timestamp;
 
-    // IS-IS Adjacency Change
-    if (subscribedPath.includes('adjacencies')) {
-      const systemId = values['system-id'] || tags['system-id'] || null;
-      const adjState = values['adjacency-state'] || null;
-      const neighborIp = values['neighbor-ipv4-address'] || null;
-      const ifName = tags['interface-id'] || null;
+    for (const update of (obj.updates || [])) {
+      const fullPath = update.Path || '';
+      const values = update.values || {};
 
-      if (systemId || adjState) {
-        console.log(`  [gNMI] ${deviceName} ISIS adjacency ${adjState || 'UPDATE'}: ${systemId || '?'} on ${ifName || '?'}`);
-        const adjEvent = { device: deviceName, systemId, state: adjState, neighborIp, interface: ifName, timestamp };
-        this.emit('isis:adjacency', adjEvent);
-        this.emit('topology:changed', { device: deviceName, reason: 'isis-adjacency', detail: adjEvent });
-      }
-      return;
-    }
-
-    // IS-IS SPF Run Counter
-    if (subscribedPath.includes('system-level-counters')) {
-      const spfRuns = values['spf-runs'];
-      if (spfRuns != null) {
-        const prev = this._lastSpfRuns.get(deviceName) || 0;
-        const current = parseInt(spfRuns, 10);
-        if (prev > 0 && current > prev) {
-          console.log(`  [gNMI] ${deviceName} SPF run detected (${prev} → ${current}) — triggering LSDB refresh`);
-          this.emit('isis:spf-run', { device: deviceName, previous: prev, current, timestamp });
-          this.emit('topology:changed', { device: deviceName, reason: 'spf-run', spfCount: current });
-        }
-        this._lastSpfRuns.set(deviceName, current);
-      }
-
-      const lsdbSize = values['lsdb-size'] || values['arista-isis-augments:lsdb-size'];
-      if (lsdbSize != null) {
-        this.emit('isis:lsdb-size', { device: deviceName, size: parseInt(lsdbSize, 10), timestamp });
-      }
-      return;
-    }
-
-    // Interface Oper-Status Change
-    if (subscribedPath.includes('oper-status')) {
-      const ifName = tags['name'] || 'unknown';
-      const operStatus = values['oper-status'] || null;
-
-      if (operStatus && (ifName.startsWith('Ethernet') || ifName.startsWith('Loopback') || ifName.startsWith('Port-Channel'))) {
-        console.log(`  [gNMI] ${deviceName} interface ${ifName} oper-status: ${operStatus}`);
-        this.emit('interface:status', { device: deviceName, interface: ifName, operStatus, timestamp });
-        if (ifName.startsWith('Ethernet')) {
-          this.emit('topology:changed', { device: deviceName, reason: 'interface-status', interface: ifName, status: operStatus });
+      // Flatten values -- gnmic JSON format uses { "full/path": value }
+      const flatValues = {};
+      for (const [k, v] of Object.entries(values)) {
+        if (typeof v === 'object' && v !== null && !Array.isArray(v)) {
+          Object.assign(flatValues, v);
+        } else {
+          const leaf = k.split('/').pop();
+          flatValues[leaf] = v;
         }
       }
-      return;
-    }
 
-    // Interface Counters (SAMPLE)
-    if (subscribedPath.includes('counters')) {
-      const ifName = tags['name'] || 'unknown';
-      if (ifName.startsWith('Ethernet') || ifName.startsWith('Port-Channel')) {
-        this.emit('interface:counters', {
-          device: deviceName, interface: ifName, timestamp,
-          counters: {
-            inOctets: values['in-octets'] || '0', outOctets: values['out-octets'] || '0',
-            inPkts: values['in-pkts'] || '0', outPkts: values['out-pkts'] || '0',
-            inErrors: values['in-errors'] || '0', outErrors: values['out-errors'] || '0',
-            inDiscards: values['in-discards'] || '0', outDiscards: values['out-discards'] || '0',
-          },
-        });
+      // IS-IS Adjacency Change
+      if (subscribedPath.includes('adjacencies')) {
+        const systemId = flatValues['system-id'] || null;
+        const adjState = flatValues['adjacency-state'] || null;
+        const neighborIp = flatValues['neighbor-ipv4-address'] || null;
+        const ifMatch = fullPath.match(/interface-id=([^\]]+)/);
+        const ifName = ifMatch ? ifMatch[1] : null;
+
+        if (systemId || adjState) {
+          console.log(`  [gNMI] ${deviceName} ISIS adjacency ${adjState || 'UPDATE'}: ${systemId || '?'} on ${ifName || '?'}`);
+          const adjEvent = { device: deviceName, systemId, state: adjState, neighborIp, interface: ifName, timestamp };
+          this.emit('isis:adjacency', adjEvent);
+          this.emit('topology:changed', { device: deviceName, reason: 'isis-adjacency', detail: adjEvent });
+        }
+        return;
       }
-      return;
+
+      // IS-IS SPF Run Counter
+      if (subscribedPath.includes('system-level-counters')) {
+        const spfRuns = flatValues['spf-runs'];
+        if (spfRuns != null) {
+          const prev = this._lastSpfRuns.get(deviceName) || 0;
+          const current = parseInt(spfRuns, 10);
+          if (prev > 0 && current > prev) {
+            console.log(`  [gNMI] ${deviceName} SPF run detected (${prev} -> ${current}) -- triggering LSDB refresh`);
+            this.emit('isis:spf-run', { device: deviceName, previous: prev, current, timestamp });
+            this.emit('topology:changed', { device: deviceName, reason: 'spf-run', spfCount: current });
+          }
+          this._lastSpfRuns.set(deviceName, current);
+        }
+        const lsdbSize = flatValues['lsdb-size'] || flatValues['arista-isis-augments:lsdb-size'];
+        if (lsdbSize != null) {
+          this.emit('isis:lsdb-size', { device: deviceName, size: parseInt(lsdbSize, 10), timestamp });
+        }
+        return;
+      }
+
+      // Interface Oper-Status Change
+      if (subscribedPath.includes('oper-status')) {
+        const ifMatch = fullPath.match(/interface\[name=([^\]]+)\]/);
+        const ifName = ifMatch ? ifMatch[1] : 'unknown';
+        const operStatus = flatValues['oper-status'] || Object.values(values)[0];
+
+        if (operStatus && (ifName.startsWith('Ethernet') || ifName.startsWith('Loopback') || ifName.startsWith('Port-Channel'))) {
+          console.log(`  [gNMI] ${deviceName} interface ${ifName} oper-status: ${operStatus}`);
+          this.emit('interface:status', { device: deviceName, interface: ifName, operStatus, timestamp });
+          if (ifName.startsWith('Ethernet')) {
+            this.emit('topology:changed', { device: deviceName, reason: 'interface-status', interface: ifName, status: operStatus });
+          }
+        }
+        return;
+      }
+
+      // Interface Counters (SAMPLE)
+      if (subscribedPath.includes('counters')) {
+        const ifMatch = fullPath.match(/interface\[name=([^\]]+)\]/);
+        const ifName = ifMatch ? ifMatch[1] : 'unknown';
+        if (ifName.startsWith('Ethernet') || ifName.startsWith('Port-Channel')) {
+          this.emit('interface:counters', {
+            device: deviceName, interface: ifName, timestamp,
+            counters: {
+              inOctets: flatValues['in-octets'] || '0', outOctets: flatValues['out-octets'] || '0',
+              inPkts: flatValues['in-pkts'] || '0', outPkts: flatValues['out-pkts'] || '0',
+              inErrors: flatValues['in-errors'] || '0', outErrors: flatValues['out-errors'] || '0',
+              inDiscards: flatValues['in-discards'] || '0', outDiscards: flatValues['out-discards'] || '0',
+            },
+          });
+        }
+        return;
+      }
     }
   }
 
