@@ -166,17 +166,22 @@ function _importUsers() {
   if (!fs.existsSync(usersPath)) return;
 
   try {
-    const users = JSON.parse(fs.readFileSync(usersPath, 'utf-8'));
+    const usersData = JSON.parse(fs.readFileSync(usersPath, 'utf-8'));
+
+    // users.json format: { "admin": { passwordHash, role, ... }, "user2": { ... } }
+    const entries = Array.isArray(usersData)
+      ? usersData
+      : Object.entries(usersData).map(([username, data]) => ({ username, ...data }));
 
     const stmt = db.prepare(`INSERT INTO users (username, password_hash, role, force_password_change, display_name, github_id, github_login)
       VALUES (?, ?, ?, ?, ?, ?, ?)`);
 
-    for (const u of users) {
+    for (const u of entries) {
       stmt.run([
         u.username,
         u.passwordHash || u.password_hash || '',
         u.role || 'viewer',
-        u.forcePasswordChange ? 1 : 0,
+        (u.forcePasswordChange || u.mustChangePassword) ? 1 : 0,
         u.displayName || null,
         u.githubId || null,
         u.githubLogin || null,
@@ -184,7 +189,7 @@ function _importUsers() {
     }
     stmt.free();
 
-    console.log(`  [DB] Imported ${users.length} user(s) from users.json`);
+    console.log(`  [DB] Imported ${entries.length} user(s) from users.json`);
   } catch (err) {
     console.error('  [DB] User import failed:', err.message);
   }

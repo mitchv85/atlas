@@ -321,10 +321,16 @@ class GnmiSubscriber extends EventEmitter {
         const ifName = ifMatch ? ifMatch[1] : 'unknown';
         const operStatus = flatValues['oper-status'] || Object.values(values)[0];
 
-        if (operStatus && (ifName.startsWith('Ethernet') || ifName.startsWith('Loopback') || ifName.startsWith('Port-Channel'))) {
+        // Skip non-topology-relevant states (unused SFP slots, etc.)
+        if (!operStatus || operStatus === 'NOT_PRESENT' || operStatus === 'LOWER_LAYER_DOWN' || operStatus === 'DORMANT') {
+          return;
+        }
+
+        if (ifName.startsWith('Ethernet') || ifName.startsWith('Loopback') || ifName.startsWith('Port-Channel')) {
           console.log(`  [gNMI] ${deviceName} interface ${ifName} oper-status: ${operStatus}`);
           this.emit('interface:status', { device: deviceName, interface: ifName, operStatus, timestamp });
-          if (ifName.startsWith('Ethernet')) {
+          // Only trigger topology refresh for UP/DOWN transitions on physical interfaces
+          if (ifName.startsWith('Ethernet') && (operStatus === 'UP' || operStatus === 'DOWN')) {
             this.emit('topology:changed', { device: deviceName, reason: 'interface-status', interface: ifName, status: operStatus });
           }
         }
