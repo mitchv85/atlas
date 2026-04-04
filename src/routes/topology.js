@@ -35,9 +35,14 @@ function filterHiddenNodes(topology) {
   const hidden = deviceStore.getHiddenHostnames();
   if (hidden.size === 0) return topology;
 
+  // Build lowercase set for case-insensitive matching
+  const hiddenLower = new Set([...hidden].map(h => h.toLowerCase()));
+
   const hiddenIds = new Set();
   const nodes = topology.nodes.filter(n => {
-    if (hidden.has(n.data.hostname) || hidden.has(n.data.label)) {
+    const hostname = (n.data.hostname || '').toLowerCase();
+    const label = (n.data.label || '').toLowerCase();
+    if (hiddenLower.has(hostname) || hiddenLower.has(label)) {
       hiddenIds.add(n.data.id);
       return false;
     }

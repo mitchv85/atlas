@@ -251,7 +251,7 @@
         </td>
         <td>
           <div class="dev-actions">
-            <button class="dev-action-btn dev-visibility-btn ${d.hideFromTopology ? 'hidden-from-topo' : ''}" data-id="${d.id}" data-hidden="${d.hideFromTopology ? '1' : '0'}" title="${d.hideFromTopology ? 'Hidden from topology — click to show' : 'Visible in topology — click to hide'}">${d.hideFromTopology ? '👁‍🗨' : '👁'}</button>
+            <button class="dev-action-btn dev-visibility-btn ${d.hideFromTopology ? 'hidden-from-topo' : ''}" data-id="${d.id}" data-hidden="${d.hideFromTopology ? '1' : '0'}" title="${d.hideFromTopology ? 'Hidden from topology for all users — click to show' : 'Visible in topology for all users — click to hide'}">${d.hideFromTopology ? '👁‍🗨' : '👁'}</button>
             <button class="dev-action-btn dev-test-btn" data-id="${d.id}" title="Test connectivity">⚡ Test</button>
             <button class="dev-action-btn danger dev-delete-btn" data-id="${d.id}" title="Delete device">✕</button>
           </div>
@@ -284,6 +284,11 @@
         const dev = devices.find(d => d.id === id);
         if (dev) dev.hideFromTopology = !isHidden;
         renderDevicesTable(devices);
+        // Re-fetch topology so the filter takes effect immediately for all users
+        try {
+          const topo = await API.getTopology();
+          if (topo) loadTopologyIntoView(topo, true);
+        } catch {}
       });
     });
 

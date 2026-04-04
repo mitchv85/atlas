@@ -107,16 +107,7 @@ wss.on('connection', (ws) => {
   // Send current topology immediately on connect
   const topo = poller.getTopology();
   if (topo) {
-    const deviceStore = require('./src/store/devices');
-    const hidden = deviceStore.getHiddenHostnames();
-    let filtered = topo;
-    if (hidden.size > 0) {
-      const hiddenIds = new Set();
-      const nodes = topo.nodes.filter(n => { if (hidden.has(n.data.hostname) || hidden.has(n.data.label)) { hiddenIds.add(n.data.id); return false; } return true; });
-      const edges = topo.edges.filter(e => !hiddenIds.has(e.data.source) && !hiddenIds.has(e.data.target));
-      filtered = { ...topo, nodes, edges, metadata: { ...topo.metadata, nodeCount: nodes.length, edgeCount: edges.length } };
-    }
-    ws.send(JSON.stringify({ type: 'topology:updated', data: filtered }));
+    ws.send(JSON.stringify({ type: 'topology:updated', data: filterHiddenNodes(topo) }));
   }
 
   // Send current status
@@ -152,9 +143,12 @@ function filterHiddenNodes(topology) {
   if (!topology) return topology;
   const hidden = deviceStore.getHiddenHostnames();
   if (hidden.size === 0) return topology;
+  const hiddenLower = new Set([...hidden].map(h => h.toLowerCase()));
   const hiddenIds = new Set();
   const nodes = topology.nodes.filter(n => {
-    if (hidden.has(n.data.hostname) || hidden.has(n.data.label)) { hiddenIds.add(n.data.id); return false; }
+    const hn = (n.data.hostname || '').toLowerCase();
+    const lb = (n.data.label || '').toLowerCase();
+    if (hiddenLower.has(hn) || hiddenLower.has(lb)) { hiddenIds.add(n.data.id); return false; }
     return true;
   });
   const edges = topology.edges.filter(e => !hiddenIds.has(e.data.source) && !hiddenIds.has(e.data.target));
