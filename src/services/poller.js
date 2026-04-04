@@ -85,14 +85,18 @@ class TopologyPoller extends EventEmitter {
     };
   }
 
+  /** Returns true if a collection is currently in progress. */
+  isCollecting() {
+    return this._collecting;
+  }
+
   /**
-   * Force an immediate collection (e.g., from the UI "Collect" button).
+   * Force an immediate collection (e.g., from the UI "Collect" button or gNMI trigger).
+   * If a collection is already in progress, returns immediately (caller should retry).
    */
   async forceCollect() {
     if (this._collecting) {
-      // Queue a re-collect after the current one finishes
-      console.log('  [Poller] Collection in progress — queuing refresh');
-      this._pendingForceCollect = true;
+      console.log('  [Poller] Collection in progress — skipping force-collect');
       return;
     }
     return this._collect(true); // true = force broadcast
@@ -435,13 +439,6 @@ class TopologyPoller extends EventEmitter {
       // Emit tunnel counter rates separately for sFlow integration
       if (this._tunnelRates.size > 0) {
         this.emit('tunnelCounters:updated', this._serializeTunnelRates());
-      }
-
-      // Handle queued force-collect (gNMI triggered while we were busy)
-      if (this._pendingForceCollect) {
-        this._pendingForceCollect = false;
-        console.log('  [Poller] Running queued force-collect...');
-        setTimeout(() => this._collect(true), 500);
       }
 
     } catch (err) {

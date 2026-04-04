@@ -209,6 +209,12 @@ gnmiSubscriber.on('topology:changed', ({ device, reason, detail }) => {
   if (!gnmiSubscriber._refreshTimer) {
     gnmiSubscriber._refreshTimer = setTimeout(async () => {
       gnmiSubscriber._refreshTimer = null;
+      // Wait for any in-progress collection to finish (up to 30s)
+      for (let i = 0; i < 60; i++) {
+        if (!poller.isCollecting()) break;
+        console.log('  [gNMI] Waiting for current poll to finish...');
+        await new Promise(r => setTimeout(r, 500));
+      }
       try {
         console.log('  [gNMI] Triggering eAPI topology refresh...');
         await poller.forceCollect();
