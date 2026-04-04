@@ -107,7 +107,16 @@ wss.on('connection', (ws) => {
   // Send current topology immediately on connect
   const topo = poller.getTopology();
   if (topo) {
-    ws.send(JSON.stringify({ type: 'topology:updated', data: topo }));
+    const deviceStore = require('./src/store/devices');
+    const hidden = deviceStore.getHiddenHostnames();
+    let filtered = topo;
+    if (hidden.size > 0) {
+      const hiddenIds = new Set();
+      const nodes = topo.nodes.filter(n => { if (hidden.has(n.data.hostname) || hidden.has(n.data.label)) { hiddenIds.add(n.data.id); return false; } return true; });
+      const edges = topo.edges.filter(e => !hiddenIds.has(e.data.source) && !hiddenIds.has(e.data.target));
+      filtered = { ...topo, nodes, edges, metadata: { ...topo.metadata, nodeCount: nodes.length, edgeCount: edges.length } };
+    }
+    ws.send(JSON.stringify({ type: 'topology:updated', data: filtered }));
   }
 
   // Send current status
@@ -137,8 +146,23 @@ function broadcast(message) {
 // ---------------------------------------------------------------------------
 // Poller Events → WebSocket Broadcasts
 // ---------------------------------------------------------------------------
+
+/** Filter hidden devices from topology for WebSocket broadcasts. */
+function filterHiddenNodes(topology) {
+  if (!topology) return topology;
+  const hidden = deviceStore.getHiddenHostnames();
+  if (hidden.size === 0) return topology;
+  const hiddenIds = new Set();
+  const nodes = topology.nodes.filter(n => {
+    if (hidden.has(n.data.hostname) || hidden.has(n.data.label)) { hiddenIds.add(n.data.id); return false; }
+    return true;
+  });
+  const edges = topology.edges.filter(e => !hiddenIds.has(e.data.source) && !hiddenIds.has(e.data.target));
+  return { ...topology, nodes, edges, metadata: { ...topology.metadata, nodeCount: nodes.length, edgeCount: edges.length } };
+}
+
 poller.on('topology:changed', (topology) => {
-  broadcast({ type: 'topology:changed', data: topology });
+  broadcast({ type: 'topology:changed', data: filterHiddenNodes(topology) });
 });
 
 poller.on('topology:updated', (topology) => {

@@ -251,6 +251,7 @@
         </td>
         <td>
           <div class="dev-actions">
+            <button class="dev-action-btn dev-visibility-btn ${d.hideFromTopology ? 'hidden-from-topo' : ''}" data-id="${d.id}" data-hidden="${d.hideFromTopology ? '1' : '0'}" title="${d.hideFromTopology ? 'Hidden from topology — click to show' : 'Visible in topology — click to hide'}">${d.hideFromTopology ? '👁‍🗨' : '👁'}</button>
             <button class="dev-action-btn dev-test-btn" data-id="${d.id}" title="Test connectivity">⚡ Test</button>
             <button class="dev-action-btn danger dev-delete-btn" data-id="${d.id}" title="Delete device">✕</button>
           </div>
@@ -270,6 +271,19 @@
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
         deleteDevice(btn.dataset.id);
+      });
+    });
+
+    tbody.querySelectorAll('.dev-visibility-btn').forEach((btn) => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const id = btn.dataset.id;
+        const isHidden = btn.dataset.hidden === '1';
+        await API.updateDevice(id, { hideFromTopology: !isHidden });
+        // Update local state
+        const dev = devices.find(d => d.id === id);
+        if (dev) dev.hideFromTopology = !isHidden;
+        renderDevicesTable(devices);
       });
     });
 

@@ -53,6 +53,7 @@ function loadConfig() {
         username: d.username || 'admin',
         password: d.password || 'admin',
         transport: d.transport || 'https',
+        hideFromTopology: d.hideFromTopology || false,
       });
     }
 
@@ -81,6 +82,7 @@ function saveConfig() {
         username: d.username,
         password: d.password,
         transport: d.transport,
+        hideFromTopology: d.hideFromTopology || false,
       })),
       ...extraConfig, // Preserve keys we don't own (e.g., bgp)
     };
@@ -110,9 +112,9 @@ function getAllRaw() {
   return Array.from(devices.values());
 }
 
-function add({ name, host, port = 443, username, password, transport = 'https' }) {
+function add({ name, host, port = 443, username, password, transport = 'https', hideFromTopology = false }) {
   const id = uuidv4();
-  const device = { id, name, host, port, username, password, transport };
+  const device = { id, name, host, port, username, password, transport, hideFromTopology };
   devices.set(id, device);
   saveConfig(); // Persist to file
   return sanitize(device);
@@ -136,6 +138,15 @@ function getPollingConfig() {
   return { ...pollingConfig };
 }
 
+/** Return a Set of device hostnames that should be hidden from topology. */
+function getHiddenHostnames() {
+  const hidden = new Set();
+  for (const d of devices.values()) {
+    if (d.hideFromTopology) hidden.add(d.name);
+  }
+  return hidden;
+}
+
 // Strip credentials from public responses
 function sanitize(device) {
   const { password, ...safe } = device;
@@ -145,4 +156,4 @@ function sanitize(device) {
 // Load on module init
 loadConfig();
 
-module.exports = { list, get, getRaw, getAllRaw, add, update, remove, getPollingConfig, loadConfig };
+module.exports = { list, get, getRaw, getAllRaw, add, update, remove, getPollingConfig, getHiddenHostnames, loadConfig };

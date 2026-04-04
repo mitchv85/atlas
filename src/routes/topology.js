@@ -25,9 +25,44 @@ function getTopology(req) {
   return getPoller(req).getTopology();
 }
 
+/**
+ * Filter hidden devices from topology data.
+ * Removes nodes whose hostname matches a hidden device, plus any edges
+ * connected to those nodes. Returns a new topology object (no mutation).
+ */
+function filterHiddenNodes(topology) {
+  if (!topology) return topology;
+  const hidden = deviceStore.getHiddenHostnames();
+  if (hidden.size === 0) return topology;
+
+  const hiddenIds = new Set();
+  const nodes = topology.nodes.filter(n => {
+    if (hidden.has(n.data.hostname) || hidden.has(n.data.label)) {
+      hiddenIds.add(n.data.id);
+      return false;
+    }
+    return true;
+  });
+
+  const edges = topology.edges.filter(e =>
+    !hiddenIds.has(e.data.source) && !hiddenIds.has(e.data.target)
+  );
+
+  return {
+    ...topology,
+    nodes,
+    edges,
+    metadata: {
+      ...topology.metadata,
+      nodeCount: nodes.length,
+      edgeCount: edges.length,
+    },
+  };
+}
+
 // GET /api/topology — Return the current topology graph
 router.get('/', (req, res) => {
-  const topology = getTopology(req);
+  const topology = filterHiddenNodes(getTopology(req));
   if (!topology) {
     return res.status(404).json({
       error: 'No topology data. Waiting for background poll or use POST /api/topology/collect.',
@@ -42,7 +77,7 @@ router.post('/collect', async (req, res) => {
 
   try {
     await poller.forceCollect();
-    const topology = poller.getTopology();
+    const topology = filterHiddenNodes(poller.getTopology());
 
     if (!topology) {
       return res.status(500).json({ error: 'Collection completed but no topology data.' });

@@ -1246,6 +1246,15 @@ body {
   color: var(--red);
 }
 
+.dev-visibility-btn {
+  font-size: 0.78rem;
+  padding: 2px 6px;
+}
+
+.dev-visibility-btn.hidden-from-topo {
+  opacity: 0.45;
+}
+
 /* Add Device Form */
 .devices-add-section,
 .devices-import-section {
