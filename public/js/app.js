@@ -216,6 +216,9 @@
       gnmiStatus = status?.connections || {};
       if (!selectedDeviceId) renderDevicesTable(devices);
     }).catch(() => {});
+
+    // Auto-test connectivity for all devices
+    testAllDevices();
   }
 
   function renderDevicesTable(list) {
