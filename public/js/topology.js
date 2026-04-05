@@ -542,66 +542,74 @@ class TopologyRenderer {
 
   /**
    * Apply bandwidth heatmap overlay to the topology.
-   * Colors edges based on utilization percentage (maxBps / per-link speed).
-   * Falls back to global link speed setting if per-link speed unavailable.
+   * Colors edges based on utilization percentage.
+   * Shows effective speed or live throughput on edge labels.
    *
-   * @param {Array} edgeRates - [{ edgeId, maxBps, inBps, outBps, speedBps, utilization, ... }]
+   * @param {Array} edgeRates - [{ edgeId, maxBps, inBps, outBps, effectiveSpeedBps, ... }]
    */
   applyBandwidthHeatmap(edgeRates) {
-    if (!this.cy || !edgeRates || edgeRates.length === 0) return;
-
-    this.clearFlowOverlay();
+    if (!this.cy) return;
 
     const settings = this.getBandwidthSettings();
     const fallbackSpeed = settings.linkSpeedBps;
     const thresholds = settings.thresholds;
 
-    for (const er of edgeRates) {
-      const edge = this.cy.getElementById(er.edgeId);
-      if (!edge.length) continue;
+    // Build a lookup of edge rates by ID
+    const rateMap = new Map();
+    for (const er of (edgeRates || [])) {
+      rateMap.set(er.edgeId, er);
+    }
 
-      const bps = er.maxBps || 0;
-      const linkSpeed = er.effectiveSpeedBps || er.speedBps || fallbackSpeed;
-      const utilization = (bps / linkSpeed) * 100;
+    // Remove previous heat classes (but DON'T restore labels — we'll set them all)
+    this.cy.elements().removeClass(
+      'bw-heat-1 bw-heat-2 bw-heat-3 bw-heat-4 bw-heat-5 bw-heat-6 flow-active'
+    );
 
-      // Determine heat level from thresholds
-      let level = 0;
-      for (let i = 0; i < thresholds.length; i++) {
-        if (utilization >= thresholds[i]) level = i + 1;
-      }
-
-      if (level > 0) {
-        edge.addClass(`bw-heat-${level}`);
-        edge.connectedNodes().forEach(n => n.addClass('flow-active'));
-      }
-
-      // Swap edge labels to show throughput / link speed
+    this.cy.edges().forEach(edge => {
       const d = edge.data();
-      if (d._bwOrigSource == null) {
+
+      // Save original labels on first pass only
+      if (d._bwOrigSource === undefined) {
         edge.data('_bwOrigSource', d.sourceMetric);
         edge.data('_bwOrigTarget', d.targetMetric);
       }
-      const throughputLabel = bps > 0 ? TopologyRenderer.formatBps(bps) : '';
-      const speedLabel = er.overrideLabel || TopologyRenderer.formatSpeed(linkSpeed);
-      // Show throughput on source side, speed on target side
-      edge.data('sourceMetric', throughputLabel || speedLabel);
-      edge.data('targetMetric', throughputLabel ? speedLabel : '');
-    }
 
-    // For edges with no rate data, show link speed if available
-    const speeds = this._lastSpeeds || {};
-    this.cy.edges().forEach(edge => {
-      if (edge.data('_bwOrigSource') !== undefined) return; // Already handled
-      edge.data('_bwOrigSource', edge.data('sourceMetric'));
-      edge.data('_bwOrigTarget', edge.data('targetMetric'));
+      const er = rateMap.get(d.id);
+
+      if (er) {
+        const bps = er.maxBps || 0;
+        const linkSpeed = er.effectiveSpeedBps || er.speedBps || fallbackSpeed;
+        const utilization = (bps / linkSpeed) * 100;
+        const speedLabel = er.overrideLabel || TopologyRenderer.formatSpeed(linkSpeed);
+
+        // Determine heat level
+        let level = 0;
+        for (let i = 0; i < thresholds.length; i++) {
+          if (utilization >= thresholds[i]) level = i + 1;
+        }
+
+        if (level > 0) {
+          edge.addClass(`bw-heat-${level}`);
+          edge.connectedNodes().forEach(n => n.addClass('flow-active'));
+        }
+
+        // Labels: show throughput only when link has enough traffic for a heat level
+        if (level > 0) {
+          // Active traffic — show throughput on source, speed on target
+          const bpsLabel = TopologyRenderer.formatBps(bps);
+          edge.data('sourceMetric', bpsLabel);
+          edge.data('targetMetric', speedLabel);
+        } else {
+          // Idle or sub-threshold — show effective speed on both sides
+          edge.data('sourceMetric', speedLabel);
+          edge.data('targetMetric', speedLabel);
+        }
+      } else {
+        // No rate data — show original metrics (or speed if known)
+        edge.data('sourceMetric', d._bwOrigSource);
+        edge.data('targetMetric', d._bwOrigTarget);
+      }
     });
-  }
-
-  /**
-   * Store interface speeds for label display.
-   */
-  setInterfaceSpeeds(speeds) {
-    this._lastSpeeds = speeds;
   }
 
   /**
