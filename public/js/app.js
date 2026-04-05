@@ -5265,14 +5265,24 @@
     // Sort by rate descending
     rows.sort((a, b) => b.bitsPerSec - a.bitsPerSec);
 
-    if (countEl) countEl.textContent = `${rows.length} tunnel${rows.length !== 1 ? 's' : ''}`;
+    // Filter to only show active flows (non-zero rates)
+    const totalCount = rows.length;
+    const activeRows = rows.filter(r => r.bitsPerSec > 0);
 
-    if (rows.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted">No flow data yet — configure sFlow on your Arista devices</td></tr>';
+    if (countEl) {
+      countEl.textContent = activeRows.length > 0
+        ? `${activeRows.length} active of ${totalCount} tunnel${totalCount !== 1 ? 's' : ''}`
+        : `${totalCount} tunnel${totalCount !== 1 ? 's' : ''} (all idle)`;
+    }
+
+    if (activeRows.length === 0) {
+      tbody.innerHTML = totalCount > 0
+        ? `<tr><td colspan="8" class="text-center text-muted">${totalCount} tunnels discovered — all idle (no active traffic)</td></tr>`
+        : '<tr><td colspan="8" class="text-center text-muted">No flow data yet — configure sFlow on your Arista devices</td></tr>';
       return;
     }
 
-    tbody.innerHTML = rows.map((row) => {
+    tbody.innerHTML = activeRows.map((row) => {
       const isFA = row.algoTag.startsWith('flex') || (row.algoTag !== 'algo0' && row.algoTag.startsWith('algo'));
       const algoTag = isFA
         ? `<span class="badge badge-algo">FA</span>`
