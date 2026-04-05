@@ -4318,6 +4318,53 @@
             </div>
             <div id="overrideMsg" style="margin-top:6px;font-size:0.72rem;"></div>
           </div>`;
+
+        // LSP Breakdown — correlate tunnel rates to this edge
+        const edgeLsps = [];
+        const srcHost = er.source;
+        const srcIntf = er.sourceInterface;
+
+        if (srcHost && srcIntf && lastTunnelRates.length > 0) {
+          for (const tc of lastTunnelRates) {
+            if (tc.device !== srcHost || tc.bitsPerSec <= 0) continue;
+            // Check if any of the tunnel's vias use this interface
+            const matchesVia = (tc.vias || []).some(v => v.interface === srcIntf);
+            if (matchesVia) {
+              edgeLsps.push(tc);
+            }
+          }
+        }
+
+        if (edgeLsps.length > 0) {
+          const totalLspBps = edgeLsps.reduce((sum, l) => sum + l.bitsPerSec, 0);
+          html += `
+            <div class="detail-section">
+              <h4>LSP Breakdown</h4>
+              <p class="text-muted" style="font-size:0.72rem;margin-bottom:8px;">${edgeLsps.length} LSP${edgeLsps.length !== 1 ? 's' : ''} traversing this link</p>
+              <div class="devices-table-wrap" style="max-width:100%;">
+                <table class="devices-table" style="font-size:0.72rem;">
+                  <thead><tr><th>LSP</th><th>Type</th><th>Rate</th><th>Share</th></tr></thead>
+                  <tbody>`;
+
+          edgeLsps.sort((a, b) => b.bitsPerSec - a.bitsPerSec);
+          for (const lsp of edgeLsps) {
+            const share = er.maxBps > 0 ? ((lsp.bitsPerSec / er.maxBps) * 100).toFixed(1) : '—';
+            const algoLabel = lsp.algoTag.startsWith('flex') || (lsp.algoTag !== 'algo0' && lsp.algoTag.startsWith('algo'))
+              ? `<span class="detail-badge amber" style="font-size:0.6rem;">FA</span>`
+              : `<span class="detail-badge cyan" style="font-size:0.6rem;">SPF</span>`;
+            html += `<tr>
+              <td class="font-mono">${esc(lsp.device)} → ${esc(lsp.destHostname)}</td>
+              <td>${algoLabel}</td>
+              <td style="font-weight:600;">${formatRate(lsp.bitsPerSec)}</td>
+              <td>${share}%</td>
+            </tr>`;
+          }
+          html += `</tbody></table></div>
+            </div>`;
+        }
+
+        // Placeholder for async sFlow enrichment
+        html += `<div id="sflowEdgeDetail"></div>`;
       }
     }
 
@@ -4354,6 +4401,46 @@
     }
 
     detailPanel.classList.add('open');
+
+    // Async: fetch sFlow edge detail for top-talker enrichment
+    API.getSflowEdgeDetail(edgeData.id).then(sflowDetail => {
+      const container = document.getElementById('sflowEdgeDetail');
+      if (!container || !sflowDetail || !sflowDetail.lsps || sflowDetail.lsps.length === 0) return;
+
+      let shtml = `
+        <div class="detail-section">
+          <h4>sFlow Top Talkers</h4>
+          <p class="text-muted" style="font-size:0.72rem;margin-bottom:8px;">Traffic flows sampled via sFlow on this link</p>`;
+
+      for (const lsp of sflowDetail.lsps) {
+        if (lsp.bitsPerSec <= 0) continue;
+        const algoLabel = lsp.algorithm > 0
+          ? `<span class="detail-badge amber" style="font-size:0.6rem;">Algo ${lsp.algorithm}</span>`
+          : `<span class="detail-badge cyan" style="font-size:0.6rem;">SPF</span>`;
+        shtml += `
+          <div style="margin-bottom:8px;padding:6px 8px;background:var(--bg-surface);border-radius:4px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <span class="font-mono" style="font-size:0.72rem;">${esc(lsp.sourceNode)} → ${esc(lsp.destNode)}</span>
+              ${algoLabel}
+              <span style="font-weight:600;font-size:0.78rem;">${formatRate(lsp.bitsPerSec)}</span>
+            </div>`;
+
+        if (lsp.topTalkers && lsp.topTalkers.length > 0) {
+          shtml += `<div style="margin-top:4px;">`;
+          for (const t of lsp.topTalkers.slice(0, 3)) {
+            shtml += `<div style="font-size:0.68rem;color:var(--text-muted);padding:1px 0;">
+              ${esc(t.srcIP || '?')} → ${esc(t.dstIP || '?')}
+              <span style="float:right;">${formatRate((t.bytes || 0) * 8 / 30)}</span>
+            </div>`;
+          }
+          shtml += `</div>`;
+        }
+        shtml += `</div>`;
+      }
+
+      shtml += `</div>`;
+      container.innerHTML = shtml;
+    }).catch(() => {});
   }
 
   function closeDetail() {
