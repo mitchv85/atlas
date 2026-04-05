@@ -457,10 +457,19 @@ class GnmiSubscriber extends EventEmitter {
         if (this._topoInterfaces.size > 0 && !this._topoInterfaces.has(topoKey)) {
           return;
         }
+
+        // Skip samples with missing critical fields — gnmic only sends
+        // fields that changed, so some samples lack in-octets or out-octets.
+        // Using '0' as fallback creates huge fake deltas on the next
+        // complete sample. Better to skip and wait for a complete one.
+        if (allValues['in-octets'] == null || allValues['out-octets'] == null) {
+          return;
+        }
+
         this.emit('interface:counters', {
           device: deviceName, interface: ifName, timestamp,
           counters: {
-            inOctets: allValues['in-octets'] || '0', outOctets: allValues['out-octets'] || '0',
+            inOctets: allValues['in-octets'], outOctets: allValues['out-octets'],
             inPkts: allValues['in-pkts'] || '0', outPkts: allValues['out-pkts'] || '0',
             inErrors: allValues['in-errors'] || '0', outErrors: allValues['out-errors'] || '0',
             inDiscards: allValues['in-discards'] || '0', outDiscards: allValues['out-discards'] || '0',
