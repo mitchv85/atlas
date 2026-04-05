@@ -3442,8 +3442,8 @@
     }
   });
 
-  // Wire context menu item clicks
-  document.querySelectorAll('.ctx-menu-item').forEach((item) => {
+  // Wire context menu item clicks (only items with data-action)
+  document.querySelectorAll('.ctx-menu-item[data-action]').forEach((item) => {
     item.addEventListener('click', () => {
       const action = item.dataset.action;
       if (!ctxTargetData) return;

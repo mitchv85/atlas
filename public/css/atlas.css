@@ -2230,10 +2230,12 @@ body {
   color: var(--accent) !important;
 }
 .topo-btn-labeled {
+  width: auto !important;
+  height: 34px;
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 4px 10px !important;
+  padding: 4px 12px !important;
   font-size: 0.72rem;
   font-weight: 600;
   letter-spacing: 0.02em;
