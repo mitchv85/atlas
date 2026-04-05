@@ -173,6 +173,22 @@ const API = {
     return res.json();
   },
 
+  /** Fetch bandwidth utilization thresholds (global setting). */
+  async getBwThresholds() {
+    const res = await authFetch('/api/settings/bw-thresholds');
+    return res.json();
+  },
+
+  /** Update bandwidth utilization thresholds (admin only). */
+  async setBwThresholds(thresholds) {
+    const res = await authFetch('/api/settings/bw-thresholds', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ thresholds }),
+    });
+    return res.json();
+  },
+
   /** Fetch health for a specific device. */
   async getDeviceHealth(deviceName) {
     const res = await authFetch(`/api/health/${encodeURIComponent(deviceName)}`);

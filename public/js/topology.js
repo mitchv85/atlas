@@ -514,30 +514,26 @@ class TopologyRenderer {
     1_000_000_000, // Level 5: > 1 Gbps
   ];
 
-  // Bandwidth overlay settings — configurable by the operator
+  // Bandwidth overlay settings — thresholds loaded from server
   static BW_DEFAULTS = {
-    linkSpeedBps: 10_000_000_000, // 10 Gbps default
-    thresholds: [1, 10, 25, 50, 75, 90], // Utilization % for each heat level
+    thresholds: [1, 10, 25, 50, 75, 90],
   };
 
   /**
-   * Get or initialize bandwidth overlay settings from localStorage.
+   * Get bandwidth overlay thresholds.
+   * Uses cached thresholds from server (set via setBandwidthThresholds).
    */
   getBandwidthSettings() {
-    try {
-      const saved = localStorage.getItem('atlas-bw-settings');
-      if (saved) return JSON.parse(saved);
-    } catch {}
-    return { ...TopologyRenderer.BW_DEFAULTS };
+    return {
+      thresholds: this._bwThresholds || TopologyRenderer.BW_DEFAULTS.thresholds,
+    };
   }
 
   /**
-   * Save bandwidth overlay settings to localStorage.
+   * Set bandwidth thresholds (called when fetched from server).
    */
-  saveBandwidthSettings(settings) {
-    try {
-      localStorage.setItem('atlas-bw-settings', JSON.stringify(settings));
-    } catch {}
+  setBandwidthThresholds(thresholds) {
+    this._bwThresholds = thresholds;
   }
 
   /**
@@ -551,7 +547,6 @@ class TopologyRenderer {
     if (!this.cy) return;
 
     const settings = this.getBandwidthSettings();
-    const fallbackSpeed = settings.linkSpeedBps;
     const thresholds = settings.thresholds;
 
     // Build a lookup of edge rates by ID
@@ -578,7 +573,7 @@ class TopologyRenderer {
 
       if (er) {
         const bps = er.maxBps || 0;
-        const linkSpeed = er.effectiveSpeedBps || er.speedBps || fallbackSpeed;
+        const linkSpeed = er.effectiveSpeedBps || er.speedBps || 10_000_000_000;
         const utilization = (bps / linkSpeed) * 100;
         const speedLabel = er.overrideLabel || TopologyRenderer.formatSpeed(linkSpeed);
 

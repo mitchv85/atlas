@@ -1339,6 +1339,7 @@
   function refreshMgmtPage() {
     if (activeMgmtTab === 'profile') loadProfile();
     else if (activeMgmtTab === 'users') loadUsers();
+    else if (activeMgmtTab === 'bandwidth') loadBandwidthSettings();
     else if (activeMgmtTab === 'audit') loadAuditLog();
     else if (activeMgmtTab === 'system') loadSystemInfo();
   }
@@ -1448,6 +1449,44 @@
         document.getElementById('changePasswordModal').style.display = 'flex';
       });
     } catch { container.innerHTML = '<p class="text-muted">Error loading profile.</p>'; }
+  }
+
+  // ── Live Bandwidth Settings ──
+  async function loadBandwidthSettings() {
+    try {
+      const data = await API.getBwThresholds();
+      const thresholds = data.thresholds || [1, 10, 25, 50, 75, 90];
+      for (let i = 0; i < 6; i++) {
+        const el = document.getElementById(`mgmtBwT${i + 1}`);
+        if (el) el.value = thresholds[i] || 0;
+      }
+    } catch {}
+
+    // Wire save button (only once)
+    const btn = document.getElementById('btnSaveBwThresholds');
+    if (btn && !btn._wired) {
+      btn._wired = true;
+      btn.addEventListener('click', async () => {
+        const thresholds = [];
+        for (let i = 0; i < 6; i++) {
+          thresholds.push(parseInt(document.getElementById(`mgmtBwT${i + 1}`)?.value, 10) || 0);
+        }
+        const result = await API.setBwThresholds(thresholds);
+        const msg = document.getElementById('bwThresholdMsg');
+        if (result.ok) {
+          msg.innerHTML = '<span style="color:var(--green);">Thresholds saved.</span>';
+          // Apply to topology renderer immediately
+          topo.setBandwidthThresholds(thresholds);
+          // Re-apply heatmap with new thresholds
+          if (bandwidthOverlayActive && lastBandwidthData?.edgeRates) {
+            topo.applyBandwidthHeatmap(lastBandwidthData.edgeRates);
+          }
+        } else {
+          msg.innerHTML = '<span style="color:var(--red);">Error saving thresholds.</span>';
+        }
+        setTimeout(() => { msg.textContent = ''; }, 3000);
+      });
+    }
   }
 
   // ── Users ──
@@ -1801,6 +1840,12 @@
     topo.init();
     initThemePicker();
     initMgmtPage();
+
+    // Load bandwidth thresholds from server
+    try {
+      const bwData = await API.getBwThresholds();
+      if (bwData.thresholds) topo.setBandwidthThresholds(bwData.thresholds);
+    } catch {}
 
     topo.onNodeClick = showNodeDetail;
     topo.onEdgeClick = showEdgeDetail;
@@ -5408,41 +5453,6 @@
 
     // Bandwidth heatmap overlay toggle (topo toolbar)
     document.getElementById('btnTopoBandwidthOverlay')?.addEventListener('click', toggleBandwidthOverlay);
-
-    // Bandwidth settings gear button
-    document.getElementById('btnBwSettings')?.addEventListener('click', () => {
-      const panel = document.getElementById('bwSettingsPanel');
-      if (!panel) return;
-      const visible = panel.style.display !== 'none';
-      panel.style.display = visible ? 'none' : '';
-      if (!visible) {
-        // Load current settings into inputs
-        const settings = topo.getBandwidthSettings();
-        const speedEl = document.getElementById('bwLinkSpeed');
-        if (speedEl) speedEl.value = String(settings.linkSpeedBps);
-        for (let i = 0; i < 6; i++) {
-          const el = document.getElementById(`bwT${i + 1}`);
-          if (el) el.value = settings.thresholds[i] || 0;
-        }
-      }
-    });
-
-    // Bandwidth settings Apply button
-    document.getElementById('btnBwSettingsSave')?.addEventListener('click', () => {
-      const speedEl = document.getElementById('bwLinkSpeed');
-      const linkSpeedBps = parseInt(speedEl?.value, 10) || 10_000_000_000;
-      const thresholds = [];
-      for (let i = 0; i < 6; i++) {
-        const el = document.getElementById(`bwT${i + 1}`);
-        thresholds.push(parseInt(el?.value, 10) || 0);
-      }
-      topo.saveBandwidthSettings({ linkSpeedBps, thresholds });
-      // Re-apply heatmap with new settings
-      if (bandwidthOverlayActive && lastBandwidthData?.edgeRates) {
-        topo.applyBandwidthHeatmap(lastBandwidthData.edgeRates);
-      }
-      document.getElementById('bwSettingsPanel').style.display = 'none';
-    });
 
     // EOS config panel
     document.getElementById('btnSflowEosConfig')?.addEventListener('click', () => {

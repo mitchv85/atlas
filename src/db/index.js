@@ -17,7 +17,7 @@ const fs = require('fs');
 const path = require('path');
 
 const DB_PATH = path.join(__dirname, '..', '..', 'atlas.db');
-const SCHEMA_VERSION = 4;
+const SCHEMA_VERSION = 5;
 
 let db = null;
 
@@ -151,6 +151,21 @@ function _migrate() {
     db.run('DELETE FROM schema_version');
     db.run(`INSERT INTO schema_version (version) VALUES (${SCHEMA_VERSION})`);
     console.log('  [DB] Migration v4 complete');
+  }
+
+  if (currentVersion < 5) {
+    console.log('  [DB] Running migration v5 — creating settings table...');
+    db.run(`CREATE TABLE IF NOT EXISTS settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at TEXT DEFAULT (datetime('now')),
+      updated_by TEXT
+    )`);
+    // Seed default bandwidth thresholds
+    db.run(`INSERT INTO settings (key, value) VALUES ('bw_thresholds', '${JSON.stringify([1, 10, 25, 50, 75, 90])}')`);
+    db.run('DELETE FROM schema_version');
+    db.run(`INSERT INTO schema_version (version) VALUES (${SCHEMA_VERSION})`);
+    console.log('  [DB] Migration v5 complete');
   }
 }
 
@@ -603,10 +618,48 @@ const bandwidthOps = {
   },
 };
 
+// ---------------------------------------------------------------------------
+// Global Settings Operations
+// ---------------------------------------------------------------------------
+
+const settingsOps = {
+  get(key) {
+    const stmt = db.prepare('SELECT value FROM settings WHERE key = ?');
+    stmt.bind([key]);
+    const row = stmt.step() ? stmt.getAsObject() : null;
+    stmt.free();
+    if (!row) return null;
+    try { return JSON.parse(row.value); } catch { return row.value; }
+  },
+
+  set(key, value, updatedBy) {
+    const jsonValue = typeof value === 'string' ? value : JSON.stringify(value);
+    const existing = this.get(key);
+    if (existing !== null) {
+      db.run(`UPDATE settings SET value = '${_esc(jsonValue)}', updated_at = datetime('now')${updatedBy ? `, updated_by = '${_esc(updatedBy)}'` : ''} WHERE key = '${_esc(key)}'`);
+    } else {
+      db.run(`INSERT INTO settings (key, value${updatedBy ? ', updated_by' : ''}) VALUES ('${_esc(key)}', '${_esc(jsonValue)}'${updatedBy ? `, '${_esc(updatedBy)}'` : ''})`);
+    }
+    _save();
+    return this.get(key);
+  },
+
+  getAll() {
+    const result = db.exec('SELECT key, value FROM settings');
+    const rows = _rowsToObjects(result);
+    const map = {};
+    for (const row of rows) {
+      try { map[row.key] = JSON.parse(row.value); } catch { map[row.key] = row.value; }
+    }
+    return map;
+  },
+};
+
 module.exports = {
   init,
   devices: deviceOps,
   users: userOps,
   audit: auditOps,
   bandwidthOverrides: bandwidthOps,
+  settings: settingsOps,
 };

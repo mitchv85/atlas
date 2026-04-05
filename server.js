@@ -241,6 +241,21 @@ app.get('/api/lldp', authService.requireAuth, (_req, res) => {
   res.json(healthStore.getAllLldpNeighbors());
 });
 
+// Global settings endpoints
+app.get('/api/settings/bw-thresholds', authService.requireAuth, (_req, res) => {
+  const thresholds = db.settings.get('bw_thresholds') || [1, 10, 25, 50, 75, 90];
+  res.json({ thresholds });
+});
+
+app.put('/api/settings/bw-thresholds', authService.requireRole('admin'), (req, res) => {
+  const { thresholds } = req.body || {};
+  if (!Array.isArray(thresholds) || thresholds.length !== 6) {
+    return res.status(400).json({ error: 'thresholds must be an array of 6 numbers.' });
+  }
+  db.settings.set('bw_thresholds', thresholds, req.authUser?.username);
+  res.json({ ok: true, thresholds });
+});
+
 // ---------------------------------------------------------------------------
 // SPA Fallback
 // ---------------------------------------------------------------------------

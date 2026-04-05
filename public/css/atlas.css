@@ -2246,58 +2246,22 @@ body {
   box-shadow: 0 0 8px var(--accent-glow);
 }
 
-/* Bandwidth overlay settings panel */
-.bw-settings-panel {
-  position: absolute;
-  top: 44px;
-  right: 8px;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 12px 16px;
-  z-index: 100;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-  font-size: 0.78rem;
-  min-width: 260px;
-}
-.bw-settings-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 10px;
-}
-.bw-settings-row label { color: var(--text-muted); min-width: 70px; }
-.bw-settings-row select {
-  flex: 1;
-  padding: 4px 8px;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  background: var(--bg-surface);
-  color: var(--text);
-  font-size: 0.78rem;
-}
-.bw-settings-legend {
-  display: grid;
-  grid-template-columns: 14px auto 48px 16px;
-  gap: 4px 6px;
-  align-items: center;
-  margin-bottom: 10px;
-}
+/* Bandwidth threshold settings (used in Mgmt > Live Bandwidth) */
 .bw-swatch {
   width: 14px;
   height: 14px;
   border-radius: 3px;
   display: inline-block;
+  vertical-align: middle;
 }
-.bw-settings-legend label { color: var(--text-muted); font-size: 0.72rem; }
 .bw-threshold-input {
-  width: 48px;
-  padding: 2px 4px;
+  width: 56px;
+  padding: 4px 6px;
   border: 1px solid var(--border);
   border-radius: 3px;
   background: var(--bg-surface);
   color: var(--text);
-  font-size: 0.72rem;
+  font-size: 0.78rem;
   text-align: right;
 }
 
