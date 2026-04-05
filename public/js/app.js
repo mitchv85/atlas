@@ -1180,6 +1180,7 @@
     authUser = null;
     document.getElementById('userBadge').style.display = 'none';
     showLogin();
+    checkGitHubSSO();
   }
 
   function initAuthHandlers() {
@@ -1314,15 +1315,20 @@
     return false;
   }
 
+  let _githubSSOChecked = false;
   async function checkGitHubSSO() {
     try {
       const status = await API.getGitHubSSOStatus();
       if (status.enabled) {
         document.getElementById('btnGitHubSSO').style.display = 'flex';
         document.getElementById('loginDivider').style.display = 'flex';
-        document.getElementById('btnGitHubSSO').addEventListener('click', () => {
-          window.location.href = '/api/auth/github';
-        });
+        // Only wire click handler once
+        if (!_githubSSOChecked) {
+          _githubSSOChecked = true;
+          document.getElementById('btnGitHubSSO').addEventListener('click', () => {
+            window.location.href = '/api/auth/github';
+          });
+        }
       }
     } catch {}
   }
