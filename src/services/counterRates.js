@@ -35,6 +35,28 @@ class CounterRateEngine extends EventEmitter {
    */
   start() {
     this._batchTimer = setInterval(() => {
+      // Evict stale rates — if no new complete sample in 30s,
+      // the traffic has likely stopped. Zero out stale entries.
+      const now = Date.now() / 1000;
+      const STALE_THRESHOLD = 30; // seconds (3 sample intervals)
+      for (const [key, rate] of this._rates) {
+        if (now - rate.timestamp > STALE_THRESHOLD) {
+          if (rate.inBps > 0 || rate.outBps > 0) {
+            // Zero it out rather than removing — preserves the key
+            // so the next sample can compute a fresh delta
+            rate.inBps = 0;
+            rate.outBps = 0;
+            rate.inPps = 0;
+            rate.outPps = 0;
+            rate.inErrors = 0;
+            rate.outErrors = 0;
+            rate.inDiscards = 0;
+            rate.outDiscards = 0;
+            this._dirty = true;
+          }
+        }
+      }
+
       if (this._dirty) {
         this._dirty = false;
         this._emitSnapshot();
