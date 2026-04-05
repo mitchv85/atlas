@@ -100,6 +100,9 @@ class GnmiSubscriber extends EventEmitter {
     this._reconnectTimers = new Map();
     this._lastSpfRuns = new Map();
     this._deviceStatus = new Map();
+    // Track interfaces with IS-IS adjacencies — only these get
+    // counter events emitted (filters out management interfaces)
+    this._topoInterfaces = new Set(); // "device:interface"
   }
 
   configure(gnmiConfig) {
@@ -378,6 +381,10 @@ class GnmiSubscriber extends EventEmitter {
       const ifName = ifMatch ? ifMatch[1] : null;
 
       if (systemId || adjState) {
+        // Track this interface as a topology interface
+        if (ifName && deviceName) {
+          this._topoInterfaces.add(`${deviceName}:${ifName}`);
+        }
         console.log(`  [gNMI] ${deviceName} ISIS adjacency ${adjState || 'UPDATE'}: ${systemId || '?'} on ${ifName || '?'}`);
         const adjEvent = { device: deviceName, systemId, state: adjState, neighborIp, interface: ifName, timestamp };
         this.emit('isis:adjacency', adjEvent);
@@ -440,12 +447,16 @@ class GnmiSubscriber extends EventEmitter {
       if (!this._counterLogDone) {
         this._counterLogDone = true;
         console.log(`  [gNMI] Counter sample: ${deviceName}:${ifName} — ${Object.keys(allValues).length} fields`);
-        console.log(`  [gNMI] Counter keys: [${Object.keys(allValues).join(', ')}]`);
-        console.log(`  [gNMI] in-octets=${allValues['in-octets']} out-octets=${allValues['out-octets']} (type: ${typeof allValues['in-octets']})`);
-        console.log(`  [gNMI] Updates in obj: ${(obj.updates || []).length}, prefix: ${prefix}`);
+        console.log(`  [gNMI] Topology interfaces registered: ${this._topoInterfaces.size} [${[...this._topoInterfaces].slice(0, 6).join(', ')}${this._topoInterfaces.size > 6 ? '...' : ''}]`);
       }
 
       if (ifName.startsWith('Ethernet') || ifName.startsWith('Port-Channel')) {
+        // Only track interfaces that are part of the IS-IS topology
+        // (filters out management interfaces like Ethernet47/48)
+        const topoKey = `${deviceName}:${ifName}`;
+        if (this._topoInterfaces.size > 0 && !this._topoInterfaces.has(topoKey)) {
+          return;
+        }
         this.emit('interface:counters', {
           device: deviceName, interface: ifName, timestamp,
           counters: {
