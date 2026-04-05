@@ -542,9 +542,10 @@ class TopologyRenderer {
 
   /**
    * Apply bandwidth heatmap overlay to the topology.
-   * Colors edges based on utilization percentage (maxBps / linkSpeed).
+   * Colors edges based on utilization percentage (maxBps / per-link speed).
+   * Falls back to global link speed setting if per-link speed unavailable.
    *
-   * @param {Array} edgeRates - [{ edgeId, maxBps, inBps, outBps }]
+   * @param {Array} edgeRates - [{ edgeId, maxBps, inBps, outBps, speedBps, utilization, ... }]
    */
   applyBandwidthHeatmap(edgeRates) {
     if (!this.cy || !edgeRates || edgeRates.length === 0) return;
@@ -552,7 +553,7 @@ class TopologyRenderer {
     this.clearFlowOverlay();
 
     const settings = this.getBandwidthSettings();
-    const linkSpeed = settings.linkSpeedBps;
+    const fallbackSpeed = settings.linkSpeedBps;
     const thresholds = settings.thresholds;
 
     for (const er of edgeRates) {
@@ -560,6 +561,7 @@ class TopologyRenderer {
       if (!edge.length) continue;
 
       const bps = er.maxBps || 0;
+      const linkSpeed = er.speedBps || fallbackSpeed;
       const utilization = (bps / linkSpeed) * 100;
 
       // Determine heat level from thresholds
@@ -572,7 +574,39 @@ class TopologyRenderer {
         edge.addClass(`bw-heat-${level}`);
         edge.connectedNodes().forEach(n => n.addClass('flow-active'));
       }
+
+      // Swap edge label to show throughput
+      const label = bps > 0 ? TopologyRenderer.formatBps(bps) : TopologyRenderer.formatSpeed(linkSpeed);
+      edge.data('_origLabel', edge.data('label'));
+      edge.data('label', label);
     }
+
+    // For edges with no rate data, show link speed if available
+    this.cy.edges().forEach(edge => {
+      if (edge.data('_origLabel') !== undefined) return; // Already handled
+      // Store original label for restoration
+      edge.data('_origLabel', edge.data('label'));
+    });
+  }
+
+  /**
+   * Format bits-per-second as human-readable throughput.
+   */
+  static formatBps(bps) {
+    if (bps >= 1e9) return `${(bps / 1e9).toFixed(1)}G`;
+    if (bps >= 1e6) return `${(bps / 1e6).toFixed(1)}M`;
+    if (bps >= 1e3) return `${(bps / 1e3).toFixed(0)}K`;
+    return `${Math.round(bps)} bps`;
+  }
+
+  /**
+   * Format link speed as human-readable string.
+   */
+  static formatSpeed(speedBps) {
+    if (!speedBps) return '';
+    if (speedBps >= 1e9) return `${speedBps / 1e9}G`;
+    if (speedBps >= 1e6) return `${speedBps / 1e6}M`;
+    return `${speedBps / 1e3}K`;
   }
 
   /**
@@ -704,6 +738,14 @@ class TopologyRenderer {
       'bw-heat-1 bw-heat-2 bw-heat-3 bw-heat-4 bw-heat-5 bw-heat-6 ' +
       'flow-active flow-lsp-highlight flow-lsp-node flow-dimmed flow-animated'
     );
+    // Restore original edge labels swapped during bandwidth overlay
+    this.cy.edges().forEach(edge => {
+      const orig = edge.data('_origLabel');
+      if (orig !== undefined) {
+        edge.data('label', orig);
+        edge.removeData('_origLabel');
+      }
+    });
     this.stopFlowAnimation();
   }
 

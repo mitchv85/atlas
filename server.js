@@ -102,65 +102,96 @@ app.get('/api/health/:device', authService.requireAuth, (req, res) => {
 });
 
 // Bandwidth / interface rates endpoints (protected)
-app.get('/api/bandwidth', authService.requireAuth, (_req, res) => {
-  const links = counterRates.getLinkRates();
-  const summaries = counterRates.getDeviceSummaries();
+/**
+ * Build edge-mapped bandwidth rates with per-link speeds and utilization.
+ * Reused by both the REST endpoint and WebSocket broadcasts.
+ */
+function buildEdgeRates(linkRates) {
   const topology = poller.getTopology();
   const lldp = healthStore.getAllLldpNeighbors();
-
-  // Build edge-mapped rates using LLDP neighbor data to resolve
-  // "device:interface" → peer hostname → topology edge ID
+  const speeds = healthStore.getAllInterfaceSpeeds();
   const edgeRates = [];
-  if (topology && topology.edges) {
-    // Build LLDP map: "device:interface" → peer hostname
-    const lldpMap = new Map();
-    for (const n of lldp) {
-      const peerName = (n.systemName || '').replace(/\..*/,''); // Strip domain
-      if (peerName) lldpMap.set(`${n.device}:${n.interface}`, peerName);
+
+  if (!topology || !topology.edges) return edgeRates;
+
+  // Build LLDP map: "device:interface" → peer hostname
+  const lldpMap = new Map();
+  for (const n of lldp) {
+    const peerName = (n.systemName || '').replace(/\..*/,'');
+    if (peerName) lldpMap.set(`${n.device}:${n.interface}`, peerName);
+  }
+
+  // Build edge lookup: "hostA|hostB" → edge data
+  const edgeLookup = new Map();
+  for (const edge of topology.edges) {
+    const a = edge.data.sourceLabel;
+    const b = edge.data.targetLabel;
+    const key = [a, b].sort().join('|');
+    if (!edgeLookup.has(key)) edgeLookup.set(key, []);
+    edgeLookup.get(key).push(edge);
+  }
+
+  // Map each interface rate to an edge, enriched with speed
+  const edgeRateMap = new Map();
+  for (const [linkKey, rate] of Object.entries(linkRates)) {
+    const peer = lldpMap.get(linkKey);
+    if (!peer) continue;
+
+    const device = linkKey.split(':')[0];
+    const ifName = linkKey.split(':')[1];
+    const pairKey = [device, peer].sort().join('|');
+    const edges = edgeLookup.get(pairKey);
+    if (!edges || edges.length === 0) continue;
+
+    const edge = edges[0];
+    const edgeId = edge.data.id;
+
+    if (!edgeRateMap.has(edgeId)) {
+      edgeRateMap.set(edgeId, {
+        edgeId,
+        source: edge.data.sourceLabel,
+        target: edge.data.targetLabel,
+        maxBps: 0, inBps: 0, outBps: 0,
+        speedBps: null, utilization: null,
+        sourceInterface: null, targetInterface: null,
+        errors: 0, discards: 0,
+      });
     }
+    const er = edgeRateMap.get(edgeId);
+    er.inBps += rate.inBps || 0;
+    er.outBps += rate.outBps || 0;
+    er.maxBps = Math.max(er.maxBps, rate.maxBps || 0);
+    er.errors += (rate.hasErrors ? 1 : 0);
+    er.discards += (rate.hasDiscards ? 1 : 0);
 
-    // Build edge lookup: "hostA|hostB" → edge data
-    const edgeLookup = new Map();
-    for (const edge of topology.edges) {
-      const a = edge.data.sourceLabel;
-      const b = edge.data.targetLabel;
-      const key = [a, b].sort().join('|');
-      if (!edgeLookup.has(key)) edgeLookup.set(key, []);
-      edgeLookup.get(key).push(edge);
-    }
-
-    // Map each interface rate to an edge
-    const edgeRateMap = new Map(); // edgeId → { srcInBps, srcOutBps, tgtInBps, tgtOutBps }
-    for (const [linkKey, rate] of Object.entries(links)) {
-      const peer = lldpMap.get(linkKey);
-      if (!peer) continue;
-
-      const device = linkKey.split(':')[0];
-      const pairKey = [device, peer].sort().join('|');
-      const edges = edgeLookup.get(pairKey);
-      if (!edges || edges.length === 0) continue;
-
-      // Use first edge for this pair (handles parallel links in future)
-      const edge = edges[0];
-      const edgeId = edge.data.id;
-
-      if (!edgeRateMap.has(edgeId)) {
-        edgeRateMap.set(edgeId, { edgeId, maxBps: 0, inBps: 0, outBps: 0, errors: 0, discards: 0 });
-      }
-      const er = edgeRateMap.get(edgeId);
-      er.inBps += rate.inBps || 0;
-      er.outBps += rate.outBps || 0;
-      er.maxBps = Math.max(er.maxBps, rate.maxBps || 0);
-      er.errors += (rate.hasErrors ? 1 : 0);
-      er.discards += (rate.hasDiscards ? 1 : 0);
-    }
-
-    for (const er of edgeRateMap.values()) {
-      edgeRates.push(er);
+    // Track interface names and speed per side
+    const linkSpeed = speeds[linkKey] || null;
+    if (device === edge.data.sourceLabel) {
+      er.sourceInterface = ifName;
+      if (linkSpeed && (!er.speedBps || linkSpeed < er.speedBps)) er.speedBps = linkSpeed;
+    } else {
+      er.targetInterface = ifName;
+      if (linkSpeed && (!er.speedBps || linkSpeed < er.speedBps)) er.speedBps = linkSpeed;
     }
   }
 
-  res.json({ links, summaries, edgeRates, timestamp: Date.now() });
+  // Compute utilization for each edge
+  for (const er of edgeRateMap.values()) {
+    if (er.speedBps && er.speedBps > 0) {
+      er.utilization = Math.round((er.maxBps / er.speedBps) * 10000) / 100; // 2 decimal places
+    }
+    edgeRates.push(er);
+  }
+
+  return edgeRates;
+}
+
+app.get('/api/bandwidth', authService.requireAuth, (_req, res) => {
+  const links = counterRates.getLinkRates();
+  const summaries = counterRates.getDeviceSummaries();
+  const edgeRates = buildEdgeRates(links);
+  const speeds = healthStore.getAllInterfaceSpeeds();
+  res.json({ links, summaries, edgeRates, speeds, timestamp: Date.now() });
 });
 
 app.get('/api/bandwidth/:device', authService.requireAuth, (req, res) => {
@@ -367,47 +398,7 @@ gnmiSubscriber.on('system:temperature', (event) => {
 
 // Counter rate engine → broadcast bandwidth snapshots to all clients
 counterRates.on('rates:updated', (snapshot) => {
-  // Enrich snapshot with edge-mapped rates using LLDP data
-  const topology = poller.getTopology();
-  const lldp = healthStore.getAllLldpNeighbors();
-  const edgeRates = [];
-
-  if (topology && topology.edges) {
-    const lldpMap = new Map();
-    for (const n of lldp) {
-      const peerName = (n.systemName || '').replace(/\..*/,'');
-      if (peerName) lldpMap.set(`${n.device}:${n.interface}`, peerName);
-    }
-
-    const edgeLookup = new Map();
-    for (const edge of topology.edges) {
-      const key = [edge.data.sourceLabel, edge.data.targetLabel].sort().join('|');
-      if (!edgeLookup.has(key)) edgeLookup.set(key, []);
-      edgeLookup.get(key).push(edge);
-    }
-
-    const edgeRateMap = new Map();
-    for (const [linkKey, rate] of Object.entries(snapshot.links)) {
-      const peer = lldpMap.get(linkKey);
-      if (!peer) continue;
-      const device = linkKey.split(':')[0];
-      const pairKey = [device, peer].sort().join('|');
-      const edges = edgeLookup.get(pairKey);
-      if (!edges || !edges.length) continue;
-
-      const edgeId = edges[0].data.id;
-      if (!edgeRateMap.has(edgeId)) {
-        edgeRateMap.set(edgeId, { edgeId, maxBps: 0, inBps: 0, outBps: 0 });
-      }
-      const er = edgeRateMap.get(edgeId);
-      er.inBps += rate.inBps || 0;
-      er.outBps += rate.outBps || 0;
-      er.maxBps = Math.max(er.maxBps, rate.maxBps || 0);
-    }
-
-    for (const er of edgeRateMap.values()) edgeRates.push(er);
-  }
-
+  const edgeRates = buildEdgeRates(snapshot.links);
   broadcast({ type: 'bandwidth:updated', data: { ...snapshot, edgeRates } });
 });
 

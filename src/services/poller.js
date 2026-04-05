@@ -13,6 +13,7 @@ const { parseLSDB, parseFlexAlgoPaths, parseFlexAlgoRouters } = require('../serv
 const { buildGraph } = require('../services/topologyBuilder');
 const { parseTunnelFib } = require('../services/tunnelParser');
 const { parseNeighborDetail, formatUptime } = require('../services/neighborParser');
+const healthStore = require('../store/health');
 
 class TopologyPoller extends EventEmitter {
   constructor() {
@@ -165,6 +166,20 @@ class TopologyPoller extends EventEmitter {
             rec.mtu = intf?.mtu || null;
           }
           allNeighborRecords.push(...nbrRecords);
+
+          // Extract interface speeds from show interfaces
+          // EOS returns bandwidth in bps for each interface
+          for (const [ifName, intf] of Object.entries(intfData)) {
+            if (!ifName.startsWith('Ethernet') && !ifName.startsWith('Port-Channel')) continue;
+            const speedBps = intf.bandwidth || 0;
+            if (speedBps > 0) {
+              healthStore.recordInterfaceSpeed({
+                device: device.name,
+                interface: ifName,
+                speedBps,
+              });
+            }
+          }
 
           // TE interface data — separate batch (most devices support this)
           try {

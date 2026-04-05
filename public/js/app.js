@@ -4144,7 +4144,64 @@
   /** Open the edge detail side panel with IS-IS metrics, TE, and health. */
   function showEdgeDetail(edgeData) {
     detailTitle.textContent = `${edgeData.sourceLabel} ↔ ${edgeData.targetLabel}`;
-    detailBody.innerHTML = buildEdgeDetailHTML(edgeData);
+    let html = buildEdgeDetailHTML(edgeData);
+
+    // Inject live bandwidth section when overlay is active or data exists
+    if (lastBandwidthData?.edgeRates) {
+      const er = lastBandwidthData.edgeRates.find(e => e.edgeId === edgeData.id);
+      if (er) {
+        const speedLabel = er.speedBps ? TopologyRenderer.formatSpeed(er.speedBps) : 'Unknown';
+        const utilLabel = er.utilization != null ? `${er.utilization.toFixed(1)}%` : '—';
+        const utilColor = !er.utilization ? 'cyan'
+          : er.utilization < 25 ? 'green'
+          : er.utilization < 50 ? 'cyan'
+          : er.utilization < 75 ? 'amber'
+          : 'red';
+
+        html += `
+          <div class="detail-section">
+            <h4>Live Bandwidth</h4>
+            <div class="detail-row">
+              <span class="detail-label">Link Speed</span>
+              <span class="detail-badge cyan">${speedLabel}</span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">Utilization</span>
+              <span class="detail-badge ${utilColor}">${utilLabel}</span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">In</span>
+              <span class="detail-value">${formatRate(er.inBps)}</span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">Out</span>
+              <span class="detail-value">${formatRate(er.outBps)}</span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">Peak (max direction)</span>
+              <span class="detail-value">${formatRate(er.maxBps)}</span>
+            </div>
+            ${er.sourceInterface ? `<div class="detail-row">
+              <span class="detail-label">${esc(er.source)} intf</span>
+              <span class="detail-value font-mono">${esc(er.sourceInterface)}</span>
+            </div>` : ''}
+            ${er.targetInterface ? `<div class="detail-row">
+              <span class="detail-label">${esc(er.target)} intf</span>
+              <span class="detail-value font-mono">${esc(er.targetInterface)}</span>
+            </div>` : ''}
+            ${er.errors > 0 ? `<div class="detail-row">
+              <span class="detail-label">Errors</span>
+              <span class="detail-badge red">${er.errors}</span>
+            </div>` : ''}
+            ${er.discards > 0 ? `<div class="detail-row">
+              <span class="detail-label">Discards</span>
+              <span class="detail-badge amber">${er.discards}</span>
+            </div>` : ''}
+          </div>`;
+      }
+    }
+
+    detailBody.innerHTML = html;
     detailPanel.classList.add('open');
   }
 

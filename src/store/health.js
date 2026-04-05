@@ -92,10 +92,43 @@ function getAllLldpNeighbors() {
   return Array.from(lldpNeighbors.values());
 }
 
+// Interface speeds: Map<"device:interface"> → { speedBps }
+const interfaceSpeeds = new Map();
+
+/**
+ * Record an interface's negotiated speed.
+ */
+function recordInterfaceSpeed({ device, interface: ifName, speedBps }) {
+  interfaceSpeeds.set(`${device}:${ifName}`, { device, interface: ifName, speedBps });
+}
+
+/**
+ * Get interface speed for a specific device:interface.
+ * Returns speedBps or null if unknown.
+ */
+function getInterfaceSpeed(device, ifName) {
+  const entry = interfaceSpeeds.get(`${device}:${ifName}`);
+  return entry ? entry.speedBps : null;
+}
+
+/**
+ * Get all interface speeds as an object keyed by "device:interface".
+ */
+function getAllInterfaceSpeeds() {
+  const result = {};
+  for (const [key, entry] of interfaceSpeeds) {
+    result[key] = entry.speedBps;
+  }
+  return result;
+}
+
 module.exports = {
   recordTemperature,
   recordLldpNeighbor,
   recordInterfaceStatus,
+  recordInterfaceSpeed,
+  getInterfaceSpeed,
+  getAllInterfaceSpeeds,
   getDeviceHealth,
   getAllHealth,
   getAllLldpNeighbors,
