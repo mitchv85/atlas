@@ -515,6 +515,35 @@ class TopologyRenderer {
   ];
 
   /**
+   * Apply bandwidth heatmap overlay to the topology.
+   * Colors edges based on live interface rates from gNMI counter deltas.
+   *
+   * @param {Array} edgeRates - [{ edgeId, maxBps, inBps, outBps }]
+   */
+  applyBandwidthHeatmap(edgeRates) {
+    if (!this.cy || !edgeRates || edgeRates.length === 0) return;
+
+    // Clear previous flow classes (reuse same CSS)
+    this.clearFlowOverlay();
+
+    for (const er of edgeRates) {
+      const edge = this.cy.getElementById(er.edgeId);
+      if (!edge.length) continue;
+
+      const bps = er.maxBps || 0;
+      let level = 0;
+      for (let i = 0; i < TopologyRenderer.FLOW_HEAT_THRESHOLDS.length; i++) {
+        if (bps >= TopologyRenderer.FLOW_HEAT_THRESHOLDS[i]) level = i + 1;
+      }
+
+      if (level > 0) {
+        edge.addClass(`flow-heat-${level}`);
+        edge.connectedNodes().forEach(n => n.addClass('flow-active'));
+      }
+    }
+  }
+
+  /**
    * Apply flow heatmap overlay to the topology.
    * Colors edges based on traffic volume from sFlow data.
    *

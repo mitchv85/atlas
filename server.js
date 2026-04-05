@@ -35,9 +35,12 @@ const SflowAggregator = require('./src/services/sflowAggregator');
 const sflowStore = require('./src/store/sflow');
 const deviceStore = require('./src/store/devices');
 const GnmiSubscriber = require('./src/services/gnmiSubscriber');
+const CounterRateEngine = require('./src/services/counterRates');
+const healthStore = require('./src/store/health');
 const db = require('./src/db');
 
 const gnmiSubscriber = new GnmiSubscriber();
+const counterRates = new CounterRateEngine();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -87,6 +90,86 @@ app.post('/api/gnmi/reconnect/:name', authService.requireAuth, (req, res) => {
   gnmiSubscriber.removeDevice(name);
   gnmiSubscriber.addDevice(device);
   res.json({ success: true, message: `Reconnecting gNMI streams for ${name}` });
+});
+
+// Health dashboard endpoints (protected)
+app.get('/api/health', authService.requireAuth, (_req, res) => {
+  res.json(healthStore.getAllHealth());
+});
+
+app.get('/api/health/:device', authService.requireAuth, (req, res) => {
+  res.json(healthStore.getDeviceHealth(req.params.device));
+});
+
+// Bandwidth / interface rates endpoints (protected)
+app.get('/api/bandwidth', authService.requireAuth, (_req, res) => {
+  const links = counterRates.getLinkRates();
+  const summaries = counterRates.getDeviceSummaries();
+  const topology = poller.getTopology();
+  const lldp = healthStore.getAllLldpNeighbors();
+
+  // Build edge-mapped rates using LLDP neighbor data to resolve
+  // "device:interface" → peer hostname → topology edge ID
+  const edgeRates = [];
+  if (topology && topology.edges) {
+    // Build LLDP map: "device:interface" → peer hostname
+    const lldpMap = new Map();
+    for (const n of lldp) {
+      const peerName = (n.systemName || '').replace(/\..*/,''); // Strip domain
+      if (peerName) lldpMap.set(`${n.device}:${n.interface}`, peerName);
+    }
+
+    // Build edge lookup: "hostA|hostB" → edge data
+    const edgeLookup = new Map();
+    for (const edge of topology.edges) {
+      const a = edge.data.sourceLabel;
+      const b = edge.data.targetLabel;
+      const key = [a, b].sort().join('|');
+      if (!edgeLookup.has(key)) edgeLookup.set(key, []);
+      edgeLookup.get(key).push(edge);
+    }
+
+    // Map each interface rate to an edge
+    const edgeRateMap = new Map(); // edgeId → { srcInBps, srcOutBps, tgtInBps, tgtOutBps }
+    for (const [linkKey, rate] of Object.entries(links)) {
+      const peer = lldpMap.get(linkKey);
+      if (!peer) continue;
+
+      const device = linkKey.split(':')[0];
+      const pairKey = [device, peer].sort().join('|');
+      const edges = edgeLookup.get(pairKey);
+      if (!edges || edges.length === 0) continue;
+
+      // Use first edge for this pair (handles parallel links in future)
+      const edge = edges[0];
+      const edgeId = edge.data.id;
+
+      if (!edgeRateMap.has(edgeId)) {
+        edgeRateMap.set(edgeId, { edgeId, maxBps: 0, inBps: 0, outBps: 0, errors: 0, discards: 0 });
+      }
+      const er = edgeRateMap.get(edgeId);
+      er.inBps += rate.inBps || 0;
+      er.outBps += rate.outBps || 0;
+      er.maxBps = Math.max(er.maxBps, rate.maxBps || 0);
+      er.errors += (rate.hasErrors ? 1 : 0);
+      er.discards += (rate.hasDiscards ? 1 : 0);
+    }
+
+    for (const er of edgeRateMap.values()) {
+      edgeRates.push(er);
+    }
+  }
+
+  res.json({ links, summaries, edgeRates, timestamp: Date.now() });
+});
+
+app.get('/api/bandwidth/:device', authService.requireAuth, (req, res) => {
+  res.json(counterRates.getDeviceRates(req.params.device));
+});
+
+// LLDP neighbors endpoint (protected)
+app.get('/api/lldp', authService.requireAuth, (_req, res) => {
+  res.json(healthStore.getAllLldpNeighbors());
 });
 
 // ---------------------------------------------------------------------------
@@ -245,14 +328,15 @@ gnmiSubscriber.on('isis:adjacency', (event) => {
   broadcast({ type: 'gnmi:isis:adjacency', data: event });
 });
 
-// Interface status changes → immediate broadcast
+// Interface status changes → broadcast + health store
 gnmiSubscriber.on('interface:status', (event) => {
   broadcast({ type: 'gnmi:interface:status', data: event });
+  healthStore.recordInterfaceStatus(event);
 });
 
-// Interface counter samples → broadcast for live overlays
+// Interface counter samples → feed into rate engine for bandwidth overlay
 gnmiSubscriber.on('interface:counters', (event) => {
-  broadcast({ type: 'gnmi:interface:counters', data: event });
+  counterRates.processSample(event);
 });
 
 // Device sync complete
@@ -260,14 +344,61 @@ gnmiSubscriber.on('device:synced', ({ device }) => {
   broadcast({ type: 'gnmi:device:synced', data: { device } });
 });
 
-// LLDP neighbor changes → broadcast for auto-discovery
+// LLDP neighbor changes → health store + broadcast
 gnmiSubscriber.on('lldp:neighbor', (event) => {
+  healthStore.recordLldpNeighbor(event);
   broadcast({ type: 'gnmi:lldp:neighbor', data: event });
 });
 
-// Temperature updates → broadcast for health dashboard
+// Temperature updates → health store
 gnmiSubscriber.on('system:temperature', (event) => {
-  broadcast({ type: 'gnmi:system:temperature', data: event });
+  healthStore.recordTemperature(event);
+});
+
+// Counter rate engine → broadcast bandwidth snapshots to all clients
+counterRates.on('rates:updated', (snapshot) => {
+  // Enrich snapshot with edge-mapped rates using LLDP data
+  const topology = poller.getTopology();
+  const lldp = healthStore.getAllLldpNeighbors();
+  const edgeRates = [];
+
+  if (topology && topology.edges) {
+    const lldpMap = new Map();
+    for (const n of lldp) {
+      const peerName = (n.systemName || '').replace(/\..*/,'');
+      if (peerName) lldpMap.set(`${n.device}:${n.interface}`, peerName);
+    }
+
+    const edgeLookup = new Map();
+    for (const edge of topology.edges) {
+      const key = [edge.data.sourceLabel, edge.data.targetLabel].sort().join('|');
+      if (!edgeLookup.has(key)) edgeLookup.set(key, []);
+      edgeLookup.get(key).push(edge);
+    }
+
+    const edgeRateMap = new Map();
+    for (const [linkKey, rate] of Object.entries(snapshot.links)) {
+      const peer = lldpMap.get(linkKey);
+      if (!peer) continue;
+      const device = linkKey.split(':')[0];
+      const pairKey = [device, peer].sort().join('|');
+      const edges = edgeLookup.get(pairKey);
+      if (!edges || !edges.length) continue;
+
+      const edgeId = edges[0].data.id;
+      if (!edgeRateMap.has(edgeId)) {
+        edgeRateMap.set(edgeId, { edgeId, maxBps: 0, inBps: 0, outBps: 0 });
+      }
+      const er = edgeRateMap.get(edgeId);
+      er.inBps += rate.inBps || 0;
+      er.outBps += rate.outBps || 0;
+      er.maxBps = Math.max(er.maxBps, rate.maxBps || 0);
+    }
+
+    for (const er of edgeRateMap.values()) edgeRates.push(er);
+  }
+
+  broadcast({ type: 'bandwidth:updated', data: { ...snapshot, edgeRates } });
 });
 
 // ---------------------------------------------------------------------------
@@ -441,6 +572,8 @@ server.listen(PORT, async () => {
   if (gnmiConfig && gnmiConfig.enabled) {
     const allDevices = deviceStore.getAllRaw();
     gnmiSubscriber.start(allDevices);
+    counterRates.start();
+    console.log('  Bandwidth rate engine started (5s broadcast interval)');
   } else {
     console.log('  gNMI subscriber disabled in config');
   }
@@ -452,6 +585,7 @@ server.listen(PORT, async () => {
 function gracefulShutdown(signal) {
   console.log(`\n  [ATLAS] ${signal} received — shutting down...`);
   gnmiSubscriber.stop();
+  counterRates.stop();
   sflowCollector.stop();
   process.exit(0);
 }

@@ -145,6 +145,24 @@ const API = {
     return res.json();
   },
 
+  /** Fetch live bandwidth rates (interface rates + edge mappings). */
+  async getBandwidth() {
+    const res = await authFetch('/api/bandwidth');
+    return res.json();
+  },
+
+  /** Fetch device health data (temperature, interface status, LLDP). */
+  async getHealth() {
+    const res = await authFetch('/api/health');
+    return res.json();
+  },
+
+  /** Fetch health for a specific device. */
+  async getDeviceHealth(deviceName) {
+    const res = await authFetch(`/api/health/${encodeURIComponent(deviceName)}`);
+    return res.json();
+  },
+
   /** Fetch running config for a specific device. */
   async getDeviceConfig(id) {
     const res = await authFetch(`/api/devices/${id}/config`);

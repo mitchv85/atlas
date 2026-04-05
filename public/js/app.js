@@ -13,6 +13,8 @@
   let lastFlowSnapshot = null; // Latest sFlow flow data
   let lastTunnelRates = [];    // Latest tunnel counter rates (deterministic)
   let flowOverlayActive = false; // Is the heatmap overlay on?
+  let bandwidthOverlayActive = false; // Is the bandwidth heatmap overlay on?
+  let lastBandwidthData = null;  // Latest bandwidth:updated snapshot
   let authUser = null;          // Current authenticated user { username, role }
   const topo = new TopologyRenderer('cy');
   const socket = new AtlasSocket();
@@ -1812,6 +1814,14 @@
       lastTunnelRates = rates || [];
       if (activeTab === 'flows') {
         renderFlowsTable(lastTunnelRates, lastFlowSnapshot);
+      }
+    });
+
+    // Live bandwidth rate updates from gNMI counter deltas
+    socket.on('bandwidth:updated', (data) => {
+      lastBandwidthData = data;
+      if (bandwidthOverlayActive && activeTab === 'topology' && data.edgeRates) {
+        topo.applyBandwidthHeatmap(data.edgeRates);
       }
     });
   }
@@ -5089,6 +5099,8 @@
    */
   function toggleFlowOverlay() {
     flowOverlayActive = !flowOverlayActive;
+    // Turn off bandwidth overlay if turning on sFlow overlay
+    if (flowOverlayActive && bandwidthOverlayActive) toggleBandwidthOverlay();
 
     const btnTopo = document.getElementById('btnTopoFlowOverlay');
     const btnFlows = document.getElementById('btnToggleFlowOverlay');
@@ -5096,7 +5108,6 @@
     if (flowOverlayActive) {
       if (btnTopo) btnTopo.classList.add('topo-btn-active');
       if (btnFlows) btnFlows.textContent = '🔥 Overlay On';
-      // Apply heatmap if we have data
       if (lastFlowSnapshot) {
         topo.applyFlowHeatmap(lastFlowSnapshot);
         topo.startFlowAnimation();
@@ -5104,6 +5115,36 @@
     } else {
       if (btnTopo) btnTopo.classList.remove('topo-btn-active');
       if (btnFlows) btnFlows.textContent = '🔥 Overlay Off';
+      topo.clearFlowOverlay();
+    }
+  }
+
+  /**
+   * Toggle the live bandwidth heatmap overlay on the topology.
+   * Colors links based on real-time interface rates from gNMI counter deltas.
+   */
+  function toggleBandwidthOverlay() {
+    bandwidthOverlayActive = !bandwidthOverlayActive;
+    // Turn off sFlow overlay if turning on bandwidth overlay
+    if (bandwidthOverlayActive && flowOverlayActive) toggleFlowOverlay();
+
+    const btn = document.getElementById('btnTopoBandwidthOverlay');
+
+    if (bandwidthOverlayActive) {
+      if (btn) btn.classList.add('topo-btn-active');
+      // Apply heatmap if we have data, otherwise fetch it
+      if (lastBandwidthData?.edgeRates) {
+        topo.applyBandwidthHeatmap(lastBandwidthData.edgeRates);
+      } else {
+        API.getBandwidth().then((data) => {
+          lastBandwidthData = data;
+          if (bandwidthOverlayActive && data?.edgeRates) {
+            topo.applyBandwidthHeatmap(data.edgeRates);
+          }
+        }).catch(() => {});
+      }
+    } else {
+      if (btn) btn.classList.remove('topo-btn-active');
       topo.clearFlowOverlay();
     }
   }
@@ -5118,6 +5159,9 @@
     // Overlay toggle (both the flows tab button and topo toolbar button)
     document.getElementById('btnToggleFlowOverlay')?.addEventListener('click', toggleFlowOverlay);
     document.getElementById('btnTopoFlowOverlay')?.addEventListener('click', toggleFlowOverlay);
+
+    // Bandwidth heatmap overlay toggle (topo toolbar)
+    document.getElementById('btnTopoBandwidthOverlay')?.addEventListener('click', toggleBandwidthOverlay);
 
     // EOS config panel
     document.getElementById('btnSflowEosConfig')?.addEventListener('click', () => {
