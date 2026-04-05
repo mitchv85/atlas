@@ -254,7 +254,14 @@ class GnmiSubscriber extends EventEmitter {
               } else if (obj.updates) {
                 this._handleJsonUpdate(device.name, obj, pathStr);
               }
-            } catch {}
+            } catch (parseErr) {
+              // Log parse failures for debugging
+              if (!proc._parseErrorLogged) {
+                const shortPath = pathStr.split('/').slice(-2).join('/');
+                console.error(`  [gNMI] ${device.name} JSON parse error on ${shortPath}: ${parseErr.message}`);
+                proc._parseErrorLogged = true;
+              }
+            }
             jsonBuffer = '';
           }
         }
@@ -414,6 +421,16 @@ class GnmiSubscriber extends EventEmitter {
       if (subscribedPath.includes('counters')) {
         const ifMatch = fullPath.match(/interface\[name=([^\]]+)\]/);
         const ifName = ifMatch ? ifMatch[1] : 'unknown';
+
+        // One-time diagnostic log
+        if (!this._counterLogDone) {
+          this._counterLogDone = true;
+          console.log(`  [gNMI] Counter sample received — device=${deviceName} if=${ifName}`);
+          console.log(`  [gNMI] Counter flatValues keys: [${Object.keys(flatValues).join(', ')}]`);
+          console.log(`  [gNMI] Counter fullPath: ${fullPath}`);
+          console.log(`  [gNMI] Counter raw values keys: [${Object.keys(values).join(', ')}]`);
+        }
+
         if (ifName.startsWith('Ethernet') || ifName.startsWith('Port-Channel')) {
           this.emit('interface:counters', {
             device: deviceName, interface: ifName, timestamp,

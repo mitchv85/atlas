@@ -335,7 +335,12 @@ gnmiSubscriber.on('interface:status', (event) => {
 });
 
 // Interface counter samples → feed into rate engine for bandwidth overlay
+let _counterDiagDone = false;
 gnmiSubscriber.on('interface:counters', (event) => {
+  if (!_counterDiagDone) {
+    _counterDiagDone = true;
+    console.log(`  [Bandwidth] First counter event: ${event.device}:${event.interface} inOctets=${event.counters?.inOctets}`);
+  }
   counterRates.processSample(event);
 });
 
@@ -345,7 +350,12 @@ gnmiSubscriber.on('device:synced', ({ device }) => {
 });
 
 // LLDP neighbor changes → health store + broadcast
+let _lldpDiagDone = false;
 gnmiSubscriber.on('lldp:neighbor', (event) => {
+  if (!_lldpDiagDone) {
+    _lldpDiagDone = true;
+    console.log(`  [Health] First LLDP event: ${event.device}:${event.interface} → ${event.neighbor?.systemName}`);
+  }
   healthStore.recordLldpNeighbor(event);
   broadcast({ type: 'gnmi:lldp:neighbor', data: event });
 });
