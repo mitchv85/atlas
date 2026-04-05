@@ -74,11 +74,11 @@ const API = {
     return res.json();
   },
 
-  async addUser(username, password, role) {
+  async addUser(fields) {
     const res = await authFetch('/api/mgmt/users', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password, role }),
+      body: JSON.stringify(fields),
     });
     return { ok: res.ok, data: await res.json() };
   },
@@ -112,11 +112,11 @@ const API = {
     return res.json();
   },
 
-  async githubPreauth(githubHandle, role, displayName) {
+  async githubPreauth(fields) {
     const res = await authFetch('/api/mgmt/users/github-preauth', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ githubHandle, role, displayName }),
+      body: JSON.stringify(fields),
     });
     return { ok: res.ok, data: await res.json() };
   },

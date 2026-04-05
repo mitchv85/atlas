@@ -1497,9 +1497,29 @@
     } catch { container.innerHTML = '<p class="text-muted">Error loading users.</p>'; }
   }
 
+  /** Build profile fields HTML for user forms. */
+  function _profileFieldsHTML(data = {}) {
+    return `
+      <div class="login-field"><label>First Name</label><input class="input-field" id="ufFirstName" value="${esc(data.firstName || '')}" /></div>
+      <div class="login-field"><label>Last Name</label><input class="input-field" id="ufLastName" value="${esc(data.lastName || '')}" /></div>
+      <div class="login-field"><label>Email</label><input class="input-field" id="ufEmail" type="email" value="${esc(data.email || '')}" /></div>
+      <div class="login-field"><label>Phone</label><input class="input-field" id="ufPhone" type="tel" value="${esc(data.phone || '')}" /></div>
+      <div class="login-field"><label>Notes</label><textarea class="input-field" id="ufNotes" rows="2" style="resize:vertical;">${esc(data.notes || '')}</textarea></div>`;
+  }
+
+  /** Read profile fields from the form. */
+  function _readProfileFields() {
+    return {
+      firstName: document.getElementById('ufFirstName')?.value?.trim() || '',
+      lastName: document.getElementById('ufLastName')?.value?.trim() || '',
+      email: document.getElementById('ufEmail')?.value?.trim() || '',
+      phone: document.getElementById('ufPhone')?.value?.trim() || '',
+      notes: document.getElementById('ufNotes')?.value?.trim() || '',
+    };
+  }
+
   function showAddUserForm() {
     const container = document.getElementById('usersContent');
-    const existing = container.innerHTML;
     const formHTML = `
       <div class="devices-table-wrap" style="max-width:500px;padding:16px;margin-bottom:16px;">
         <h3 style="font-size:0.88rem;margin-bottom:12px;">Add New User</h3>
@@ -1508,6 +1528,7 @@
         <div class="login-field"><label>Role</label>
           <select class="input-field" id="newUserRole"><option value="viewer">Viewer</option><option value="operator">Operator</option><option value="admin">Admin</option></select>
         </div>
+        ${_profileFieldsHTML()}
         <div style="display:flex;gap:8px;margin-top:8px;">
           <button class="btn btn-primary btn-sm" id="btnConfirmAddUser">Create User</button>
           <button class="btn btn-ghost btn-sm" id="btnCancelAddUser">Cancel</button>
@@ -1521,8 +1542,9 @@
       const p = document.getElementById('newUserPass').value;
       const r = document.getElementById('newUserRole').value;
       const msg = document.getElementById('addUserMsg');
-      if (!u || !p) { msg.innerHTML = '<span style="color:var(--red);">All fields required.</span>'; return; }
-      const result = await API.addUser(u, p, r);
+      if (!u || !p) { msg.innerHTML = '<span style="color:var(--red);">Username and password are required.</span>'; return; }
+      const fields = { username: u, password: p, role: r, ..._readProfileFields() };
+      const result = await API.addUser(fields);
       if (result.ok) { loadUsers(); } else { msg.innerHTML = `<span style="color:var(--red);">${esc(result.data.error)}</span>`; }
     });
     document.getElementById('btnCancelAddUser').addEventListener('click', loadUsers);
@@ -1535,10 +1557,10 @@
         <h3 style="font-size:0.88rem;margin-bottom:4px;">Pre-Authorize GitHub User</h3>
         <p class="text-muted" style="font-size:0.72rem;margin-bottom:12px;">The user will be able to sign in with GitHub SSO after being pre-authorized.</p>
         <div class="login-field"><label>GitHub Username</label><input class="input-field" id="ghPreauthHandle" placeholder="e.g. mitchv85" /></div>
-        <div class="login-field"><label>Display Name (optional)</label><input class="input-field" id="ghPreauthName" /></div>
         <div class="login-field"><label>Role</label>
           <select class="input-field" id="ghPreauthRole"><option value="viewer">Viewer</option><option value="operator">Operator</option><option value="admin">Admin</option></select>
         </div>
+        ${_profileFieldsHTML()}
         <div style="display:flex;gap:8px;margin-top:8px;">
           <button class="btn btn-primary btn-sm" id="btnConfirmGhPreauth">Pre-Authorize</button>
           <button class="btn btn-ghost btn-sm" id="btnCancelGhPreauth">Cancel</button>
@@ -1549,47 +1571,56 @@
 
     document.getElementById('btnConfirmGhPreauth').addEventListener('click', async () => {
       const handle = document.getElementById('ghPreauthHandle').value.trim();
-      const name = document.getElementById('ghPreauthName').value.trim();
       const role = document.getElementById('ghPreauthRole').value;
       const msg = document.getElementById('ghPreauthMsg');
       if (!handle) { msg.innerHTML = '<span style="color:var(--red);">GitHub username is required.</span>'; return; }
-      const result = await API.githubPreauth(handle, role, name);
+      const fields = { githubHandle: handle, role, ..._readProfileFields() };
+      const result = await API.githubPreauth(fields);
       if (result.ok) { loadUsers(); } else { msg.innerHTML = `<span style="color:var(--red);">${esc(result.data.error)}</span>`; }
     });
     document.getElementById('btnCancelGhPreauth').addEventListener('click', loadUsers);
   }
 
   function showEditUserForm(username, currentRole) {
-    const modal = document.createElement('div');
-    modal.className = 'modal-overlay';
-    modal.style.display = 'flex';
-    modal.innerHTML = `<div class="login-card" style="max-width:400px;">
-      <h2 style="font-size:1rem;margin-bottom:12px;">Edit User: ${esc(username)}</h2>
-      <div class="login-field"><label>Role</label>
-        <select class="input-field" id="editRole">
-          <option value="viewer" ${currentRole==='viewer'?'selected':''}>Viewer</option>
-          <option value="operator" ${currentRole==='operator'?'selected':''}>Operator</option>
-          <option value="admin" ${currentRole==='admin'?'selected':''}>Admin</option>
-        </select>
-      </div>
-      <div class="login-field"><label>Reset Password (optional)</label><input type="password" class="input-field" id="editNewPw" placeholder="Leave blank to keep current" /></div>
-      <div style="display:flex;gap:8px;margin-top:8px;">
-        <button class="btn btn-primary btn-sm" id="btnConfirmEdit">Save</button>
-        <button class="btn btn-ghost btn-sm" id="btnCancelEdit">Cancel</button>
-      </div>
-      <div id="editMsg" style="margin-top:8px;font-size:0.78rem;"></div>
-    </div>`;
-    document.body.appendChild(modal);
+    // Fetch the full user list to get current profile data
+    API.getUsers().then(users => {
+      const user = users.find(u => u.username === username) || {};
+      const isGithub = user.type === 'github';
 
-    document.getElementById('btnConfirmEdit').addEventListener('click', async () => {
-      const fields = { role: document.getElementById('editRole').value };
-      const pw = document.getElementById('editNewPw').value;
-      if (pw) { fields.resetPassword = true; fields.newPassword = pw; }
-      const result = await API.editUser(username, fields);
-      if (result.ok) { modal.remove(); loadUsers(); }
-      else { document.getElementById('editMsg').innerHTML = `<span style="color:var(--red);">${esc(result.data.error)}</span>`; }
+      const modal = document.createElement('div');
+      modal.className = 'modal-overlay';
+      modal.style.display = 'flex';
+      modal.innerHTML = `<div class="login-card" style="max-width:460px;max-height:90vh;overflow-y:auto;">
+        <h2 style="font-size:1rem;margin-bottom:12px;">Edit User: ${esc(username)}
+          ${isGithub && user.githubUrl ? `<a href="${esc(user.githubUrl)}" target="_blank" rel="noopener" style="font-size:0.72rem;margin-left:8px;color:var(--accent);">GitHub ↗</a>` : ''}
+        </h2>
+        <div class="login-field"><label>Role</label>
+          <select class="input-field" id="editRole">
+            <option value="viewer" ${currentRole==='viewer'?'selected':''}>Viewer</option>
+            <option value="operator" ${currentRole==='operator'?'selected':''}>Operator</option>
+            <option value="admin" ${currentRole==='admin'?'selected':''}>Admin</option>
+          </select>
+        </div>
+        ${_profileFieldsHTML(user)}
+        ${!isGithub ? '<div class="login-field"><label>Reset Password (optional)</label><input type="password" class="input-field" id="editNewPw" placeholder="Leave blank to keep current" /></div>' : ''}
+        <div style="display:flex;gap:8px;margin-top:8px;">
+          <button class="btn btn-primary btn-sm" id="btnConfirmEdit">Save</button>
+          <button class="btn btn-ghost btn-sm" id="btnCancelEdit">Cancel</button>
+        </div>
+        <div id="editMsg" style="margin-top:8px;font-size:0.78rem;"></div>
+      </div>`;
+      document.body.appendChild(modal);
+
+      document.getElementById('btnConfirmEdit').addEventListener('click', async () => {
+        const fields = { role: document.getElementById('editRole').value, ..._readProfileFields() };
+        const pw = document.getElementById('editNewPw')?.value;
+        if (pw) { fields.resetPassword = true; fields.newPassword = pw; }
+        const result = await API.editUser(username, fields);
+        if (result.ok) { modal.remove(); loadUsers(); }
+        else { document.getElementById('editMsg').innerHTML = `<span style="color:var(--red);">${esc(result.data.error)}</span>`; }
+      });
+      document.getElementById('btnCancelEdit').addEventListener('click', () => modal.remove());
     });
-    document.getElementById('btnCancelEdit').addEventListener('click', () => modal.remove());
   }
 
   // ── Audit Log ──

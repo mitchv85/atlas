@@ -24,7 +24,7 @@ router.get('/profile', (req, res) => {
   res.json({
     username:    req.authUser.username,
     role:        u.role,
-    type:        u.githubId ? 'github' : 'local',
+    type:        (u.githubId || u.githubLogin) ? 'github' : 'local',
     firstName:   u.firstName   || '',
     lastName:    u.lastName    || '',
     email:       u.email       || '',
@@ -62,7 +62,7 @@ router.get('/users', auth.requireRole('admin'), (req, res) => {
   const users = auth.loadUsers();
   const safe  = Object.entries(users).map(([username, u]) => ({
     username,
-    type:               u.githubId ? 'github' : 'local',
+    type:               (u.githubId || u.githubLogin) ? 'github' : 'local',
     role:               u.role,
     createdAt:          u.createdAt,
     updatedAt:          u.updatedAt,
@@ -81,7 +81,7 @@ router.get('/users', auth.requireRole('admin'), (req, res) => {
 
 // ── POST /api/mgmt/users ────────────────────────────────────────────────
 router.post('/users', auth.requireRole('admin'), async (req, res) => {
-  const { username, password, role } = req.body || {};
+  const { username, password, role, firstName, lastName, email, phone, notes } = req.body || {};
   if (!username || !password || !['admin', 'operator', 'viewer'].includes(role)) {
     return res.status(400).json({ error: 'username, password, and valid role (admin/operator/viewer) are required.' });
   }
@@ -95,8 +95,11 @@ router.post('/users', auth.requireRole('admin'), async (req, res) => {
     passwordHash:       await bcrypt.hash(password, auth.BCRYPT_ROUNDS),
     role,
     mustChangePassword: true,
-    createdAt:          new Date().toISOString(),
-    lastLogin:          null,
+    firstName:          firstName || null,
+    lastName:           lastName || null,
+    email:              email || null,
+    phone:              phone || null,
+    notes:              notes || null,
   };
   auth.saveUsers(users);
   auth.writeAudit(req.authUser.username, req.authUser.role, 'user.add', username, 'success', `role=${role}`);
@@ -106,7 +109,7 @@ router.post('/users', auth.requireRole('admin'), async (req, res) => {
 // ── POST /api/mgmt/users/github-preauth ─────────────────────────────
 // Admin pre-authorizes a GitHub username so they can log in via SSO.
 router.post('/users/github-preauth', auth.requireRole('admin'), (req, res) => {
-  const { githubHandle, role, displayName } = req.body || {};
+  const { githubHandle, role, displayName, firstName, lastName, email, phone, notes } = req.body || {};
   if (!githubHandle || !['admin', 'operator', 'viewer'].includes(role)) {
     return res.status(400).json({ error: 'githubHandle and valid role are required.' });
   }
@@ -115,14 +118,18 @@ router.post('/users/github-preauth', auth.requireRole('admin'), (req, res) => {
   if (users[key]) return res.status(409).json({ error: `User '${key}' already exists.` });
 
   users[key] = {
-    type:         'github',
     username:     key,
-    githubHandle: githubHandle,
+    passwordHash: '$github-sso$',  // placeholder — SSO users don't use passwords
+    githubLogin:  githubHandle,
+    githubUrl:    `https://github.com/${githubHandle}`,
     githubId:     null, // populated on first SSO login
-    displayName:  displayName || githubHandle,
+    displayName:  displayName || [firstName, lastName].filter(Boolean).join(' ') || githubHandle,
+    firstName:    firstName || null,
+    lastName:     lastName || null,
+    email:        email || null,
+    phone:        phone || null,
+    notes:        notes || null,
     role,
-    createdAt:    new Date().toISOString(),
-    lastLogin:    null,
   };
   auth.saveUsers(users);
   auth.writeAudit(req.authUser.username, req.authUser.role, 'user.add', key, 'success', `type=github role=${role}`);
