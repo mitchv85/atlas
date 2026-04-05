@@ -104,12 +104,14 @@ app.get('/api/health/:device', authService.requireAuth, (req, res) => {
 // Bandwidth / interface rates endpoints (protected)
 /**
  * Build edge-mapped bandwidth rates with per-link speeds and utilization.
+ * Priority: bandwidth override (shaped/policed) > physical speed > global fallback.
  * Reused by both the REST endpoint and WebSocket broadcasts.
  */
 function buildEdgeRates(linkRates) {
   const topology = poller.getTopology();
   const lldp = healthStore.getAllLldpNeighbors();
   const speeds = healthStore.getAllInterfaceSpeeds();
+  const overrides = db.bandwidthOverrides.getAll();
   const edgeRates = [];
 
   if (!topology || !topology.edges) return edgeRates;
@@ -176,9 +178,19 @@ function buildEdgeRates(linkRates) {
   }
 
   // Compute utilization for each edge
+  // Priority: bandwidth override > physical speed
   for (const er of edgeRateMap.values()) {
-    if (er.speedBps && er.speedBps > 0) {
-      er.utilization = Math.round((er.maxBps / er.speedBps) * 10000) / 100; // 2 decimal places
+    const override = overrides[er.edgeId];
+    if (override) {
+      er.overrideSpeedBps = override.speedBps;
+      er.overrideLabel = override.label;
+      er.overrideNotes = override.notes;
+    }
+    // Use override speed for utilization if set, otherwise physical
+    const effectiveSpeed = override?.speedBps || er.speedBps;
+    er.effectiveSpeedBps = effectiveSpeed || null;
+    if (effectiveSpeed && effectiveSpeed > 0) {
+      er.utilization = Math.round((er.maxBps / effectiveSpeed) * 10000) / 100;
     }
     edgeRates.push(er);
   }
@@ -191,9 +203,35 @@ app.get('/api/bandwidth', authService.requireAuth, (_req, res) => {
   const summaries = counterRates.getDeviceSummaries();
   const edgeRates = buildEdgeRates(links);
   const speeds = healthStore.getAllInterfaceSpeeds();
-  res.json({ links, summaries, edgeRates, speeds, timestamp: Date.now() });
+  const overrides = db.bandwidthOverrides.getAll();
+  res.json({ links, summaries, edgeRates, speeds, overrides, timestamp: Date.now() });
 });
 
+// Bandwidth overrides — per-link speed caps for shaped/policed links
+// MUST come before /:device to avoid Express matching "overrides" as a device name
+app.get('/api/bandwidth/overrides', authService.requireAuth, (_req, res) => {
+  res.json(db.bandwidthOverrides.getAll());
+});
+
+app.put('/api/bandwidth/override/:edgeId', authService.requireAuth, (req, res) => {
+  const { speedBps, label, notes } = req.body || {};
+  if (!speedBps || speedBps <= 0) {
+    return res.status(400).json({ error: 'speedBps is required and must be positive.' });
+  }
+  const result = db.bandwidthOverrides.set(
+    req.params.edgeId,
+    speedBps,
+    { label, notes, createdBy: req.authUser?.username }
+  );
+  res.json(result);
+});
+
+app.delete('/api/bandwidth/override/:edgeId', authService.requireAuth, (req, res) => {
+  db.bandwidthOverrides.remove(req.params.edgeId);
+  res.json({ ok: true });
+});
+
+// Per-device bandwidth rates (must come AFTER /overrides and /override routes)
 app.get('/api/bandwidth/:device', authService.requireAuth, (req, res) => {
   res.json(counterRates.getDeviceRates(req.params.device));
 });

@@ -151,6 +151,22 @@ const API = {
     return res.json();
   },
 
+  /** Set a bandwidth override for a specific edge (shaped/policed link). */
+  async setBandwidthOverride(edgeId, speedBps, label, notes) {
+    const res = await authFetch(`/api/bandwidth/override/${encodeURIComponent(edgeId)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ speedBps, label, notes }),
+    });
+    return res.json();
+  },
+
+  /** Remove a bandwidth override (revert to physical speed). */
+  async removeBandwidthOverride(edgeId) {
+    const res = await authFetch(`/api/bandwidth/override/${encodeURIComponent(edgeId)}`, { method: 'DELETE' });
+    return res.json();
+  },
+
   /** Fetch device health data (temperature, interface status, LLDP). */
   async getHealth() {
     const res = await authFetch('/api/health');

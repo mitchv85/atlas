@@ -561,7 +561,7 @@ class TopologyRenderer {
       if (!edge.length) continue;
 
       const bps = er.maxBps || 0;
-      const linkSpeed = er.speedBps || fallbackSpeed;
+      const linkSpeed = er.effectiveSpeedBps || er.speedBps || fallbackSpeed;
       const utilization = (bps / linkSpeed) * 100;
 
       // Determine heat level from thresholds
@@ -582,7 +582,7 @@ class TopologyRenderer {
         edge.data('_bwOrigTarget', d.targetMetric);
       }
       const throughputLabel = bps > 0 ? TopologyRenderer.formatBps(bps) : '';
-      const speedLabel = TopologyRenderer.formatSpeed(linkSpeed);
+      const speedLabel = er.overrideLabel || TopologyRenderer.formatSpeed(linkSpeed);
       // Show throughput on source side, speed on target side
       edge.data('sourceMetric', throughputLabel || speedLabel);
       edge.data('targetMetric', throughputLabel ? speedLabel : '');

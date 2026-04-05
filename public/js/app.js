@@ -4150,7 +4150,9 @@
     if (lastBandwidthData?.edgeRates) {
       const er = lastBandwidthData.edgeRates.find(e => e.edgeId === edgeData.id);
       if (er) {
-        const speedLabel = er.speedBps ? TopologyRenderer.formatSpeed(er.speedBps) : 'Unknown';
+        const physSpeed = er.speedBps ? TopologyRenderer.formatSpeed(er.speedBps) : 'Unknown';
+        const effSpeed = er.effectiveSpeedBps ? TopologyRenderer.formatSpeed(er.effectiveSpeedBps) : physSpeed;
+        const hasOverride = er.overrideSpeedBps != null;
         const utilLabel = er.utilization != null ? `${er.utilization.toFixed(1)}%` : '—';
         const utilColor = !er.utilization ? 'cyan'
           : er.utilization < 25 ? 'green'
@@ -4162,12 +4164,18 @@
           <div class="detail-section">
             <h4>Live Bandwidth</h4>
             <div class="detail-row">
-              <span class="detail-label">Link Speed</span>
-              <span class="detail-badge cyan">${speedLabel}</span>
+              <span class="detail-label">Physical Speed</span>
+              <span class="detail-badge cyan">${physSpeed}</span>
             </div>
+            ${hasOverride ? `<div class="detail-row">
+              <span class="detail-label">Effective Speed (override)</span>
+              <span class="detail-badge amber">${TopologyRenderer.formatSpeed(er.overrideSpeedBps)}</span>
+              <button class="btn btn-ghost btn-sm" style="margin-left:8px;font-size:0.65rem;color:var(--red);" id="btnRemoveOverride">Remove</button>
+            </div>` : ''}
             <div class="detail-row">
               <span class="detail-label">Utilization</span>
               <span class="detail-badge ${utilColor}">${utilLabel}</span>
+              <span class="detail-value" style="margin-left:4px;font-size:0.72rem;color:var(--text-muted);">of ${effSpeed}</span>
             </div>
             <div class="detail-row">
               <span class="detail-label">In</span>
@@ -4197,11 +4205,62 @@
               <span class="detail-label">Discards</span>
               <span class="detail-badge amber">${er.discards}</span>
             </div>` : ''}
+          </div>
+          <div class="detail-section">
+            <h4>Set Bandwidth Cap</h4>
+            <p class="text-muted" style="font-size:0.72rem;margin-bottom:8px;">Override the effective speed for shaped or policed links.</p>
+            <div style="display:flex;gap:6px;align-items:center;">
+              <select class="input-field" id="bwOverrideSpeed" style="width:120px;">
+                <option value="100000000" ${er.overrideSpeedBps === 100000000 ? 'selected' : ''}>100 Mbps</option>
+                <option value="250000000" ${er.overrideSpeedBps === 250000000 ? 'selected' : ''}>250 Mbps</option>
+                <option value="500000000" ${er.overrideSpeedBps === 500000000 ? 'selected' : ''}>500 Mbps</option>
+                <option value="1000000000" ${er.overrideSpeedBps === 1000000000 ? 'selected' : ''}>1 Gbps</option>
+                <option value="2500000000" ${er.overrideSpeedBps === 2500000000 ? 'selected' : ''}>2.5 Gbps</option>
+                <option value="5000000000" ${er.overrideSpeedBps === 5000000000 ? 'selected' : ''}>5 Gbps</option>
+                <option value="10000000000" ${er.overrideSpeedBps === 10000000000 ? 'selected' : ''}>10 Gbps</option>
+                <option value="25000000000" ${er.overrideSpeedBps === 25000000000 ? 'selected' : ''}>25 Gbps</option>
+                <option value="40000000000" ${er.overrideSpeedBps === 40000000000 ? 'selected' : ''}>40 Gbps</option>
+                <option value="100000000000" ${er.overrideSpeedBps === 100000000000 ? 'selected' : ''}>100 Gbps</option>
+              </select>
+              <button class="btn btn-primary btn-sm" id="btnSetOverride">Apply</button>
+            </div>
+            <div id="overrideMsg" style="margin-top:6px;font-size:0.72rem;"></div>
           </div>`;
       }
     }
 
     detailBody.innerHTML = html;
+
+    // Wire override buttons
+    const setBtn = document.getElementById('btnSetOverride');
+    if (setBtn) {
+      setBtn.addEventListener('click', async () => {
+        const speed = parseInt(document.getElementById('bwOverrideSpeed').value, 10);
+        await API.setBandwidthOverride(edgeData.id, speed);
+        document.getElementById('overrideMsg').innerHTML = '<span style="color:var(--green);">Override saved. Heatmap will update on next cycle.</span>';
+        // Refresh bandwidth data
+        const data = await API.getBandwidth();
+        lastBandwidthData = data;
+        if (bandwidthOverlayActive && data?.edgeRates) {
+          topo.applyBandwidthHeatmap(data.edgeRates);
+        }
+        // Re-open detail with fresh data
+        setTimeout(() => showEdgeDetail(edgeData), 500);
+      });
+    }
+    const removeBtn = document.getElementById('btnRemoveOverride');
+    if (removeBtn) {
+      removeBtn.addEventListener('click', async () => {
+        await API.removeBandwidthOverride(edgeData.id);
+        const data = await API.getBandwidth();
+        lastBandwidthData = data;
+        if (bandwidthOverlayActive && data?.edgeRates) {
+          topo.applyBandwidthHeatmap(data.edgeRates);
+        }
+        setTimeout(() => showEdgeDetail(edgeData), 500);
+      });
+    }
+
     detailPanel.classList.add('open');
   }
 

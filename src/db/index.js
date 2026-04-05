@@ -17,7 +17,7 @@ const fs = require('fs');
 const path = require('path');
 
 const DB_PATH = path.join(__dirname, '..', '..', 'atlas.db');
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 
 let db = null;
 
@@ -135,6 +135,22 @@ function _migrate() {
     db.run('DELETE FROM schema_version');
     db.run(`INSERT INTO schema_version (version) VALUES (${SCHEMA_VERSION})`);
     console.log('  [DB] Migration v3 complete');
+  }
+
+  if (currentVersion < 4) {
+    console.log('  [DB] Running migration v4 — creating bandwidth_overrides table...');
+    db.run(`CREATE TABLE IF NOT EXISTS bandwidth_overrides (
+      edge_id TEXT PRIMARY KEY,
+      speed_bps INTEGER NOT NULL,
+      label TEXT,
+      notes TEXT,
+      created_by TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    )`);
+    db.run('DELETE FROM schema_version');
+    db.run(`INSERT INTO schema_version (version) VALUES (${SCHEMA_VERSION})`);
+    console.log('  [DB] Migration v4 complete');
   }
 }
 
@@ -526,9 +542,71 @@ function _uuid() {
 // Exports
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Bandwidth Override Operations
+// ---------------------------------------------------------------------------
+// Per-link speed overrides for shaped/policed links.
+// When set, utilization is calculated against this value instead of
+// the physical interface speed.
+// ---------------------------------------------------------------------------
+
+const bandwidthOps = {
+  /** Get all overrides as { edgeId: { speedBps, label, notes, createdBy } } */
+  getAll() {
+    const result = db.exec('SELECT * FROM bandwidth_overrides');
+    const rows = _rowsToObjects(result);
+    const map = {};
+    for (const row of rows) {
+      map[row.edge_id] = {
+        edgeId: row.edge_id,
+        speedBps: row.speed_bps,
+        label: row.label || null,
+        notes: row.notes || null,
+        createdBy: row.created_by || null,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+      };
+    }
+    return map;
+  },
+
+  /** Get override for a specific edge. */
+  get(edgeId) {
+    const all = this.getAll();
+    return all[edgeId] || null;
+  },
+
+  /** Set or update an override. */
+  set(edgeId, speedBps, { label, notes, createdBy } = {}) {
+    const existing = this.get(edgeId);
+    if (existing) {
+      const sets = [`speed_bps = ${parseInt(speedBps, 10)}`, "updated_at = datetime('now')"];
+      if (label !== undefined) sets.push(`label = '${_esc(label)}'`);
+      if (notes !== undefined) sets.push(`notes = '${_esc(notes)}'`);
+      if (createdBy) sets.push(`created_by = '${_esc(createdBy)}'`);
+      db.run(`UPDATE bandwidth_overrides SET ${sets.join(', ')} WHERE edge_id = '${_esc(edgeId)}'`);
+    } else {
+      db.run(`INSERT INTO bandwidth_overrides (edge_id, speed_bps, label, notes, created_by)
+        VALUES ('${_esc(edgeId)}', ${parseInt(speedBps, 10)},
+                ${label ? `'${_esc(label)}'` : 'NULL'},
+                ${notes ? `'${_esc(notes)}'` : 'NULL'},
+                ${createdBy ? `'${_esc(createdBy)}'` : 'NULL'})`);
+    }
+    _save();
+    return this.get(edgeId);
+  },
+
+  /** Remove an override (reverts to physical speed). */
+  remove(edgeId) {
+    db.run(`DELETE FROM bandwidth_overrides WHERE edge_id = '${_esc(edgeId)}'`);
+    _save();
+  },
+};
+
 module.exports = {
   init,
   devices: deviceOps,
   users: userOps,
   audit: auditOps,
+  bandwidthOverrides: bandwidthOps,
 };
