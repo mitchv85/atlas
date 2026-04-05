@@ -5163,6 +5163,41 @@
     // Bandwidth heatmap overlay toggle (topo toolbar)
     document.getElementById('btnTopoBandwidthOverlay')?.addEventListener('click', toggleBandwidthOverlay);
 
+    // Bandwidth settings gear button
+    document.getElementById('btnBwSettings')?.addEventListener('click', () => {
+      const panel = document.getElementById('bwSettingsPanel');
+      if (!panel) return;
+      const visible = panel.style.display !== 'none';
+      panel.style.display = visible ? 'none' : '';
+      if (!visible) {
+        // Load current settings into inputs
+        const settings = topo.getBandwidthSettings();
+        const speedEl = document.getElementById('bwLinkSpeed');
+        if (speedEl) speedEl.value = String(settings.linkSpeedBps);
+        for (let i = 0; i < 6; i++) {
+          const el = document.getElementById(`bwT${i + 1}`);
+          if (el) el.value = settings.thresholds[i] || 0;
+        }
+      }
+    });
+
+    // Bandwidth settings Apply button
+    document.getElementById('btnBwSettingsSave')?.addEventListener('click', () => {
+      const speedEl = document.getElementById('bwLinkSpeed');
+      const linkSpeedBps = parseInt(speedEl?.value, 10) || 10_000_000_000;
+      const thresholds = [];
+      for (let i = 0; i < 6; i++) {
+        const el = document.getElementById(`bwT${i + 1}`);
+        thresholds.push(parseInt(el?.value, 10) || 0);
+      }
+      topo.saveBandwidthSettings({ linkSpeedBps, thresholds });
+      // Re-apply heatmap with new settings
+      if (bandwidthOverlayActive && lastBandwidthData?.edgeRates) {
+        topo.applyBandwidthHeatmap(lastBandwidthData.edgeRates);
+      }
+      document.getElementById('bwSettingsPanel').style.display = 'none';
+    });
+
     // EOS config panel
     document.getElementById('btnSflowEosConfig')?.addEventListener('click', () => {
       const panel = document.getElementById('sflowEosConfigPanel');

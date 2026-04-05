@@ -514,30 +514,62 @@ class TopologyRenderer {
     1_000_000_000, // Level 5: > 1 Gbps
   ];
 
+  // Bandwidth overlay settings — configurable by the operator
+  static BW_DEFAULTS = {
+    linkSpeedBps: 10_000_000_000, // 10 Gbps default
+    thresholds: [1, 10, 25, 50, 75, 90], // Utilization % for each heat level
+  };
+
+  /**
+   * Get or initialize bandwidth overlay settings from localStorage.
+   */
+  getBandwidthSettings() {
+    try {
+      const saved = localStorage.getItem('atlas-bw-settings');
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return { ...TopologyRenderer.BW_DEFAULTS };
+  }
+
+  /**
+   * Save bandwidth overlay settings to localStorage.
+   */
+  saveBandwidthSettings(settings) {
+    try {
+      localStorage.setItem('atlas-bw-settings', JSON.stringify(settings));
+    } catch {}
+  }
+
   /**
    * Apply bandwidth heatmap overlay to the topology.
-   * Colors edges based on live interface rates from gNMI counter deltas.
+   * Colors edges based on utilization percentage (maxBps / linkSpeed).
    *
    * @param {Array} edgeRates - [{ edgeId, maxBps, inBps, outBps }]
    */
   applyBandwidthHeatmap(edgeRates) {
     if (!this.cy || !edgeRates || edgeRates.length === 0) return;
 
-    // Clear previous flow classes (reuse same CSS)
     this.clearFlowOverlay();
+
+    const settings = this.getBandwidthSettings();
+    const linkSpeed = settings.linkSpeedBps;
+    const thresholds = settings.thresholds;
 
     for (const er of edgeRates) {
       const edge = this.cy.getElementById(er.edgeId);
       if (!edge.length) continue;
 
       const bps = er.maxBps || 0;
+      const utilization = (bps / linkSpeed) * 100;
+
+      // Determine heat level from thresholds
       let level = 0;
-      for (let i = 0; i < TopologyRenderer.FLOW_HEAT_THRESHOLDS.length; i++) {
-        if (bps >= TopologyRenderer.FLOW_HEAT_THRESHOLDS[i]) level = i + 1;
+      for (let i = 0; i < thresholds.length; i++) {
+        if (utilization >= thresholds[i]) level = i + 1;
       }
 
       if (level > 0) {
-        edge.addClass(`flow-heat-${level}`);
+        edge.addClass(`bw-heat-${level}`);
         edge.connectedNodes().forEach(n => n.addClass('flow-active'));
       }
     }
@@ -669,6 +701,7 @@ class TopologyRenderer {
     if (!this.cy) return;
     this.cy.elements().removeClass(
       'flow-heat-1 flow-heat-2 flow-heat-3 flow-heat-4 flow-heat-5 ' +
+      'bw-heat-1 bw-heat-2 bw-heat-3 bw-heat-4 bw-heat-5 bw-heat-6 ' +
       'flow-active flow-lsp-highlight flow-lsp-node flow-dimmed flow-animated'
     );
     this.stopFlowAnimation();
@@ -1103,6 +1136,32 @@ class TopologyRenderer {
           width: 7,
           'z-index': 16,
         },
+      },
+      // ── Bandwidth: Utilization-based heat levels ──
+      // Light Blue → Green → Yellow → Orange → Red → Deep Red
+      {
+        selector: 'edge.bw-heat-1',
+        style: { 'line-color': '#38bdf8', width: 2.5, 'z-index': 12 },
+      },
+      {
+        selector: 'edge.bw-heat-2',
+        style: { 'line-color': '#22c55e', width: 3.5, 'z-index': 13 },
+      },
+      {
+        selector: 'edge.bw-heat-3',
+        style: { 'line-color': '#eab308', width: 4.5, 'z-index': 14 },
+      },
+      {
+        selector: 'edge.bw-heat-4',
+        style: { 'line-color': '#f97316', width: 5.5, 'z-index': 15 },
+      },
+      {
+        selector: 'edge.bw-heat-5',
+        style: { 'line-color': '#ef4444', width: 6.5, 'z-index': 16 },
+      },
+      {
+        selector: 'edge.bw-heat-6',
+        style: { 'line-color': '#991b1b', width: 8, 'z-index': 17 },
       },
       // ── sFlow: Node generating/receiving flow ──
       {

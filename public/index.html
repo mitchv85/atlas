@@ -250,6 +250,32 @@
           <button class="topo-btn" id="btnTopoBandwidthOverlay" title="Toggle live bandwidth heatmap">
             <svg viewBox="0 0 20 20" fill="currentColor"><path d="M2 11a1 1 0 011-1h2a1 1 0 011 1v5a1 1 0 01-1 1H3a1 1 0 01-1-1v-5zm6-4a1 1 0 011-1h2a1 1 0 011 1v9a1 1 0 01-1 1H9a1 1 0 01-1-1V7zm6-3a1 1 0 011-1h2a1 1 0 011 1v12a1 1 0 01-1 1h-2a1 1 0 01-1-1V4z"/></svg>
           </button>
+          <button class="topo-btn" id="btnBwSettings" title="Bandwidth overlay settings">
+            <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clip-rule="evenodd"/></svg>
+          </button>
+        </div>
+        <!-- Bandwidth Overlay Settings Panel -->
+        <div class="bw-settings-panel" id="bwSettingsPanel" style="display:none;">
+          <div class="bw-settings-row">
+            <label>Link speed</label>
+            <select id="bwLinkSpeed">
+              <option value="1000000000">1 Gbps</option>
+              <option value="10000000000" selected>10 Gbps</option>
+              <option value="25000000000">25 Gbps</option>
+              <option value="40000000000">40 Gbps</option>
+              <option value="100000000000">100 Gbps</option>
+              <option value="400000000000">400 Gbps</option>
+            </select>
+          </div>
+          <div class="bw-settings-legend">
+            <span class="bw-swatch" style="background:#38bdf8"></span><label>Light</label><input type="number" id="bwT1" value="1" min="0" max="100" class="bw-threshold-input">%
+            <span class="bw-swatch" style="background:#22c55e"></span><label>Normal</label><input type="number" id="bwT2" value="10" min="0" max="100" class="bw-threshold-input">%
+            <span class="bw-swatch" style="background:#eab308"></span><label>Moderate</label><input type="number" id="bwT3" value="25" min="0" max="100" class="bw-threshold-input">%
+            <span class="bw-swatch" style="background:#f97316"></span><label>Heavy</label><input type="number" id="bwT4" value="50" min="0" max="100" class="bw-threshold-input">%
+            <span class="bw-swatch" style="background:#ef4444"></span><label>Critical</label><input type="number" id="bwT5" value="75" min="0" max="100" class="bw-threshold-input">%
+            <span class="bw-swatch" style="background:#991b1b"></span><label>Saturated</label><input type="number" id="bwT6" value="90" min="0" max="100" class="bw-threshold-input">%
+          </div>
+          <button class="btn btn-sm" id="btnBwSettingsSave">Apply</button>
         </div>
       </div>
 
