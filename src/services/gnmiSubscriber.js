@@ -439,7 +439,10 @@ class GnmiSubscriber extends EventEmitter {
       // One-time diagnostic log
       if (!this._counterLogDone) {
         this._counterLogDone = true;
-        console.log(`  [gNMI] Counter sample: ${deviceName}:${ifName} — ${Object.keys(allValues).length} fields [${Object.keys(allValues).slice(0, 5).join(', ')}...]`);
+        console.log(`  [gNMI] Counter sample: ${deviceName}:${ifName} — ${Object.keys(allValues).length} fields`);
+        console.log(`  [gNMI] Counter keys: [${Object.keys(allValues).join(', ')}]`);
+        console.log(`  [gNMI] in-octets=${allValues['in-octets']} out-octets=${allValues['out-octets']} (type: ${typeof allValues['in-octets']})`);
+        console.log(`  [gNMI] Updates in obj: ${(obj.updates || []).length}, prefix: ${prefix}`);
       }
 
       if (ifName.startsWith('Ethernet') || ifName.startsWith('Port-Channel')) {

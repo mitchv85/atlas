@@ -106,6 +106,16 @@ class CounterRateEngine extends EventEmitter {
             console.log(`  [Bandwidth] Rate computed: ${key} dt=${dt.toFixed(1)}s inBps=${rate.inBps} outBps=${rate.outBps}`);
           }
 
+          // Log suspiciously high rates for debugging
+          if (!this._highRateLogged && (rate.inBps > 1_000_000_000 || rate.outBps > 1_000_000_000)) {
+            this._highRateLogged = true;
+            console.log(`  [Bandwidth] HIGH RATE DETECTED: ${key}`);
+            console.log(`    prev: inOctets=${prev.inOctets} outOctets=${prev.outOctets} ts=${prev.timestamp.toFixed(3)}`);
+            console.log(`    curr: inOctets=${inOctets} outOctets=${outOctets} ts=${now.toFixed(3)}`);
+            console.log(`    delta: in=${inOctets - prev.inOctets} out=${outOctets - prev.outOctets} dt=${dt.toFixed(3)}s`);
+            console.log(`    rate:  inBps=${rate.inBps} outBps=${rate.outBps}`);
+          }
+
           this._rates.set(key, rate);
           this._dirty = true;
         }
