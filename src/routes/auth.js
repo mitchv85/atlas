@@ -47,7 +47,15 @@ router.post('/login', async (req, res) => {
 router.get('/me', (req, res) => {
   const u = auth.getAuthUser(req);
   if (!u) return res.status(401).json({ error: 'Unauthorized' });
-  res.json({ username: u.username, role: u.role, mustChangePassword: u.mustChangePassword });
+  // Load full user data for theme
+  const users = auth.loadUsers();
+  const userData = users[u.username] || {};
+  res.json({
+    username: u.username,
+    role: u.role,
+    mustChangePassword: u.mustChangePassword,
+    theme: userData.theme || 'github-dark',
+  });
 });
 
 // ── POST /api/auth/logout ───────────────────────────────────────────────

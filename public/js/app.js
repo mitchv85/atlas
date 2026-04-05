@@ -1298,6 +1298,11 @@
       const me = await API.getMe();
       if (me && me.username) {
         authUser = me;
+        // Apply user's server-side theme preference (overrides localStorage)
+        if (me.theme) {
+          localStorage.setItem('atlas-theme', me.theme);
+          applyTheme(me.theme);
+        }
         if (me.mustChangePassword) {
           document.getElementById('loginOverlay').style.display = 'none';
           document.getElementById('changePasswordModal').style.display = 'flex';
@@ -1364,18 +1369,48 @@
     const container = document.getElementById('profileContent');
     try {
       const p = await API.getProfile();
+
+      // GitHub profile link row (only for GitHub SSO users)
+      const githubRow = p.githubUrl
+        ? `<tr><td style="font-weight:600;">GitHub</td><td><a href="${esc(p.githubUrl)}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;">@${esc(p.githubLogin || p.username)} ↗</a></td></tr>`
+        : '';
+
+      // Theme options (match the ATLAS theme picker)
+      const themes = [
+        { value: 'github-dark',  label: 'GitHub Dark' },
+        { value: 'midnight',     label: 'Midnight' },
+        { value: 'nord',         label: 'Nord' },
+        { value: 'dracula',      label: 'Dracula' },
+        { value: 'monokai',      label: 'Monokai' },
+        { value: 'arista-dark',  label: 'Arista Dark' },
+        { value: 'horizon',      label: 'Horizon' },
+        { value: 'solarized',    label: 'Solarized Light' },
+        { value: 'github',       label: 'GitHub Light' },
+        { value: 'quiet',        label: 'Quiet Light' },
+        { value: 'sand',         label: 'Sand' },
+        { value: 'arista-light', label: 'Arista Light' },
+      ];
+      const currentTheme = p.theme || localStorage.getItem('atlas-theme') || 'github-dark';
+      const themeOptions = themes.map(t =>
+        `<option value="${t.value}" ${currentTheme === t.value ? 'selected' : ''}>${t.label}</option>`
+      ).join('');
+
       container.innerHTML = `
         <div class="devices-table-wrap" style="max-width:600px;">
           <table class="devices-table">
             <tbody>
               <tr><td style="font-weight:600;width:160px;">Username</td><td>${esc(p.username)}</td></tr>
               <tr><td style="font-weight:600;">Role</td><td><span class="detail-badge cyan">${esc(p.role)}</span></td></tr>
+              <tr><td style="font-weight:600;">Type</td><td>${p.type === 'github' ? 'GitHub SSO' : 'Local'}</td></tr>
+              ${githubRow}
               <tr><td style="font-weight:600;">First Name</td><td><input class="input-field" id="profFirstName" value="${esc(p.firstName)}" /></td></tr>
               <tr><td style="font-weight:600;">Last Name</td><td><input class="input-field" id="profLastName" value="${esc(p.lastName)}" /></td></tr>
-              <tr><td style="font-weight:600;">Email</td><td><input class="input-field" id="profEmail" value="${esc(p.email)}" /></td></tr>
-              <tr><td style="font-weight:600;">Phone</td><td><input class="input-field" id="profPhone" value="${esc(p.phone)}" /></td></tr>
+              <tr><td style="font-weight:600;">Email</td><td><input class="input-field" id="profEmail" type="email" value="${esc(p.email)}" /></td></tr>
+              <tr><td style="font-weight:600;">Phone</td><td><input class="input-field" id="profPhone" type="tel" value="${esc(p.phone)}" /></td></tr>
+              <tr><td style="font-weight:600;">Notes</td><td><textarea class="input-field" id="profNotes" rows="3" style="resize:vertical;">${esc(p.notes)}</textarea></td></tr>
+              <tr><td style="font-weight:600;">Theme</td><td><select class="input-field" id="profTheme">${themeOptions}</select></td></tr>
               <tr><td style="font-weight:600;">Created</td><td>${p.createdAt ? new Date(p.createdAt).toLocaleString() : '—'}</td></tr>
-              <tr><td style="font-weight:600;">Last Login</td><td>${p.lastLogin ? new Date(p.lastLogin).toLocaleString() : '—'}</td></tr>
+              <tr><td style="font-weight:600;">Last Updated</td><td>${p.updatedAt ? new Date(p.updatedAt).toLocaleString() : '—'}</td></tr>
             </tbody>
           </table>
         </div>
@@ -1391,9 +1426,16 @@
           lastName: document.getElementById('profLastName').value,
           email: document.getElementById('profEmail').value,
           phone: document.getElementById('profPhone').value,
+          notes: document.getElementById('profNotes').value,
+          theme: document.getElementById('profTheme').value,
         };
-        await API.updateProfile(fields);
+        const result = await API.updateProfile(fields);
         document.getElementById('profileMsg').innerHTML = '<span style="color:var(--green);">Profile saved.</span>';
+        // Apply theme immediately and sync to localStorage
+        if (fields.theme) {
+          localStorage.setItem('atlas-theme', fields.theme);
+          applyTheme(fields.theme);
+        }
       });
 
       document.getElementById('btnShowChangePw').addEventListener('click', () => {
@@ -1412,15 +1454,16 @@
       let html = `<div class="devices-table-wrap"><table class="devices-table">
         <thead><tr>
           <th>Username</th><th>Type</th><th>Role</th><th>Name</th><th>Email</th>
-          <th>Last Login</th><th>Created</th><th>Actions</th>
+          <th>Theme</th><th>Created</th><th>Actions</th>
         </tr></thead><tbody>`;
 
       for (const u of users) {
         const name = [u.firstName, u.lastName].filter(Boolean).join(' ') || '—';
         const roleBadge = u.role === 'admin' ? 'cyan' : u.role === 'operator' ? 'green' : 'blue';
-        const typeBadge = u.type === 'github'
-          ? '<span class="detail-badge" style="font-size:0.6rem;background:rgba(255,255,255,0.08);color:var(--text-secondary);">GitHub</span>'
+        const typeBadge = u.githubLogin
+          ? `<a href="${esc(u.githubUrl || '#')}" target="_blank" rel="noopener" style="text-decoration:none;"><span class="detail-badge" style="font-size:0.6rem;background:rgba(255,255,255,0.08);color:var(--text-secondary);">GitHub ↗</span></a>`
           : '<span class="detail-badge" style="font-size:0.6rem;background:rgba(255,255,255,0.08);color:var(--text-muted);">Local</span>';
+        const themeBadge = `<span class="detail-badge" style="font-size:0.6rem;background:rgba(255,255,255,0.06);color:var(--text-muted);">${esc(u.theme || 'github-dark')}</span>`;
         html += `<tr>
           <td style="font-weight:600;">${esc(u.username)}</td>
           <td>${typeBadge}</td>
@@ -1428,7 +1471,7 @@
             ${u.mustChangePassword ? '<span class="detail-badge amber" style="font-size:0.6rem;margin-left:4px;">PW Reset</span>' : ''}</td>
           <td>${esc(name)}</td>
           <td>${esc(u.email || '—')}</td>
-          <td style="font-size:0.72rem;">${u.lastLogin ? new Date(u.lastLogin).toLocaleString() : '—'}</td>
+          <td>${themeBadge}</td>
           <td style="font-size:0.72rem;">${u.createdAt ? new Date(u.createdAt).toLocaleString() : '—'}</td>
           <td style="white-space:nowrap;">
             <button class="btn btn-ghost btn-sm btn-edit-user" data-username="${esc(u.username)}" data-role="${esc(u.role)}">Edit</button>
@@ -1670,6 +1713,9 @@
         const themeId = opt.dataset.theme;
         applyTheme(themeId);
         localStorage.setItem('atlas-theme', themeId);
+
+        // Sync to server profile
+        API.updateProfile({ theme: themeId }).catch(() => {});
 
         // Update active state
         dropdown.querySelectorAll('.theme-option').forEach(o => o.classList.remove('active'));

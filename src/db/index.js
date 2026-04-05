@@ -17,7 +17,7 @@ const fs = require('fs');
 const path = require('path');
 
 const DB_PATH = path.join(__dirname, '..', '..', 'atlas.db');
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 
 let db = null;
 
@@ -121,6 +121,20 @@ function _migrate() {
     db.run('DELETE FROM schema_version');
     db.run(`INSERT INTO schema_version (version) VALUES (${SCHEMA_VERSION})`);
     console.log('  [DB] Migration v2 complete');
+  }
+
+  if (currentVersion < 3) {
+    console.log('  [DB] Running migration v3 — adding user profile columns...');
+    db.run(`ALTER TABLE users ADD COLUMN first_name TEXT`);
+    db.run(`ALTER TABLE users ADD COLUMN last_name TEXT`);
+    db.run(`ALTER TABLE users ADD COLUMN email TEXT`);
+    db.run(`ALTER TABLE users ADD COLUMN phone TEXT`);
+    db.run(`ALTER TABLE users ADD COLUMN notes TEXT`);
+    db.run(`ALTER TABLE users ADD COLUMN theme TEXT DEFAULT 'github-dark'`);
+    db.run(`ALTER TABLE users ADD COLUMN github_url TEXT`);
+    db.run('DELETE FROM schema_version');
+    db.run(`INSERT INTO schema_version (version) VALUES (${SCHEMA_VERSION})`);
+    console.log('  [DB] Migration v3 complete');
   }
 }
 
@@ -366,8 +380,15 @@ const userOps = {
     if (fields.role !== undefined) sets.push(`role = '${_esc(fields.role)}'`);
     if (fields.forcePasswordChange !== undefined) sets.push(`force_password_change = ${fields.forcePasswordChange ? 1 : 0}`);
     if (fields.displayName !== undefined) sets.push(`display_name = '${_esc(fields.displayName)}'`);
+    if (fields.firstName !== undefined) sets.push(`first_name = '${_esc(fields.firstName)}'`);
+    if (fields.lastName !== undefined) sets.push(`last_name = '${_esc(fields.lastName)}'`);
+    if (fields.email !== undefined) sets.push(`email = '${_esc(fields.email)}'`);
+    if (fields.phone !== undefined) sets.push(`phone = '${_esc(fields.phone)}'`);
+    if (fields.notes !== undefined) sets.push(`notes = '${_esc(fields.notes)}'`);
+    if (fields.theme !== undefined) sets.push(`theme = '${_esc(fields.theme)}'`);
     if (fields.githubId !== undefined) sets.push(`github_id = '${_esc(String(fields.githubId))}'`);
     if (fields.githubLogin !== undefined) sets.push(`github_login = '${_esc(fields.githubLogin)}'`);
+    if (fields.githubUrl !== undefined) sets.push(`github_url = '${_esc(fields.githubUrl)}'`);
 
     if (sets.length > 0) {
       sets.push("updated_at = datetime('now')");
@@ -473,8 +494,17 @@ function _mapUser(row) {
     role: row.role,
     forcePasswordChange: row.force_password_change === 1,
     displayName: row.display_name || null,
+    firstName: row.first_name || null,
+    lastName: row.last_name || null,
+    email: row.email || null,
+    phone: row.phone || null,
+    notes: row.notes || null,
+    theme: row.theme || 'github-dark',
     githubId: row.github_id || null,
     githubLogin: row.github_login || null,
+    githubUrl: row.github_url || null,
+    createdAt: row.created_at || null,
+    updatedAt: row.updated_at || null,
   };
 }
 

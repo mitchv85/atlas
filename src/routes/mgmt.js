@@ -24,28 +24,33 @@ router.get('/profile', (req, res) => {
   res.json({
     username:    req.authUser.username,
     role:        u.role,
+    type:        u.githubId ? 'github' : 'local',
     firstName:   u.firstName   || '',
     lastName:    u.lastName    || '',
     email:       u.email       || '',
     phone:       u.phone       || '',
+    notes:       u.notes       || '',
+    theme:       u.theme       || 'github-dark',
+    githubLogin: u.githubLogin || null,
+    githubUrl:   u.githubUrl   || (u.githubLogin ? `https://github.com/${u.githubLogin}` : null),
     createdAt:   u.createdAt,
-    lastLogin:   u.lastLogin,
+    updatedAt:   u.updatedAt,
   });
 });
 
 // ── PUT /api/mgmt/profile ───────────────────────────────────────────────
 router.put('/profile', (req, res) => {
-  const { firstName, lastName, email, phone } = req.body || {};
+  const { firstName, lastName, email, phone, notes, theme } = req.body || {};
   const users = auth.loadUsers();
   if (!users[req.authUser.username]) return res.status(404).json({ error: 'User not found.' });
 
-  const ALLOWED = { firstName, lastName, email, phone };
+  const ALLOWED = { firstName, lastName, email, phone, notes, theme };
   for (const [k, v] of Object.entries(ALLOWED)) {
-    if (v !== undefined) users[req.authUser.username][k] = (v || '').trim();
+    if (v !== undefined) users[req.authUser.username][k] = (typeof v === 'string') ? v.trim() : v;
   }
   auth.saveUsers(users);
   auth.writeAudit(req.authUser.username, req.authUser.role, 'user.profile-update', req.authUser.username, 'success');
-  res.json({ ok: true });
+  res.json({ ok: true, theme: users[req.authUser.username].theme });
 });
 
 // ════════════════════════════════════════════════════════════════════════
@@ -57,16 +62,19 @@ router.get('/users', auth.requireRole('admin'), (req, res) => {
   const users = auth.loadUsers();
   const safe  = Object.entries(users).map(([username, u]) => ({
     username,
-    type:               u.type || 'local',
+    type:               u.githubId ? 'github' : 'local',
     role:               u.role,
     createdAt:          u.createdAt,
-    lastLogin:          u.lastLogin,
-    mustChangePassword: u.mustChangePassword,
+    updatedAt:          u.updatedAt,
+    mustChangePassword: u.mustChangePassword || u.forcePasswordChange,
     firstName:          u.firstName   || null,
     lastName:           u.lastName    || null,
     email:              u.email       || null,
     phone:              u.phone       || null,
-    githubHandle:       u.githubHandle || null,
+    notes:              u.notes       || null,
+    theme:              u.theme       || 'github-dark',
+    githubLogin:        u.githubLogin || null,
+    githubUrl:          u.githubUrl   || (u.githubLogin ? `https://github.com/${u.githubLogin}` : null),
   }));
   res.json(safe);
 });
@@ -127,7 +135,7 @@ router.put('/users/:username', auth.requireRole('admin'), async (req, res) => {
   const users  = auth.loadUsers();
   if (!users[target]) return res.status(404).json({ error: 'User not found.' });
 
-  const { role, resetPassword, newPassword, firstName, lastName, email, phone } = req.body || {};
+  const { role, resetPassword, newPassword, firstName, lastName, email, phone, notes, theme } = req.body || {};
 
   if (role) {
     if (!['admin', 'operator', 'viewer'].includes(role)) {
@@ -142,9 +150,9 @@ router.put('/users/:username', auth.requireRole('admin'), async (req, res) => {
   }
 
   // Profile fields
-  const profileFields = { firstName, lastName, email, phone };
+  const profileFields = { firstName, lastName, email, phone, notes, theme };
   for (const [k, v] of Object.entries(profileFields)) {
-    if (v !== undefined) users[target][k] = (v || '').trim();
+    if (v !== undefined) users[target][k] = (typeof v === 'string') ? v.trim() : v;
   }
 
   auth.saveUsers(users);

@@ -56,15 +56,23 @@ function loadUsers() {
       mustChangePassword: u.forcePasswordChange,
       forcePasswordChange: u.forcePasswordChange,
       displayName: u.displayName,
+      firstName: u.firstName,
+      lastName: u.lastName,
+      email: u.email,
+      phone: u.phone,
+      notes: u.notes,
+      theme: u.theme,
       githubId: u.githubId,
       githubLogin: u.githubLogin,
+      githubUrl: u.githubUrl,
+      createdAt: u.createdAt,
+      updatedAt: u.updatedAt,
     };
   }
   return users;
 }
 
 function saveUsers(usersObj) {
-  // Takes { username: { passwordHash, role, ... } } and syncs to database
   for (const [username, data] of Object.entries(usersObj)) {
     const existing = db.users.getByUsername(username);
     if (existing) {
@@ -72,9 +80,16 @@ function saveUsers(usersObj) {
         passwordHash: data.passwordHash,
         role: data.role,
         forcePasswordChange: data.mustChangePassword || data.forcePasswordChange || false,
-        displayName: data.displayName || data.firstName ? `${data.firstName || ''} ${data.lastName || ''}`.trim() : undefined,
+        displayName: data.displayName || (data.firstName ? `${data.firstName || ''} ${data.lastName || ''}`.trim() : undefined),
+        firstName: data.firstName,
+        lastName: data.lastName,
+        email: data.email,
+        phone: data.phone,
+        notes: data.notes,
+        theme: data.theme,
         githubId: data.githubId,
         githubLogin: data.githubLogin,
+        githubUrl: data.githubUrl,
       });
     } else {
       db.users.add({
