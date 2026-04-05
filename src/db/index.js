@@ -448,6 +448,10 @@ function _rowsToObjects(result) {
 
 /** Map a device row to the shape the rest of ATLAS expects. */
 function _mapDevice(row) {
+  // Map legacy 'network' role to 'cpe'
+  let role = row.role || 'pe';
+  if (role === 'network') role = 'cpe';
+
   return {
     id: row.id,
     name: row.name,
@@ -456,7 +460,7 @@ function _mapDevice(row) {
     username: row.username,
     password: row.password,
     transport: row.transport,
-    role: row.role || 'pe',
+    role,
     hideFromTopology: row.hide_from_topology === 1,
   };
 }

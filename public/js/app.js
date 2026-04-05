@@ -263,9 +263,9 @@
         gnmiCell += ` <button class="dev-action-btn gnmi-reconnect-btn" data-name="${esc(d.name)}" title="Reconnect gNMI streams">⟳</button>`;
       }
 
-      const roleBadge = (d.role === 'network')
-        ? '<span class="dev-role-badge network">Non-PE</span>'
-        : '<span class="dev-role-badge pe">PE</span>';
+      const roleLabel = { pe: 'PE', p: 'P', cpe: 'CPE' }[d.role] || 'PE';
+      const roleClass = d.role === 'cpe' ? 'cpe' : 'pe';
+      const roleBadge = `<span class="dev-role-badge ${roleClass} clickable" data-id="${d.id}" data-role="${d.role || 'pe'}" title="Click to change role">${roleLabel}</span>`;
 
       return `<tr data-id="${d.id}" class="dev-row-clickable">
         <td><strong>${esc(d.name)}</strong> ${roleBadge}</td>
@@ -344,6 +344,21 @@
           btn.textContent = '⟳';
           btn.disabled = false;
         }
+      });
+    });
+
+    // Wire role badge clicks — cycle through P → PE → CPE
+    const ROLE_CYCLE = { pe: 'p', p: 'cpe', cpe: 'pe' };
+    tbody.querySelectorAll('.dev-role-badge.clickable').forEach((badge) => {
+      badge.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const id = badge.dataset.id;
+        const currentRole = badge.dataset.role || 'pe';
+        const nextRole = ROLE_CYCLE[currentRole] || 'pe';
+        await API.updateDevice(id, { role: nextRole });
+        const dev = devices.find(d => d.id === id);
+        if (dev) dev.role = nextRole;
+        renderDevicesTable(devices);
       });
     });
 
