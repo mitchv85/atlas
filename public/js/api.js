@@ -139,6 +139,12 @@ const API = {
     return res.json();
   },
 
+  /** Reconnect gNMI streams for a specific device. */
+  async reconnectGnmi(deviceName) {
+    const res = await authFetch(`/api/gnmi/reconnect/${encodeURIComponent(deviceName)}`, { method: 'POST' });
+    return res.json();
+  },
+
   /** Fetch running config for a specific device. */
   async getDeviceConfig(id) {
     const res = await authFetch(`/api/devices/${id}/config`);

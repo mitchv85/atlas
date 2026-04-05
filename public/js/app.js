@@ -250,12 +250,17 @@
       let gnmiCell;
       if (!gn) {
         gnmiCell = '<span class="dev-status"><span class="dev-status-dot"></span> —</span>';
+        gnmiCell += ` <button class="dev-action-btn gnmi-reconnect-btn" data-name="${esc(d.name)}" title="Start gNMI streams">⟳</button>`;
       } else if (gn.status === 'connected') {
         gnmiCell = `<span class="dev-status"><span class="dev-status-dot ok"></span> ${gn.streams}</span>`;
       } else if (gn.status === 'connecting') {
         gnmiCell = `<span class="dev-status"><span class="dev-status-dot testing"></span> ${gn.streams}</span>`;
       } else {
         gnmiCell = `<span class="dev-status"><span class="dev-status-dot fail"></span> ${gn.status}</span>`;
+      }
+      // Add reconnect button if not fully synced
+      if (gn && gn.status !== 'connected') {
+        gnmiCell += ` <button class="dev-action-btn gnmi-reconnect-btn" data-name="${esc(d.name)}" title="Reconnect gNMI streams">⟳</button>`;
       }
 
       return `<tr data-id="${d.id}" class="dev-row-clickable">
@@ -313,6 +318,28 @@
           const topo = await API.getTopology();
           if (topo) loadTopologyIntoView(topo, true);
         } catch {}
+      });
+    });
+
+    // Wire gNMI reconnect buttons
+    tbody.querySelectorAll('.gnmi-reconnect-btn').forEach((btn) => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const name = btn.dataset.name;
+        btn.disabled = true;
+        btn.textContent = '...';
+        try {
+          await API.reconnectGnmi(name);
+          // Wait a moment for streams to start, then refresh status
+          setTimeout(async () => {
+            const status = await API.getGnmiStatus();
+            gnmiStatus = status?.connections || {};
+            renderDevicesTable(devices);
+          }, 3000);
+        } catch {
+          btn.textContent = '⟳';
+          btn.disabled = false;
+        }
       });
     });
 

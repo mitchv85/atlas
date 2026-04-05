@@ -78,6 +78,17 @@ app.get('/api/gnmi/status', authService.requireAuth, (_req, res) => {
   res.json(gnmiSubscriber.getStatus());
 });
 
+// gNMI reconnect a specific device (protected)
+app.post('/api/gnmi/reconnect/:name', authService.requireAuth, (req, res) => {
+  const name = req.params.name;
+  const allDevices = deviceStore.getAllRaw();
+  const device = allDevices.find(d => d.name === name);
+  if (!device) return res.status(404).json({ error: `Device ${name} not found` });
+  gnmiSubscriber.removeDevice(name);
+  gnmiSubscriber.addDevice(device);
+  res.json({ success: true, message: `Reconnecting gNMI streams for ${name}` });
+});
+
 // ---------------------------------------------------------------------------
 // SPA Fallback
 // ---------------------------------------------------------------------------
