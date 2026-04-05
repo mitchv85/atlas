@@ -143,6 +143,7 @@
   let activeTab = 'topology';
   const deviceTestResults = new Map(); // id → 'ok' | 'fail' | 'testing'
   let deviceInfo = {};                  // name → { model, serial, eosVersion, ... }
+  let gnmiStatus = {};                  // name → { status, streams, updateCount, ... }
   let selectedDeviceId = null;          // currently viewed device detail
 
   /** Switch the active tab and update path bar visibility. */
@@ -209,6 +210,12 @@
       deviceInfo = info;
       if (!selectedDeviceId) renderDevicesTable(devices);
     }).catch(() => {});
+
+    // Fetch gNMI streaming status
+    API.getGnmiStatus().then((status) => {
+      gnmiStatus = status?.connections || {};
+      if (!selectedDeviceId) renderDevicesTable(devices);
+    }).catch(() => {});
   }
 
   function renderDevicesTable(list) {
@@ -235,6 +242,19 @@
       const info = deviceInfo[d.name] || {};
       const infoCell = (val) => val && val !== '—' ? esc(val) : '<span style="color:var(--text-muted);">—</span>';
 
+      // gNMI streaming status for this device
+      const gn = gnmiStatus[d.name];
+      let gnmiCell;
+      if (!gn) {
+        gnmiCell = '<span class="dev-status"><span class="dev-status-dot"></span> —</span>';
+      } else if (gn.status === 'connected') {
+        gnmiCell = `<span class="dev-status"><span class="dev-status-dot ok"></span> ${gn.streams}</span>`;
+      } else if (gn.status === 'connecting') {
+        gnmiCell = `<span class="dev-status"><span class="dev-status-dot testing"></span> ${gn.streams}</span>`;
+      } else {
+        gnmiCell = `<span class="dev-status"><span class="dev-status-dot fail"></span> ${gn.status}</span>`;
+      }
+
       return `<tr data-id="${d.id}" class="dev-row-clickable">
         <td><strong>${esc(d.name)}</strong></td>
         <td>${esc(d.host)}</td>
@@ -243,6 +263,7 @@
         <td>${infoCell(info.serial)}</td>
         <td>${infoCell(info.chipset)}</td>
         <td>${infoCell(info.fwdAgent)}</td>
+        <td>${gnmiCell}</td>
         <td>
           <span class="dev-status">
             <span class="dev-status-dot ${dotClass}"></span>
@@ -1702,6 +1723,14 @@
       }
     });
 
+    // gNMI device sync — refresh streaming status in Devices tab
+    socket.on('gnmi:device:synced', () => {
+      API.getGnmiStatus().then((status) => {
+        gnmiStatus = status?.connections || {};
+        if (!selectedDeviceId) renderDevicesTable(devices);
+      }).catch(() => {});
+    });
+
     // Connection state
     socket.on('connection', ({ status }) => {
       const dot = document.querySelector('.status-dot');
@@ -2326,16 +2355,16 @@
       frrEl.innerHTML = '<span class="bgp-dot"></span> Not Configured';
     }
 
-    // gRPC Connection
+    // FRR Query Method
     const grpcEl = document.getElementById('bgpGrpcStatus');
     if (status.grpc?.connected) {
-      grpcEl.innerHTML = '<span class="bgp-dot ok"></span> Connected';
+      grpcEl.innerHTML = '<span class="bgp-dot ok"></span> FRR gRPC';
     } else if (status.enabled && status.grpc?.available && status.grpc?.connecting) {
-      grpcEl.innerHTML = '<span class="bgp-dot warn"></span> Connecting...';
+      grpcEl.innerHTML = '<span class="bgp-dot warn"></span> FRR gRPC (connecting...)';
     } else if (status.enabled && status.grpc?.available && status.grpc?.reconnectAttempts > 0) {
-      grpcEl.innerHTML = '<span class="bgp-dot fail"></span> Disconnected';
+      grpcEl.innerHTML = '<span class="bgp-dot fail"></span> FRR gRPC (disconnected)';
     } else {
-      grpcEl.innerHTML = '<span class="bgp-dot"></span> N/A (using vtysh)';
+      grpcEl.innerHTML = '<span class="bgp-dot ok"></span> vtysh (CLI)';
     }
 
     // Neighbors

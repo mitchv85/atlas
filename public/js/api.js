@@ -133,6 +133,12 @@ const API = {
     return res.json();
   },
 
+  /** Fetch gNMI subscriber status for all devices. */
+  async getGnmiStatus() {
+    const res = await authFetch('/api/gnmi/status');
+    return res.json();
+  },
+
   /** Fetch running config for a specific device. */
   async getDeviceConfig(id) {
     const res = await authFetch(`/api/devices/${id}/config`);
