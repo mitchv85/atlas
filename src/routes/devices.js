@@ -21,7 +21,7 @@ router.get('/', (_req, res) => {
 
 // POST /api/devices — Add a new device
 router.post('/', (req, res) => {
-  const { name, host, port, username, password, transport } = req.body;
+  const { name, host, port, username, password, transport, role } = req.body;
 
   if (!name || !host || !username || !password) {
     return res.status(400).json({
@@ -29,7 +29,7 @@ router.post('/', (req, res) => {
     });
   }
 
-  const device = deviceStore.add({ name, host, port, username, password, transport });
+  const device = deviceStore.add({ name, host, port, username, password, transport, role });
 
   // Start gNMI streams for the new device
   const gnmi = req.app.get('gnmiSubscriber');

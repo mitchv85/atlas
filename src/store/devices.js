@@ -58,8 +58,8 @@ function getAllRaw() {
   return db.devices.getAllRaw();
 }
 
-function add({ name, host, port = 443, username, password, transport = 'https', hideFromTopology = false }) {
-  const device = db.devices.add({ name, host, port, username, password, transport, hideFromTopology });
+function add({ name, host, port = 443, username, password, transport = 'https', role = 'pe', hideFromTopology = false }) {
+  const device = db.devices.add({ name, host, port, username, password, transport, role, hideFromTopology });
   return db.devices.sanitize(device);
 }
 

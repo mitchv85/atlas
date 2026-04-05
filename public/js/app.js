@@ -263,8 +263,12 @@
         gnmiCell += ` <button class="dev-action-btn gnmi-reconnect-btn" data-name="${esc(d.name)}" title="Reconnect gNMI streams">⟳</button>`;
       }
 
+      const roleBadge = (d.role === 'network')
+        ? '<span class="dev-role-badge network">NET</span>'
+        : '<span class="dev-role-badge pe">PE</span>';
+
       return `<tr data-id="${d.id}" class="dev-row-clickable">
-        <td><strong>${esc(d.name)}</strong></td>
+        <td><strong>${esc(d.name)}</strong> ${roleBadge}</td>
         <td>${esc(d.host)}</td>
         <td>${infoCell(info.model)}</td>
         <td>${infoCell(info.eosVersion)}</td>
@@ -400,13 +404,14 @@
     const username = $('#addDevUser').value.trim();
     const password = $('#addDevPass').value;
     const port = parseInt($('#addDevPort').value, 10) || 443;
+    const role = $('#addDevRole')?.value || 'pe';
 
     if (!name) return addDeviceError.textContent = 'Name is required';
     if (!host) return addDeviceError.textContent = 'Host / IP is required';
     if (!username) return addDeviceError.textContent = 'Username is required';
 
     try {
-      const result = await API.addDevice({ name, host, username, password, port, transport: 'https' });
+      const result = await API.addDevice({ name, host, username, password, port, transport: 'https', role });
       if (result.error) return addDeviceError.textContent = result.error;
       $('#addDevName').value = '';
       $('#addDevHost').value = '';

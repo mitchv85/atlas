@@ -260,6 +260,16 @@ gnmiSubscriber.on('device:synced', ({ device }) => {
   broadcast({ type: 'gnmi:device:synced', data: { device } });
 });
 
+// LLDP neighbor changes → broadcast for auto-discovery
+gnmiSubscriber.on('lldp:neighbor', (event) => {
+  broadcast({ type: 'gnmi:lldp:neighbor', data: event });
+});
+
+// Temperature updates → broadcast for health dashboard
+gnmiSubscriber.on('system:temperature', (event) => {
+  broadcast({ type: 'gnmi:system:temperature', data: event });
+});
+
 // ---------------------------------------------------------------------------
 // sFlow Collector + Aggregator — LSP-level traffic visibility
 // ---------------------------------------------------------------------------

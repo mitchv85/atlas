@@ -22,18 +22,66 @@ const { spawn } = require('child_process');
 const EventEmitter = require('events');
 
 // ---------------------------------------------------------------------------
-// Subscription Definitions
+// Subscription Definitions — Profile-Based
+// ---------------------------------------------------------------------------
+// Paths are organized by device role. All devices get COMMON paths.
+// PE devices additionally get IS-IS SR and BGP service-specific paths.
+// Devices running IS-IS (PE or network) get IS-IS paths.
 // ---------------------------------------------------------------------------
 
-const ON_CHANGE_PATHS = [
-  '/network-instances/network-instance[name=default]/protocols/protocol[identifier=ISIS][name=100]/isis/interfaces/interface/levels/level/adjacencies',
-  '/network-instances/network-instance[name=default]/protocols/protocol[identifier=ISIS][name=100]/isis/levels/level[level-number=2]/system-level-counters/state',
+/** Common ON_CHANGE paths — all devices regardless of role */
+const COMMON_ON_CHANGE = [
   '/interfaces/interface/state/oper-status',
+  '/lldp/interfaces/interface/neighbors',
 ];
 
-const SAMPLE_PATHS = [
+/** Common SAMPLE paths — all devices */
+const COMMON_SAMPLE = [
   '/interfaces/interface/state/counters',
+  '/components/component/state/temperature',
 ];
+
+/** IS-IS paths — devices running IS-IS (PE and some network devices) */
+function isisOnChangePaths(instance) {
+  return [
+    `/network-instances/network-instance[name=default]/protocols/protocol[identifier=ISIS][name=${instance}]/isis/interfaces/interface/levels/level/adjacencies`,
+    `/network-instances/network-instance[name=default]/protocols/protocol[identifier=ISIS][name=${instance}]/isis/levels/level[level-number=2]/system-level-counters/state`,
+  ];
+}
+
+/**
+ * Build the full subscription list for a device based on its role.
+ *
+ * Roles:
+ *   'pe'      — Full MPLS PE: IS-IS SR, BGP VPNv4/EVPN, tunnel FIB
+ *   'network' — Network device: may run IS-IS (no SR labels), BGP unicast only
+ *
+ * Both roles get all gNMI streams. The role difference is in how the
+ * eAPI poller treats the device (skip tunnel FIB / FlexAlgo for non-PE).
+ * IS-IS streams are included for both since network devices can run IS-IS.
+ */
+function buildSubscriptions(device, config) {
+  const subs = [];
+
+  // Common — all devices
+  for (const p of COMMON_ON_CHANGE) {
+    subs.push({ path: p, mode: 'on-change', interval: null });
+  }
+  for (const p of COMMON_SAMPLE) {
+    subs.push({ path: p, mode: 'sample', interval: config.sampleIntervalSeconds });
+  }
+
+  // IS-IS — both PE and network devices that run IS-IS
+  // (gnmic will gracefully fail if IS-IS isn't configured on the device)
+  for (const p of isisOnChangePaths(config.isisInstance)) {
+    subs.push({ path: p, mode: 'on-change', interval: null });
+  }
+
+  // Interface counters (separate from the common sample above for bandwidth overlay)
+  // Already included in COMMON_SAMPLE via /interfaces/interface/state/counters
+
+  return subs;
+}
 
 // ---------------------------------------------------------------------------
 // GnmiSubscriber Class
@@ -60,12 +108,6 @@ class GnmiSubscriber extends EventEmitter {
     this._config.port = gnmiConfig.port || 6030;
     this._config.sampleIntervalSeconds = gnmiConfig.sampleIntervalSeconds || 10;
     this._config.isisInstance = gnmiConfig.isisInstance || '100';
-
-    if (this._config.isisInstance !== '100') {
-      const inst = this._config.isisInstance;
-      ON_CHANGE_PATHS[0] = `/network-instances/network-instance[name=default]/protocols/protocol[identifier=ISIS][name=${inst}]/isis/interfaces/interface/levels/level/adjacencies`;
-      ON_CHANGE_PATHS[1] = `/network-instances/network-instance[name=default]/protocols/protocol[identifier=ISIS][name=${inst}]/isis/levels/level[level-number=2]/system-level-counters/state`;
-    }
   }
 
   start(devices) {
@@ -150,21 +192,22 @@ class GnmiSubscriber extends EventEmitter {
       }
     }
 
-    const totalPaths = ON_CHANGE_PATHS.length + SAMPLE_PATHS.length;
+    // Build subscription list based on device role
+    const subs = buildSubscriptions(device, this._config);
+    const totalPaths = subs.length;
+
     this._deviceStatus.set(name, {
       status: 'connecting', connectedAt: null, lastUpdate: null,
       updateCount: 0, errorCount: 0, syncCount: 0,
       totalStreams: totalPaths, streams: `0/${totalPaths} synced`,
+      role: device.role || 'pe',
     });
 
-    console.log(`  [gNMI] Connecting to ${name} (${target}) — ${totalPaths} streams`);
+    console.log(`  [gNMI] Connecting to ${name} (${target}) — ${totalPaths} streams [${device.role || 'pe'}]`);
 
     const procs = [];
-    for (const pathStr of ON_CHANGE_PATHS) {
-      procs.push({ proc: this._spawnGnmic(device, target, pathStr, 'on-change', null), path: pathStr });
-    }
-    for (const pathStr of SAMPLE_PATHS) {
-      procs.push({ proc: this._spawnGnmic(device, target, pathStr, 'sample', this._config.sampleIntervalSeconds), path: pathStr });
+    for (const sub of subs) {
+      procs.push({ proc: this._spawnGnmic(device, target, sub.path, sub.mode, sub.interval), path: sub.path });
     }
     this._processes.set(name, procs);
   }
@@ -350,6 +393,45 @@ class GnmiSubscriber extends EventEmitter {
               inErrors: flatValues['in-errors'] || '0', outErrors: flatValues['out-errors'] || '0',
               inDiscards: flatValues['in-discards'] || '0', outDiscards: flatValues['out-discards'] || '0',
             },
+          });
+        }
+        return;
+      }
+
+      // LLDP Neighbor Change
+      if (subscribedPath.includes('/lldp')) {
+        // Extract interface name and neighbor details from the update
+        const ifMatch = fullPath.match(/interface\[name=([^\]]+)\]/);
+        const ifName = ifMatch ? ifMatch[1] : null;
+        const neighborId = flatValues['id'] || flatValues['neighbor-id'] || null;
+        const systemName = flatValues['system-name'] || null;
+        const portDesc = flatValues['port-description'] || null;
+        const mgmtAddr = flatValues['management-address'] || null;
+        const sysDesc = flatValues['system-description'] || null;
+
+        if (ifName && (systemName || neighborId)) {
+          this.emit('lldp:neighbor', {
+            device: deviceName, interface: ifName,
+            neighbor: { systemName, neighborId, portDesc, mgmtAddr, sysDesc },
+            timestamp,
+          });
+        }
+        return;
+      }
+
+      // Component Temperature (hardware health)
+      if (subscribedPath.includes('/components') || subscribedPath.includes('temperature')) {
+        const compMatch = fullPath.match(/component\[name=([^\]]+)\]/);
+        const compName = compMatch ? compMatch[1] : null;
+        const temp = flatValues['instant'] || flatValues['temperature'] || null;
+        const alarm = flatValues['alarm-status'] || null;
+
+        if (compName && temp != null) {
+          this.emit('system:temperature', {
+            device: deviceName, component: compName,
+            temperature: parseFloat(temp),
+            alarm: alarm === true || alarm === 'true',
+            timestamp,
           });
         }
         return;

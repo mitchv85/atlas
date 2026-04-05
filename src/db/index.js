@@ -17,7 +17,7 @@ const fs = require('fs');
 const path = require('path');
 
 const DB_PATH = path.join(__dirname, '..', '..', 'atlas.db');
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 
 let db = null;
 
@@ -113,6 +113,14 @@ function _migrate() {
     db.run(`INSERT INTO schema_version (version) VALUES (${SCHEMA_VERSION})`);
 
     console.log('  [DB] Migration v1 complete');
+  }
+
+  if (currentVersion < 2) {
+    console.log('  [DB] Running migration v2 — adding device role...');
+    db.run(`ALTER TABLE devices ADD COLUMN role TEXT DEFAULT 'pe'`);
+    db.run('DELETE FROM schema_version');
+    db.run(`INSERT INTO schema_version (version) VALUES (${SCHEMA_VERSION})`);
+    console.log('  [DB] Migration v2 complete');
   }
 }
 
@@ -254,12 +262,13 @@ const deviceOps = {
 
   add(device) {
     const id = _uuid();
-    db.run(`INSERT INTO devices (id, name, host, port, username, password, transport, hide_from_topology)
+    db.run(`INSERT INTO devices (id, name, host, port, username, password, transport, role, hide_from_topology)
       VALUES ('${id}', '${_esc(device.name)}', '${_esc(device.host)}', ${device.port || 443},
               '${_esc(device.username)}', '${_esc(device.password)}',
-              '${_esc(device.transport || 'https')}', ${device.hideFromTopology ? 1 : 0})`);
+              '${_esc(device.transport || 'https')}', '${_esc(device.role || 'pe')}',
+              ${device.hideFromTopology ? 1 : 0})`);
     _save();
-    return { id, ...device };
+    return { id, ...device, role: device.role || 'pe' };
   },
 
   update(id, fields) {
@@ -447,6 +456,7 @@ function _mapDevice(row) {
     username: row.username,
     password: row.password,
     transport: row.transport,
+    role: row.role || 'pe',
     hideFromTopology: row.hide_from_topology === 1,
   };
 }
