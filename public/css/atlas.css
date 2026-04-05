@@ -1657,6 +1657,22 @@ body {
   margin: 3px 0;
 }
 
+/* Context menu submenu */
+.ctx-has-submenu { position: relative; }
+.ctx-submenu {
+  position: absolute;
+  left: 100%;
+  top: -4px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 0;
+  min-width: 130px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+  z-index: 1001;
+}
+.ctx-has-submenu:hover .ctx-submenu { display: block !important; }
+
 /* ── BGP Page ─────────────────────────────────────────────────────── */
 .bgp-page {
   width: 100%;

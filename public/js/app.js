@@ -2101,6 +2101,12 @@
     }
 
     populatePathDropdowns();
+
+    // Re-apply bandwidth overlay if active (topology rebuild creates fresh
+    // elements that lose the label overrides)
+    if (bandwidthOverlayActive && lastBandwidthData?.edgeRates) {
+      topo.applyBandwidthHeatmap(lastBandwidthData.edgeRates);
+    }
   }
 
   /**
@@ -3475,6 +3481,31 @@
         case 'view-link':
           showEdgeDetail(ctxTargetData);
           break;
+      }
+
+      hideContextMenus();
+    });
+  });
+
+  // Wire bandwidth cap submenu clicks
+  document.querySelectorAll('[data-bw-cap]').forEach((item) => {
+    item.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      if (!ctxTargetData) return;
+      const edgeId = ctxTargetData.id;
+      const capValue = item.dataset.bwCap;
+
+      if (capValue === 'remove') {
+        await API.removeBandwidthOverride(edgeId);
+      } else {
+        await API.setBandwidthOverride(edgeId, parseInt(capValue, 10));
+      }
+
+      // Refresh bandwidth data and re-apply overlay
+      const data = await API.getBandwidth();
+      lastBandwidthData = data;
+      if (bandwidthOverlayActive && data?.edgeRates) {
+        topo.applyBandwidthHeatmap(data.edgeRates);
       }
 
       hideContextMenus();
@@ -5331,17 +5362,17 @@
 
     if (bandwidthOverlayActive) {
       if (btn) btn.classList.add('topo-btn-active');
-      // Apply heatmap if we have data, otherwise fetch it
+      // Apply immediately with cached data if available
       if (lastBandwidthData?.edgeRates) {
         topo.applyBandwidthHeatmap(lastBandwidthData.edgeRates);
-      } else {
-        API.getBandwidth().then((data) => {
-          lastBandwidthData = data;
-          if (bandwidthOverlayActive && data?.edgeRates) {
-            topo.applyBandwidthHeatmap(data.edgeRates);
-          }
-        }).catch(() => {});
       }
+      // Also fetch fresh data
+      API.getBandwidth().then((data) => {
+        lastBandwidthData = data;
+        if (bandwidthOverlayActive && data?.edgeRates) {
+          topo.applyBandwidthHeatmap(data.edgeRates);
+        }
+      }).catch(() => {});
     } else {
       if (btn) btn.classList.remove('topo-btn-active');
       topo.clearFlowOverlay();

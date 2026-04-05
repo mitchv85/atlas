@@ -751,6 +751,21 @@
       <span class="ctx-icon" style="color:var(--green);">↺</span> Clear Link Failure
     </button>
     <div class="ctx-menu-divider"></div>
+    <button class="ctx-menu-item ctx-has-submenu" data-action="bw-cap">
+      <span class="ctx-icon" style="color:var(--amber);">⚡</span> Set Bandwidth Cap
+      <span style="float:right;opacity:0.5;">▸</span>
+    </button>
+    <div class="ctx-submenu" id="ctxBwCapSubmenu" style="display:none;">
+      <button class="ctx-menu-item" data-bw-cap="100000000">100 Mbps</button>
+      <button class="ctx-menu-item" data-bw-cap="250000000">250 Mbps</button>
+      <button class="ctx-menu-item" data-bw-cap="500000000">500 Mbps</button>
+      <button class="ctx-menu-item" data-bw-cap="1000000000">1 Gbps</button>
+      <button class="ctx-menu-item" data-bw-cap="2500000000">2.5 Gbps</button>
+      <button class="ctx-menu-item" data-bw-cap="5000000000">5 Gbps</button>
+      <button class="ctx-menu-item" data-bw-cap="10000000000">10 Gbps</button>
+      <div class="ctx-menu-divider"></div>
+      <button class="ctx-menu-item" data-bw-cap="remove" style="color:var(--red);">Remove Cap</button>
+    </div>
     <button class="ctx-menu-item" data-action="view-link">
       <span class="ctx-icon" style="color:var(--text-muted);">⋯</span> View Details
     </button>
