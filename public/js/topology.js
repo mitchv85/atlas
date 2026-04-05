@@ -575,18 +575,33 @@ class TopologyRenderer {
         edge.connectedNodes().forEach(n => n.addClass('flow-active'));
       }
 
-      // Swap edge label to show throughput
-      const label = bps > 0 ? TopologyRenderer.formatBps(bps) : TopologyRenderer.formatSpeed(linkSpeed);
-      edge.data('_origLabel', edge.data('label'));
-      edge.data('label', label);
+      // Swap edge labels to show throughput / link speed
+      const d = edge.data();
+      if (d._bwOrigSource == null) {
+        edge.data('_bwOrigSource', d.sourceMetric);
+        edge.data('_bwOrigTarget', d.targetMetric);
+      }
+      const throughputLabel = bps > 0 ? TopologyRenderer.formatBps(bps) : '';
+      const speedLabel = TopologyRenderer.formatSpeed(linkSpeed);
+      // Show throughput on source side, speed on target side
+      edge.data('sourceMetric', throughputLabel || speedLabel);
+      edge.data('targetMetric', throughputLabel ? speedLabel : '');
     }
 
     // For edges with no rate data, show link speed if available
+    const speeds = this._lastSpeeds || {};
     this.cy.edges().forEach(edge => {
-      if (edge.data('_origLabel') !== undefined) return; // Already handled
-      // Store original label for restoration
-      edge.data('_origLabel', edge.data('label'));
+      if (edge.data('_bwOrigSource') !== undefined) return; // Already handled
+      edge.data('_bwOrigSource', edge.data('sourceMetric'));
+      edge.data('_bwOrigTarget', edge.data('targetMetric'));
     });
+  }
+
+  /**
+   * Store interface speeds for label display.
+   */
+  setInterfaceSpeeds(speeds) {
+    this._lastSpeeds = speeds;
   }
 
   /**
@@ -740,10 +755,13 @@ class TopologyRenderer {
     );
     // Restore original edge labels swapped during bandwidth overlay
     this.cy.edges().forEach(edge => {
-      const orig = edge.data('_origLabel');
-      if (orig !== undefined) {
-        edge.data('label', orig);
-        edge.removeData('_origLabel');
+      const origSrc = edge.data('_bwOrigSource');
+      const origTgt = edge.data('_bwOrigTarget');
+      if (origSrc !== undefined) {
+        edge.data('sourceMetric', origSrc);
+        edge.data('targetMetric', origTgt);
+        edge.removeData('_bwOrigSource');
+        edge.removeData('_bwOrigTarget');
       }
     });
     this.stopFlowAnimation();
