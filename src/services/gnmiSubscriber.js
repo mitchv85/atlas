@@ -342,147 +342,151 @@ class GnmiSubscriber extends EventEmitter {
     if (ds) { ds.updateCount++; ds.lastUpdate = new Date().toISOString(); }
 
     const timestamp = obj.timestamp;
+    const prefix = obj.prefix || '';
+
+    // For SAMPLE subscriptions (counters, temperature), gnmic splits
+    // each field into a separate update AND uses a prefix field.
+    // Accumulate all fields from this JSON object into one flat map.
+    const allValues = {};
+    const fullPaths = [];
 
     for (const update of (obj.updates || [])) {
-      const fullPath = update.Path || '';
-      const values = update.values || {};
+      const shortPath = update.Path || '';
+      const fullPath = prefix ? `${prefix}/${shortPath}`.replace(/\/+/g, '/') : shortPath;
+      fullPaths.push(fullPath);
 
-      // Flatten values -- gnmic JSON format uses { "full/path": value }
-      const flatValues = {};
+      const values = update.values || {};
       for (const [k, v] of Object.entries(values)) {
         if (typeof v === 'object' && v !== null && !Array.isArray(v)) {
-          Object.assign(flatValues, v);
+          Object.assign(allValues, v);
         } else {
           const leaf = k.split('/').pop();
-          flatValues[leaf] = v;
+          allValues[leaf] = v;
         }
       }
+    }
 
-      // IS-IS Adjacency Change
-      if (subscribedPath.includes('adjacencies')) {
-        const systemId = flatValues['system-id'] || null;
-        const adjState = flatValues['adjacency-state'] || null;
-        const neighborIp = flatValues['neighbor-ipv4-address'] || null;
-        const ifMatch = fullPath.match(/interface-id=([^\]]+)/);
-        const ifName = ifMatch ? ifMatch[1] : null;
+    // Use the prefix or first full path for interface/component matching
+    const matchPath = prefix || fullPaths[0] || '';
 
-        if (systemId || adjState) {
-          console.log(`  [gNMI] ${deviceName} ISIS adjacency ${adjState || 'UPDATE'}: ${systemId || '?'} on ${ifName || '?'}`);
-          const adjEvent = { device: deviceName, systemId, state: adjState, neighborIp, interface: ifName, timestamp };
-          this.emit('isis:adjacency', adjEvent);
-          this.emit('topology:changed', { device: deviceName, reason: 'isis-adjacency', detail: adjEvent });
+    // IS-IS Adjacency Change
+    if (subscribedPath.includes('adjacencies')) {
+      const systemId = allValues['system-id'] || null;
+      const adjState = allValues['adjacency-state'] || null;
+      const neighborIp = allValues['neighbor-ipv4-address'] || null;
+      const ifMatch = matchPath.match(/interface-id=([^\]]+)/);
+      const ifName = ifMatch ? ifMatch[1] : null;
+
+      if (systemId || adjState) {
+        console.log(`  [gNMI] ${deviceName} ISIS adjacency ${adjState || 'UPDATE'}: ${systemId || '?'} on ${ifName || '?'}`);
+        const adjEvent = { device: deviceName, systemId, state: adjState, neighborIp, interface: ifName, timestamp };
+        this.emit('isis:adjacency', adjEvent);
+        this.emit('topology:changed', { device: deviceName, reason: 'isis-adjacency', detail: adjEvent });
+      }
+      return;
+    }
+
+    // IS-IS SPF Run Counter
+    if (subscribedPath.includes('system-level-counters')) {
+      const spfRuns = allValues['spf-runs'];
+      if (spfRuns != null) {
+        const prev = this._lastSpfRuns.get(deviceName) || 0;
+        const current = parseInt(spfRuns, 10);
+        if (prev > 0 && current > prev) {
+          console.log(`  [gNMI] ${deviceName} SPF run detected (${prev} -> ${current}) -- triggering LSDB refresh`);
+          this.emit('isis:spf-run', { device: deviceName, previous: prev, current, timestamp });
+          this.emit('topology:changed', { device: deviceName, reason: 'spf-run', spfCount: current });
         }
+        this._lastSpfRuns.set(deviceName, current);
+      }
+      const lsdbSize = allValues['lsdb-size'] || allValues['arista-isis-augments:lsdb-size'];
+      if (lsdbSize != null) {
+        this.emit('isis:lsdb-size', { device: deviceName, size: parseInt(lsdbSize, 10), timestamp });
+      }
+      return;
+    }
+
+    // Interface Oper-Status Change
+    if (subscribedPath.includes('oper-status')) {
+      const ifMatch = matchPath.match(/interface\[name=([^\]]+)\]/);
+      const ifName = ifMatch ? ifMatch[1] : 'unknown';
+      const operStatus = allValues['oper-status'] || Object.values(allValues)[0];
+
+      if (!operStatus || operStatus === 'NOT_PRESENT' || operStatus === 'LOWER_LAYER_DOWN' || operStatus === 'DORMANT') {
         return;
       }
 
-      // IS-IS SPF Run Counter
-      if (subscribedPath.includes('system-level-counters')) {
-        const spfRuns = flatValues['spf-runs'];
-        if (spfRuns != null) {
-          const prev = this._lastSpfRuns.get(deviceName) || 0;
-          const current = parseInt(spfRuns, 10);
-          if (prev > 0 && current > prev) {
-            console.log(`  [gNMI] ${deviceName} SPF run detected (${prev} -> ${current}) -- triggering LSDB refresh`);
-            this.emit('isis:spf-run', { device: deviceName, previous: prev, current, timestamp });
-            this.emit('topology:changed', { device: deviceName, reason: 'spf-run', spfCount: current });
-          }
-          this._lastSpfRuns.set(deviceName, current);
+      if (ifName.startsWith('Ethernet') || ifName.startsWith('Loopback') || ifName.startsWith('Port-Channel')) {
+        console.log(`  [gNMI] ${deviceName} interface ${ifName} oper-status: ${operStatus}`);
+        this.emit('interface:status', { device: deviceName, interface: ifName, operStatus, timestamp });
+        if (ifName.startsWith('Ethernet') && (operStatus === 'UP' || operStatus === 'DOWN')) {
+          this.emit('topology:changed', { device: deviceName, reason: 'interface-status', interface: ifName, status: operStatus });
         }
-        const lsdbSize = flatValues['lsdb-size'] || flatValues['arista-isis-augments:lsdb-size'];
-        if (lsdbSize != null) {
-          this.emit('isis:lsdb-size', { device: deviceName, size: parseInt(lsdbSize, 10), timestamp });
-        }
-        return;
+      }
+      return;
+    }
+
+    // Interface Counters (SAMPLE)
+    if (subscribedPath.includes('counters')) {
+      const ifMatch = matchPath.match(/interface\[name=([^\]]+)\]/);
+      const ifName = ifMatch ? ifMatch[1] : 'unknown';
+
+      // One-time diagnostic log
+      if (!this._counterLogDone) {
+        this._counterLogDone = true;
+        console.log(`  [gNMI] Counter sample: ${deviceName}:${ifName} — ${Object.keys(allValues).length} fields [${Object.keys(allValues).slice(0, 5).join(', ')}...]`);
       }
 
-      // Interface Oper-Status Change
-      if (subscribedPath.includes('oper-status')) {
-        const ifMatch = fullPath.match(/interface\[name=([^\]]+)\]/);
-        const ifName = ifMatch ? ifMatch[1] : 'unknown';
-        const operStatus = flatValues['oper-status'] || Object.values(values)[0];
-
-        // Skip non-topology-relevant states (unused SFP slots, etc.)
-        if (!operStatus || operStatus === 'NOT_PRESENT' || operStatus === 'LOWER_LAYER_DOWN' || operStatus === 'DORMANT') {
-          return;
-        }
-
-        if (ifName.startsWith('Ethernet') || ifName.startsWith('Loopback') || ifName.startsWith('Port-Channel')) {
-          console.log(`  [gNMI] ${deviceName} interface ${ifName} oper-status: ${operStatus}`);
-          this.emit('interface:status', { device: deviceName, interface: ifName, operStatus, timestamp });
-          // Only trigger topology refresh for UP/DOWN transitions on physical interfaces
-          if (ifName.startsWith('Ethernet') && (operStatus === 'UP' || operStatus === 'DOWN')) {
-            this.emit('topology:changed', { device: deviceName, reason: 'interface-status', interface: ifName, status: operStatus });
-          }
-        }
-        return;
+      if (ifName.startsWith('Ethernet') || ifName.startsWith('Port-Channel')) {
+        this.emit('interface:counters', {
+          device: deviceName, interface: ifName, timestamp,
+          counters: {
+            inOctets: allValues['in-octets'] || '0', outOctets: allValues['out-octets'] || '0',
+            inPkts: allValues['in-pkts'] || '0', outPkts: allValues['out-pkts'] || '0',
+            inErrors: allValues['in-errors'] || '0', outErrors: allValues['out-errors'] || '0',
+            inDiscards: allValues['in-discards'] || '0', outDiscards: allValues['out-discards'] || '0',
+          },
+        });
       }
+      return;
+    }
 
-      // Interface Counters (SAMPLE)
-      if (subscribedPath.includes('counters')) {
-        const ifMatch = fullPath.match(/interface\[name=([^\]]+)\]/);
-        const ifName = ifMatch ? ifMatch[1] : 'unknown';
+    // LLDP Neighbor Change
+    if (subscribedPath.includes('/lldp')) {
+      const ifMatch = matchPath.match(/interface\[name=([^\]]+)\]/);
+      const ifName = ifMatch ? ifMatch[1] : null;
+      const systemName = allValues['system-name'] || null;
+      const portDesc = allValues['port-description'] || null;
+      const mgmtAddr = allValues['management-address'] || null;
+      const sysDesc = allValues['system-description'] || null;
+      const neighborId = allValues['id'] || allValues['neighbor-id'] || null;
 
-        // One-time diagnostic log
-        if (!this._counterLogDone) {
-          this._counterLogDone = true;
-          console.log(`  [gNMI] Counter sample received — device=${deviceName} if=${ifName}`);
-          console.log(`  [gNMI] Counter flatValues keys: [${Object.keys(flatValues).join(', ')}]`);
-          console.log(`  [gNMI] Counter fullPath: ${fullPath}`);
-          console.log(`  [gNMI] Counter raw values keys: [${Object.keys(values).join(', ')}]`);
-        }
-
-        if (ifName.startsWith('Ethernet') || ifName.startsWith('Port-Channel')) {
-          this.emit('interface:counters', {
-            device: deviceName, interface: ifName, timestamp,
-            counters: {
-              inOctets: flatValues['in-octets'] || '0', outOctets: flatValues['out-octets'] || '0',
-              inPkts: flatValues['in-pkts'] || '0', outPkts: flatValues['out-pkts'] || '0',
-              inErrors: flatValues['in-errors'] || '0', outErrors: flatValues['out-errors'] || '0',
-              inDiscards: flatValues['in-discards'] || '0', outDiscards: flatValues['out-discards'] || '0',
-            },
-          });
-        }
-        return;
+      if (ifName && (systemName || neighborId)) {
+        this.emit('lldp:neighbor', {
+          device: deviceName, interface: ifName,
+          neighbor: { systemName, neighborId, portDesc, mgmtAddr, sysDesc },
+          timestamp,
+        });
       }
+      return;
+    }
 
-      // LLDP Neighbor Change
-      if (subscribedPath.includes('/lldp')) {
-        // Extract interface name and neighbor details from the update
-        const ifMatch = fullPath.match(/interface\[name=([^\]]+)\]/);
-        const ifName = ifMatch ? ifMatch[1] : null;
-        const neighborId = flatValues['id'] || flatValues['neighbor-id'] || null;
-        const systemName = flatValues['system-name'] || null;
-        const portDesc = flatValues['port-description'] || null;
-        const mgmtAddr = flatValues['management-address'] || null;
-        const sysDesc = flatValues['system-description'] || null;
+    // Component Temperature (hardware health)
+    if (subscribedPath.includes('/components') || subscribedPath.includes('temperature')) {
+      const compMatch = matchPath.match(/component\[name=([^\]]+)\]/);
+      const compName = compMatch ? compMatch[1] : null;
+      const temp = allValues['instant'] || allValues['temperature'] || null;
+      const alarm = allValues['alarm-status'] || null;
 
-        if (ifName && (systemName || neighborId)) {
-          this.emit('lldp:neighbor', {
-            device: deviceName, interface: ifName,
-            neighbor: { systemName, neighborId, portDesc, mgmtAddr, sysDesc },
-            timestamp,
-          });
-        }
-        return;
+      if (compName && temp != null) {
+        this.emit('system:temperature', {
+          device: deviceName, component: compName,
+          temperature: parseFloat(temp),
+          alarm: alarm === true || alarm === 'true',
+          timestamp,
+        });
       }
-
-      // Component Temperature (hardware health)
-      if (subscribedPath.includes('/components') || subscribedPath.includes('temperature')) {
-        const compMatch = fullPath.match(/component\[name=([^\]]+)\]/);
-        const compName = compMatch ? compMatch[1] : null;
-        const temp = flatValues['instant'] || flatValues['temperature'] || null;
-        const alarm = flatValues['alarm-status'] || null;
-
-        if (compName && temp != null) {
-          this.emit('system:temperature', {
-            device: deviceName, component: compName,
-            temperature: parseFloat(temp),
-            alarm: alarm === true || alarm === 'true',
-            timestamp,
-          });
-        }
-        return;
-      }
+      return;
     }
   }
 
