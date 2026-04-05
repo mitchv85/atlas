@@ -58,7 +58,10 @@ class CounterRateEngine extends EventEmitter {
    */
   processSample(sample) {
     const key = `${sample.device}:${sample.interface}`;
-    const now = sample.timestamp ? parseInt(sample.timestamp, 10) / 1e9 : Date.now() / 1000;
+    // Use wall-clock time for reliable dt computation — gNMI device
+    // timestamps can have precision issues with nanosecond values
+    // exceeding JavaScript's MAX_SAFE_INTEGER
+    const now = Date.now() / 1000;
     const counters = sample.counters;
 
     const inOctets = parseInt(counters.inOctets, 10) || 0;
@@ -74,23 +77,35 @@ class CounterRateEngine extends EventEmitter {
 
     if (prev) {
       const dt = now - prev.timestamp;
-      if (dt > 0 && dt < 120) { // Ignore stale samples (>2min gap)
-        const rate = {
-          device: sample.device,
-          interface: sample.interface,
-          inBps: Math.round(((inOctets - prev.inOctets) * 8) / dt),
-          outBps: Math.round(((outOctets - prev.outOctets) * 8) / dt),
-          inPps: Math.round((inPkts - prev.inPkts) / dt),
-          outPps: Math.round((outPkts - prev.outPkts) / dt),
-          inErrors: inErrors - prev.inErrors,
-          outErrors: outErrors - prev.outErrors,
-          inDiscards: inDiscards - prev.inDiscards,
-          outDiscards: outDiscards - prev.outDiscards,
-          timestamp: now,
-        };
+      // Minimum 5s between samples to avoid inflated rates from
+      // closely-spaced initial sync data. Max 120s to ignore stale gaps.
+      if (dt >= 5 && dt < 120) {
+        const deltaIn = inOctets - prev.inOctets;
+        const deltaOut = outOctets - prev.outOctets;
 
-        // Ignore negative rates (counter wrap or reset)
-        if (rate.inBps >= 0 && rate.outBps >= 0) {
+        // Skip if counter wrapped/reset (negative delta) or if counters
+        // didn't change at all (avoid showing 0 as a "rate")
+        if (deltaIn >= 0 && deltaOut >= 0) {
+          const rate = {
+            device: sample.device,
+            interface: sample.interface,
+            inBps: Math.round((deltaIn * 8) / dt),
+            outBps: Math.round((deltaOut * 8) / dt),
+            inPps: Math.round(Math.max(0, inPkts - prev.inPkts) / dt),
+            outPps: Math.round(Math.max(0, outPkts - prev.outPkts) / dt),
+            inErrors: Math.max(0, inErrors - prev.inErrors),
+            outErrors: Math.max(0, outErrors - prev.outErrors),
+            inDiscards: Math.max(0, inDiscards - prev.inDiscards),
+            outDiscards: Math.max(0, outDiscards - prev.outDiscards),
+            timestamp: now,
+          };
+
+          // One-time diagnostic
+          if (!this._diagDone) {
+            this._diagDone = true;
+            console.log(`  [Bandwidth] Rate computed: ${key} dt=${dt.toFixed(1)}s inBps=${rate.inBps} outBps=${rate.outBps}`);
+          }
+
           this._rates.set(key, rate);
           this._dirty = true;
         }
