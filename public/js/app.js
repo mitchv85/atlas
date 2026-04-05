@@ -264,7 +264,7 @@
       }
 
       const roleBadge = (d.role === 'network')
-        ? '<span class="dev-role-badge network">NET</span>'
+        ? '<span class="dev-role-badge network">Non-PE</span>'
         : '<span class="dev-role-badge pe">PE</span>';
 
       return `<tr data-id="${d.id}" class="dev-row-clickable">

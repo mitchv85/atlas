@@ -264,23 +264,47 @@ class GnmiSubscriber extends EventEmitter {
     proc.stderr.on('data', (data) => {
       const msg = data.toString().trim();
       if (msg && !msg.includes('received signal')) {
-        console.error(`  [gNMI] ${device.name} stderr: ${msg}`);
+        // Only log first error per stream to avoid spam
+        if (!proc._errorLogged) {
+          const shortPath = pathStr.split('/').slice(-2).join('/');
+          console.error(`  [gNMI] ${device.name} error on ${shortPath}: ${msg.slice(0, 120)}`);
+          proc._errorLogged = true;
+        }
         const ds = this._deviceStatus.get(device.name);
         if (ds) ds.errorCount++;
       }
     });
 
     proc.on('close', (code) => {
+      const ds = this._deviceStatus.get(device.name);
+      const shortPath = pathStr.split('/').slice(-2).join('/');
+
       if (code !== 0 && code !== null) {
-        const shortPath = pathStr.split('/').slice(-2).join('/');
         console.log(`  [gNMI] ${device.name} stream exited (code=${code}) for ${shortPath}`);
+
+        // If this stream never synced, reduce totalStreams so remaining
+        // streams can still reach "connected" status
+        if (ds && !proc._synced) {
+          ds.totalStreams = Math.max(0, ds.totalStreams - 1);
+          ds.streams = `${ds.syncCount}/${ds.totalStreams} synced`;
+
+          // Check if remaining streams are all synced
+          if (ds.totalStreams > 0 && ds.syncCount >= ds.totalStreams && ds.status !== 'connected') {
+            ds.status = 'connected';
+            ds.connectedAt = new Date().toISOString();
+            console.log(`  [gNMI] ${device.name} ${ds.syncCount}/${ds.syncCount + 1} streams synced — streaming live (1 unavailable)`);
+            this.emit('device:synced', { device: device.name });
+          }
+        }
       }
+
       const procs = this._processes.get(device.name) || [];
       const allDead = procs.every(p => p.proc.exitCode !== null);
-      if (allDead && procs.length > 0) {
-        const ds = this._deviceStatus.get(device.name);
-        if (ds) ds.status = 'disconnected';
-        this._scheduleReconnect(device);
+      if (allDead && procs.length > 0 && ds) {
+        if (ds.syncCount === 0) {
+          ds.status = 'disconnected';
+          this._scheduleReconnect(device);
+        }
       }
     });
 
@@ -290,6 +314,12 @@ class GnmiSubscriber extends EventEmitter {
   _handleSync(deviceName, pathStr) {
     const ds = this._deviceStatus.get(deviceName);
     if (!ds) return;
+
+    // Mark the specific gnmic process as synced
+    const procs = this._processes.get(deviceName) || [];
+    const proc = procs.find(p => p.path === pathStr);
+    if (proc) proc.proc._synced = true;
+
     ds.syncCount++;
     ds.streams = `${ds.syncCount}/${ds.totalStreams} synced`;
     if (ds.syncCount >= ds.totalStreams) {
