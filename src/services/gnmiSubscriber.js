@@ -428,6 +428,11 @@ class GnmiSubscriber extends EventEmitter {
 
     // Interface Counters (SAMPLE)
     if (subscribedPath.includes('counters')) {
+      // Skip initial sync data — each field comes as a separate JSON object
+      // with no prefix, giving us incomplete samples (most fields = 0).
+      // Only process periodic samples which have a prefix field and ALL fields.
+      if (!prefix) return;
+
       const ifMatch = matchPath.match(/interface\[name=([^\]]+)\]/);
       const ifName = ifMatch ? ifMatch[1] : 'unknown';
 
