@@ -84,6 +84,7 @@ router.post('/change-password', async (req, res) => {
 
   users[u.username].passwordHash       = await bcrypt.hash(newPassword, auth.BCRYPT_ROUNDS);
   users[u.username].mustChangePassword = false;
+  users[u.username].forcePasswordChange = false;
   auth.saveUsers(users);
   auth.writeAudit(u.username, u.role, 'user.pw-change', u.username, 'success');
 
@@ -154,11 +155,16 @@ router.get('/github/callback', async (req, res) => {
     const githubId     = String(profile.id);
     const githubHandle = profile.login;
 
-    // Step 3 — Look up pre-authorized user in users.json
+    // Step 3 — Look up pre-authorized user
     const users = auth.loadUsers();
     let matchedKey = null;
     for (const [key, u] of Object.entries(users)) {
-      if (u.type === 'github' && (String(u.githubId) === githubId || u.githubHandle?.toLowerCase() === githubHandle.toLowerCase())) {
+      // Match by githubId (set on first login) or githubLogin (set at pre-auth)
+      const isGithubUser = u.githubId || u.githubLogin;
+      if (isGithubUser && (
+        String(u.githubId) === githubId ||
+        u.githubLogin?.toLowerCase() === githubHandle.toLowerCase()
+      )) {
         matchedKey = key;
         break;
       }
@@ -171,11 +177,10 @@ router.get('/github/callback', async (req, res) => {
 
     const entry = users[matchedKey];
 
-    // Step 4 — Stamp githubId in case only handle was matched
-    if (!entry.githubId) {
-      users[matchedKey].githubId = githubId;
-    }
-    users[matchedKey].lastLogin = new Date().toISOString();
+    // Step 4 — Stamp GitHub fields on first SSO login
+    if (!entry.githubId) users[matchedKey].githubId = githubId;
+    if (!entry.githubLogin) users[matchedKey].githubLogin = githubHandle;
+    if (!entry.githubUrl) users[matchedKey].githubUrl = `https://github.com/${githubHandle}`;
     auth.saveUsers(users);
 
     // Step 5 — Issue ATLAS JWT

@@ -79,7 +79,8 @@ function saveUsers(usersObj) {
       db.users.update(username, {
         passwordHash: data.passwordHash,
         role: data.role,
-        forcePasswordChange: data.mustChangePassword || data.forcePasswordChange || false,
+        forcePasswordChange: data.forcePasswordChange !== undefined ? data.forcePasswordChange
+          : data.mustChangePassword !== undefined ? data.mustChangePassword : false,
         displayName: data.displayName || (data.firstName ? `${data.firstName || ''} ${data.lastName || ''}`.trim() : undefined),
         firstName: data.firstName,
         lastName: data.lastName,
@@ -101,6 +102,17 @@ function saveUsers(usersObj) {
         githubId: data.githubId,
         githubLogin: data.githubLogin,
       });
+      // Profile fields need a separate update since add() only handles core fields
+      const profileFields = {};
+      if (data.firstName) profileFields.firstName = data.firstName;
+      if (data.lastName) profileFields.lastName = data.lastName;
+      if (data.email) profileFields.email = data.email;
+      if (data.phone) profileFields.phone = data.phone;
+      if (data.notes) profileFields.notes = data.notes;
+      if (data.githubUrl) profileFields.githubUrl = data.githubUrl;
+      if (Object.keys(profileFields).length > 0) {
+        db.users.update(username, profileFields);
+      }
     }
   }
 
