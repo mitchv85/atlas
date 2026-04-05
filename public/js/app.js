@@ -3399,6 +3399,15 @@
     document.getElementById('ctxMenuEdgeTitle').textContent =
       `${edgeData.sourceLabel} ↔ ${edgeData.targetLabel}`;
 
+    // Reset cap options to collapsed
+    document.getElementById('ctxBwCapOptions').style.display = 'none';
+
+    // Show "Remove Bandwidth Cap" only if this edge has an override
+    const hasOverride = lastBandwidthData?.edgeRates?.find(
+      e => e.edgeId === edgeData.id && e.overrideSpeedBps != null
+    );
+    document.getElementById('ctxBwCapRemove').style.display = hasOverride ? '' : 'none';
+
     positionContextMenu(ctxMenuEdge, mouseEvent);
   }
 
@@ -3487,7 +3496,14 @@
     });
   });
 
-  // Wire bandwidth cap submenu clicks
+  // Wire bandwidth cap toggle — click "Set Bandwidth Cap" to expand options
+  document.getElementById('ctxBwCapToggle')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const opts = document.getElementById('ctxBwCapOptions');
+    opts.style.display = opts.style.display === 'none' ? '' : 'none';
+  });
+
+  // Wire bandwidth cap option clicks
   document.querySelectorAll('[data-bw-cap]').forEach((item) => {
     item.addEventListener('click', async (e) => {
       e.stopPropagation();
