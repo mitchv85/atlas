@@ -4320,17 +4320,34 @@
           </div>`;
 
         // LSP Breakdown — correlate tunnel rates to this edge
+        // Check BOTH sides: source device tunnels exiting via sourceInterface,
+        // AND target device tunnels exiting via targetInterface.
+        // This catches transit tunnels (e.g., PE-3's tunnel to PE-6 exits via
+        // PE-3's interface toward PE-4 on the PE-3↔PE-4 edge).
         const edgeLsps = [];
-        const srcHost = er.source;
-        const srcIntf = er.sourceInterface;
+        const seen = new Set();
 
-        if (srcHost && srcIntf && lastTunnelRates.length > 0) {
-          for (const tc of lastTunnelRates) {
-            if (tc.device !== srcHost || tc.bitsPerSec <= 0) continue;
-            // Check if any of the tunnel's vias use this interface
-            const matchesVia = (tc.vias || []).some(v => v.interface === srcIntf);
-            if (matchesVia) {
-              edgeLsps.push(tc);
+        if (lastTunnelRates.length > 0) {
+          // Source side
+          if (er.source && er.sourceInterface) {
+            for (const tc of lastTunnelRates) {
+              if (tc.device !== er.source || tc.bitsPerSec <= 0) continue;
+              const matchesVia = (tc.vias || []).some(v => v.interface === er.sourceInterface);
+              if (matchesVia) {
+                const key = `${tc.device}→${tc.destHostname}:${tc.algoTag}`;
+                if (!seen.has(key)) { seen.add(key); edgeLsps.push(tc); }
+              }
+            }
+          }
+          // Target side
+          if (er.target && er.targetInterface) {
+            for (const tc of lastTunnelRates) {
+              if (tc.device !== er.target || tc.bitsPerSec <= 0) continue;
+              const matchesVia = (tc.vias || []).some(v => v.interface === er.targetInterface);
+              if (matchesVia) {
+                const key = `${tc.device}→${tc.destHostname}:${tc.algoTag}`;
+                if (!seen.has(key)) { seen.add(key); edgeLsps.push(tc); }
+              }
             }
           }
         }
