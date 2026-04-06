@@ -588,14 +588,17 @@ class TopologyRenderer {
           edge.connectedNodes().forEach(n => n.addClass('flow-active'));
         }
 
-        // Labels: show throughput only when link has enough traffic for a heat level
-        if (level > 0) {
-          // Active traffic — show throughput on source, speed on target
-          const bpsLabel = TopologyRenderer.formatBps(bps);
-          edge.data('sourceMetric', bpsLabel);
-          edge.data('targetMetric', speedLabel);
+        // Labels: show per-side egress throughput when traffic is flowing
+        const srcOut = er.srcOutBps || 0;
+        const tgtOut = er.tgtOutBps || 0;
+        const hasTraffic = level > 0 || srcOut >= 1000 || tgtOut >= 1000;
+
+        if (hasTraffic) {
+          // Show egress rate on each side (source label = source's outbound)
+          edge.data('sourceMetric', srcOut >= 1000 ? TopologyRenderer.formatBps(srcOut) : speedLabel);
+          edge.data('targetMetric', tgtOut >= 1000 ? TopologyRenderer.formatBps(tgtOut) : speedLabel);
         } else {
-          // Idle or sub-threshold — show effective speed on both sides
+          // Idle — show effective speed on both sides
           edge.data('sourceMetric', speedLabel);
           edge.data('targetMetric', speedLabel);
         }

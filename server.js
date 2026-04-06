@@ -154,6 +154,7 @@ function buildEdgeRates(linkRates) {
         source: edge.data.sourceLabel,
         target: edge.data.targetLabel,
         maxBps: 0, inBps: 0, outBps: 0,
+        srcOutBps: 0, tgtOutBps: 0, // Per-side egress rates
         speedBps: null, utilization: null,
         sourceInterface: null, targetInterface: null,
         errors: 0, discards: 0,
@@ -166,13 +167,15 @@ function buildEdgeRates(linkRates) {
     er.errors += (rate.hasErrors ? 1 : 0);
     er.discards += (rate.hasDiscards ? 1 : 0);
 
-    // Track interface names and speed per side
+    // Track interface names, speed, and per-side egress rates
     const linkSpeed = speeds[linkKey] || null;
     if (device === edge.data.sourceLabel) {
       er.sourceInterface = ifName;
+      er.srcOutBps = rate.outBps || 0;
       if (linkSpeed && (!er.speedBps || linkSpeed < er.speedBps)) er.speedBps = linkSpeed;
     } else {
       er.targetInterface = ifName;
+      er.tgtOutBps = rate.outBps || 0;
       if (linkSpeed && (!er.speedBps || linkSpeed < er.speedBps)) er.speedBps = linkSpeed;
     }
   }

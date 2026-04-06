@@ -4270,12 +4270,12 @@
               <span class="detail-value" style="margin-left:4px;font-size:0.72rem;color:var(--text-muted);">of ${effSpeed}</span>
             </div>
             <div class="detail-row">
-              <span class="detail-label">In</span>
-              <span class="detail-value">${formatRate(er.inBps)}</span>
+              <span class="detail-label">${esc(er.source)} egress</span>
+              <span class="detail-value" style="font-weight:600;">${formatRate(er.srcOutBps || 0)}</span>
             </div>
             <div class="detail-row">
-              <span class="detail-label">Out</span>
-              <span class="detail-value">${formatRate(er.outBps)}</span>
+              <span class="detail-label">${esc(er.target)} egress</span>
+              <span class="detail-value" style="font-weight:600;">${formatRate(er.tgtOutBps || 0)}</span>
             </div>
             <div class="detail-row">
               <span class="detail-label">Peak (max direction)</span>
